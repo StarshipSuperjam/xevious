@@ -1422,6 +1422,12 @@ ATTRACT_SELECTOR_DIM_GHOST = 60  # unselected option dimmed; 0 ghost = the armed
 HIGH_SCORE_ENTRY_STATE = "high-score-entry"
 ENTRY_RING = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "  # 27 symbols: A-Z (ring 1..26) then space (ring 27)
 ENTRY_RING_SIZE = 27
+# CAB-04 (slice 21 audit): holding the bomb button turns the letter lowercase. The arcade's `check_lowercase`
+# (xevious_main.68k 1784-1792) reads the bomb bit (dswb bit 0, the bit `init_bombing` reads at 2441, active-low)
+# and adds 0x2C to the letter code — on the active cell it draws (1717) and on the letter it stores (1747). The
+# ring index is unchanged (inc/dec still walk A-Z then space), so the lowercase ring is the same 27 places; a
+# space stays a space. A timed-out entry keeps the stored base letter, so `_high_score_finish` stays uppercase.
+ENTRY_RING_LOWER = "abcdefghijklmnopqrstuvwxyz "
 ENTRY_NAME_LEN = 10  # ten characters (move.b #10,(name_entry_char_cnt) xevious_main.68k:1700; name field ds.b 10)
 # A fixed TOTAL countdown armed once at entry start and decremented one per frame — NOT an idle reset: the
 # reference seeds countdown_timer_1 = 0x80 once (xevious_main.68k:1701) and decrements it unconditionally
@@ -4645,6 +4651,13 @@ def _if_else(blocks: Blocks, condition_id: str, then: list[str], otherwise: list
     blocks.substack(block_id, then)
     blocks.substack(block_id, otherwise, name="SUBSTACK2")
     return block_id
+
+
+def _entry_case(blocks: Blocks, build: Any) -> str:
+    """CAB-04: `if <b pressed> then build(lowercase ring) else build(ENTRY_RING)` — `build(ring)` returns the
+    statement that uses the active letter of `ring` (fresh blocks per branch: a reporter has one parent)."""
+    held = blocks.key_pressed("", "b")  # parent placeholder; _if_else re-parents it
+    return _if_else(blocks, held, [build(ENTRY_RING_LOWER)], [build(ENTRY_RING)])
 
 
 def _craft_alive_reporter(blocks: Blocks) -> str:
@@ -11614,17 +11627,21 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # committed character (append_char advances the pointer and ends at the tenth, :1745-1769). `name buffer` is
     # a plain string, so the append is a join and the compositor reads it a letter at a time. `change entry cell
     # by 1` is used (NOT `set entry cell = add(...)`): a `set var = operator(...)` value-input is left unread by
-    # the runtime, `change ... by` evaluates.
+    # the runtime, `change ... by` evaluates. CAB-04: the letter is lowercase while the bomb button is held
+    # (`append_char` stores the check_lowercase result, xevious_main.68k 1747).
     entry_space = blocks.key("space")
     entry_commit = [
-        blocks.set_var_expr(
-            "name buffer",
-            ENTRY_NAME_BUFFER_ID,
-            blocks.op_join(
-                variable("name buffer", ENTRY_NAME_BUFFER_ID),
-                blocks.op_letter_of(
-                    blocks.op_add(variable("entry char", ENTRY_CHAR_ID), number(1)),
-                    text(ENTRY_RING),
+        _entry_case(
+            blocks,
+            lambda ring: blocks.set_var_expr(
+                "name buffer",
+                ENTRY_NAME_BUFFER_ID,
+                blocks.op_join(
+                    variable("name buffer", ENTRY_NAME_BUFFER_ID),
+                    blocks.op_letter_of(
+                        blocks.op_add(variable("entry char", ENTRY_CHAR_ID), number(1)),
+                        text(ring),
+                    ),
                 ),
             ),
         ),
@@ -13254,12 +13271,16 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         blocks.substack(
             active,
             [
-                blocks.set_var_expr(
-                    "attract char",
-                    ATTRACT_DISPLAY_CHAR_ID,
-                    blocks.op_letter_of(
-                        blocks.op_add(variable("entry char", ENTRY_CHAR_ID), number(1)),
-                        text(ENTRY_RING),
+                # CAB-04: the active cell shows the lowercase letter while the bomb button is held (1717).
+                _entry_case(
+                    blocks,
+                    lambda ring: blocks.set_var_expr(
+                        "attract char",
+                        ATTRACT_DISPLAY_CHAR_ID,
+                        blocks.op_letter_of(
+                            blocks.op_add(variable("entry char", ENTRY_CHAR_ID), number(1)),
+                            text(ring),
+                        ),
                     ),
                 ),
                 blocks.set_effect("GHOST", pulse),

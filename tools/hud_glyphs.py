@@ -39,6 +39,7 @@ import wave
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import sprite_extractor as se  # noqa: E402
+import reference_art_render as rar  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,6 +153,16 @@ TITLE_ART_PREFIXES = ("title-logo/", "title-sparkle/")
 # columns align; the rank/score columns reuse the existing digit/<0-9> costumes (no duplicate digit
 # costumes — the uniqueItems loader trap). The "glyph/" prefix matches game_director.ATTRACT_GLYPH_PREFIX.
 ATTRACT_NAME_GLYPHS = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ.")
+# CAB-04 (slice 21 audit): the arcade's initials entry stores and shows a lowercase letter while the bomb
+# button is held (check_lowercase, xevious_main.68k 1784-1792, adds 0x2C to the letter code at 1717 and 1747).
+# The credited HUD font has no lowercase, so these come from the arcade's own text tiles 0x36-0x4F, which
+# tools/reference_art_render.py draws into the last row of the reference_art sheet. Each tile pixel is
+# LOWERCASE_TILE_SCALE native pixels, so the 7-row letter body is the 98 native rows of a capital: the body
+# sits on the capitals' baseline in the same SMALL_TEXT_GEOM cell, and the descender row hangs below it in
+# a taller canvas whose rotation centre stays the capitals' (9, 9), so both line up on the same grid.
+LOWERCASE_GLYPHS = tuple("abcdefghijklmnopqrstuvwxyz")
+LOWERCASE_TILE_SCALE = 14
+LOWERCASE_CANVAS_H = 126  # the 108 cell plus an 18-row descender band (both divide by 6)
 ATTRACT_LABELS = (
     ("credit-label", "CREDIT"),
     # PRES-01 (slice 20 playtest): the full cabinet phrase, so it fills the arcade prompt cell (10,23) the way
@@ -307,6 +318,7 @@ class CreditOutput:
     png: bytes
     width: int
     height: int
+    center: tuple[int, int] | None = None  # rotation centre; None centres the image
 
 
 # The manifest and provenance readers are the sprite extractor's own, raising this tool's error (#24: shared,
@@ -692,6 +704,63 @@ def render_attract_costumes(sheet: se.Image, threshold: int) -> list[CreditOutpu
         outputs.append(
             render_sheet_text_costume(sheet, threshold, f"glyph/{ch}", (ch,), **SMALL_TEXT_GEOM)
         )
+    # CAB-04 (slice 21 audit): the lowercase letters the bomb button selects, from the arcade's text tiles.
+    outputs.extend(render_lowercase_costumes())
+    return outputs
+
+
+def _reference_art_sheet() -> tuple[se.Image, dict]:
+    manifest, _data = se.load_manifest()
+    record = manifest["sheets"][rar.SHEET_NAME]
+    path = ASSET_DIR / record["asset"]
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise HudGlyphsError(f"cannot read the reference_art sheet {path}: {exc}") from exc
+    if se._sha256(data) != record["sha256"]:
+        raise HudGlyphsError(f"the reference_art sheet {path.name} does not match its manifest SHA-256")
+    return se.decode_png(data, path.name), record
+
+
+def render_lowercase_costumes() -> list[CreditOutput]:
+    """The 26 lowercase name-cell costumes glyph/a-z, from the arcade's own text tiles (CAB-04)."""
+    sheet, _record = _reference_art_sheet()
+    matte = rar.MATTE + (255,)
+    cell = SHEET_SMALL_CELL
+    scale = LOWERCASE_TILE_SCALE
+    body_top = cell - 7 * scale  # the capitals' 98-row body, bottom-aligned in the cell
+    if len(LOWERCASE_GLYPHS) != len(rar.LOWERCASE_ORIGINS):
+        raise HudGlyphsError("the lowercase glyphs and the reference_art lowercase row disagree")
+    outputs = []
+    for char, (ox, oy) in zip(LOWERCASE_GLYPHS, rar.LOWERCASE_ORIGINS):
+        ink = {
+            (tx, ty)
+            for ty in range(rar.CHAR)
+            for tx in range(rar.CHAR)
+            if sheet.pixel(ox + tx, oy + ty) != matte
+        }
+        if not ink:
+            raise HudGlyphsError(f"lowercase tile for {char!r} has no ink")
+        left = min(tx for tx, _ty in ink)
+        width = (max(tx for tx, _ty in ink) - left + 1) * scale
+        x0 = (cell - width) // 2
+        pixels = [CREDIT_TRANSPARENT] * (cell * LOWERCASE_CANVAS_H)
+        for tx, ty in ink:
+            for y in range(body_top + ty * scale, body_top + (ty + 1) * scale):
+                for x in range(x0 + (tx - left) * scale, x0 + (tx - left + 1) * scale):
+                    pixels[y * cell + x] = CREDIT_INK
+        scaled = _downscale_nearest(
+            se.Image(cell, LOWERCASE_CANVAS_H, tuple(pixels)), SHEET_SMALL_DOWNSCALE
+        )
+        _require_ink(scaled, f"lowercase glyph {char}")
+        png = se.encode_png(scaled)
+        centre = cell // SHEET_SMALL_DOWNSCALE // 2
+        outputs.append(
+            CreditOutput(
+                f"glyph/{char}", f"{se._md5(png)}.png", png, scaled.width, scaled.height,
+                (centre, centre),
+            )
+        )
     return outputs
 
 
@@ -717,8 +786,8 @@ def _credit_costume(output: CreditOutput) -> dict:
         "dataFormat": "png",
         "assetId": output.filename.removesuffix(".png"),
         "md5ext": output.filename,
-        "rotationCenterX": output.width // 2,
-        "rotationCenterY": output.height // 2,
+        "rotationCenterX": output.width // 2 if output.center is None else output.center[0],
+        "rotationCenterY": output.height // 2 if output.center is None else output.center[1],
     }
 
 
@@ -766,6 +835,28 @@ def _overlay_attract_record(manifest: dict, output: CreditOutput) -> dict:
             f"the credited font; the table's CONTENT — the port-original initials (NOT the ROM default "
             f"name strings) and the arcade default scores — lives in the Stage lists game_director owns, "
             f"not in any costume."
+        ),
+    }
+
+
+def _overlay_lowercase_record(output: CreditOutput) -> dict:
+    _sheet, record = _reference_art_sheet()
+    return {
+        "origin": (
+            f"Lowercase initials glyph '{output.name}' (CAB-04) composited by tools/hud_glyphs.py "
+            f"(render_lowercase_costumes) from the last row of the reference_art sheet {record['asset']}, "
+            "which tools/reference_art_render.py renders from the pinned arcade reference jotd666/xevious "
+            "@71473685a8c7856c8401c8519276cd97a38d4183 (assets/amiga/xevious_gfx.c fg_tile 0x36-0x4F)"
+        ),
+        "license": record["license"],
+        "notes": (
+            f"Sheet credit: {record['credit']}. The repository operator did not create this asset. "
+            f"Sheet SHA-256 {record['sha256']}; the 8x8 text tile scaled {LOWERCASE_TILE_SCALE}x onto the "
+            f"{SHEET_SMALL_CELL}px cell (letter body bottom-aligned to the capitals' baseline, descender "
+            f"below in a {LOWERCASE_CANVAS_H}px canvas) and {SHEET_SMALL_DOWNSCALE}x nearest-neighbor "
+            f"decimated, white ink on transparent, bitmapResolution {TEXT_BITMAP_RESOLUTION}. The arcade "
+            "draws these while the bomb button is held during initials entry (check_lowercase, "
+            "src/xevious_main.68k 1784-1792)."
         ),
     }
 
@@ -1152,7 +1243,11 @@ def _derivative_provenance(
     for output in attract_outputs or []:
         outputs[output.filename] = {
             # CAB-03 banners ride in the same overlay list but are a distinct kind (HUD target).
-            "kind": "banner" if output.name in BANNER_COSTUME_NAMES else "attract",
+            "kind": (
+                "banner" if output.name in BANNER_COSTUME_NAMES
+                else "lowercase" if output.name.removeprefix("glyph/") in LOWERCASE_GLYPHS
+                else "attract"
+            ),
             "name": output.name,
             "generator_version": GENERATOR_VERSION,
         }
@@ -1235,6 +1330,8 @@ def _expected_state() -> tuple[
     for output in attract_outputs:
         if output.name in BANNER_COSTUME_NAMES:
             assets[output.filename] = _overlay_banner_record(manifest, output)
+        elif output.name.removeprefix("glyph/") in LOWERCASE_GLYPHS:
+            assets[output.filename] = _overlay_lowercase_record(output)
         else:
             assets[output.filename] = _overlay_attract_record(manifest, output)
     assets = dict(sorted(assets.items()))

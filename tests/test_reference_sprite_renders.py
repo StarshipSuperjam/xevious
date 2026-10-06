@@ -196,8 +196,9 @@ class ReferenceArtRenderTests(unittest.TestCase):
         # Seven rows: Giddo flight, Giddo hit, bodies, self-destruct (the widest, 25 cells), Brag Spario + shot +
         # rebound, sparkle, then the 32x32 teleport cells with every frame centred, followed on that row by the
         # self-destruct at the teleport colour in 16x16 cells; then the title logo's ten 160x64 layers, two a row
-        # (the background, the eight outline flash colours, the yellow demo logo).
-        self.assertEqual((art.SHEET_WIDTH, art.SHEET_HEIGHT), (16 * 25, 16 * 6 + 32 + 64 * 5))
+        # (the background, the eight outline flash colours, the yellow demo logo); then one 8x8 row of the
+        # text layer's lowercase a-z (CAB-04, the bomb-held initials letters).
+        self.assertEqual((art.SHEET_WIDTH, art.SHEET_HEIGHT), (16 * 25, 16 * 6 + 32 + 64 * 5 + 8))
         self.assertEqual(art.GIDDO_FLY_ORIGINS, [(16 * i, 0) for i in range(16)])
         self.assertEqual(art.GIDDO_HIT_ORIGINS, [(16 * i, 16) for i in range(16)])
         bodies = [art.ZAKATO_BODY_ORIGIN] + art.BRAG_ZAKATO_BODY_ORIGINS + art.GARU_ZAKATO_BODY_ORIGINS
@@ -214,6 +215,10 @@ class ReferenceArtRenderTests(unittest.TestCase):
         self.assertEqual(art.LOGO_BG_ORIGIN, (0, 128))
         self.assertEqual(art.LOGO_OUTLINE_ORIGINS, art.LOGO_ORIGINS[1:9])
         self.assertEqual(art.LOGO_YELLOW_ORIGIN, (160, 128 + 64 * 4))
+        # check_lowercase (xevious_main.68k 1784-1792) adds 0x2C to 'A'..'Z' (0x0A..0x23): tiles 0x36..0x4F.
+        self.assertEqual(art.LOWERCASE_CODES, list(range(0x36, 0x50)))
+        self.assertEqual(art.LOWERCASE_ORIGINS, [(8 * i, 128 + 64 * 5) for i in range(26)])
+        self.assertEqual(art.ENTRY_TEXT_COLOUR, 0x1B)
         self.assertEqual(fx.ONE_BY_ONE_ORIGIN + asr.TILE // 2, art.TELEPORT_CELL // 2)
         self.assertEqual(fx.TWO_BY_TWO_ORIGIN + asr.TILE, art.TELEPORT_CELL // 2)
 

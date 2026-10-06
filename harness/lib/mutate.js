@@ -149,6 +149,26 @@ export function changeEqualsOperand(project, spriteName, fromValue, toValue) {
 }
 
 /**
+ * Rewrite the literal STRING of every `letter (...) of <fromValue>` on a sprite. Used to point the initials
+ * entry's bomb-held lowercase ring back at the uppercase ring (CAB-04, slice 21 audit), so holding the bomb
+ * button no longer changes the letter.
+ */
+export function changeLetterOfString(project, spriteName, fromValue, toValue) {
+  const t = target(project, spriteName);
+  let patched = 0;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (b.opcode !== 'operator_letter_of' || !b.inputs.STRING) continue;
+    const shadow = b.inputs.STRING[1];
+    if (Array.isArray(shadow) && String(shadow[1]) === String(fromValue)) {
+      b.inputs.STRING = [1, [10, String(toValue)]];
+      patched += 1;
+    }
+  }
+  if (!patched) throw new Error(`mutate: no 'letter of ${fromValue}' on ${spriteName}`);
+}
+
+/**
  * Reintroduce the mathop field-name bug on a sprite's `operator_mathop` blocks: rename the
  * OPERATOR field to OPERATION so scratch-vm cannot resolve the function and `floor` returns 0.
  * Every digit then computes `floor(score / divisor) mod 10 = 0`, collapsing the HUD to all

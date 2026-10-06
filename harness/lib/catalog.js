@@ -1672,6 +1672,71 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.freezeVariableChange(p, 'Stage', 'entry timer'),
   },
   {
+    // CAB-04 (slice 21 audit): holding the bomb button turns the entry letter lowercase. The arcade's
+    // `check_lowercase` (xevious_main.68k 1784-1792) reads the bomb bit and adds 0x2C to the letter code, both on
+    // the active cell it draws (1717) and on the letter `append_char` stores (1747); the ring itself is unchanged.
+    // A timed-out entry keeps the base letter inc/dec stored (name_entry_finished never calls check_lowercase), so
+    // the in-flight letter lands uppercase even with the button held. We hold `b` on cell 1 (A -> 'a', shown and
+    // committed), release it on cell 2 (B stays 'B'), then hold it through a timeout on cell 3 (C stays 'C').
+    // roadmap-evidence: CAB-04 success  (bomb held: the active cell shows and Space commits the lowercase letter;
+    //   released: uppercase; a timeout keeps the uppercase in-flight letter)
+    key: 'high-score-entry-lowercase',
+    behavior:
+      'Holding the bomb button (B) during initials entry shows and commits a lowercase letter; a timed-out letter stays uppercase',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(enterEntry(vm, { row: 2, timer: 1000000 }), 'precondition: the cabinet reaches the entry screen');
+      const names = readVar(vm, 'eco-high-score-names');
+      names.splice(0, names.length, 'STK', 'M.N', 'EVE', 'S.O', 'S.K');
+      const roleName = variable('attract-display-role').name;
+      const placeName = variable('attract-display-place').name;
+      const active = (place) => {
+        const c = cloneReports(vm, 'start_screen', [roleName, placeName]).find(
+          (r) => r.vars[roleName] === 10 && r.vars[placeName] === place,
+        );
+        return c ? c.costume : null;
+      };
+      writeVar(vm, 'cabinet-entry-char', 0); // A
+      keyDown(vm, 'b');
+      step(vm, 2);
+      const heldCell = active(1);
+      tapKey(vm, ' '); // commit with the bomb button held
+      keyUp(vm, 'b');
+      writeVar(vm, 'cabinet-entry-char', 1); // B
+      step(vm, 2);
+      const releasedCell = active(2);
+      tapKey(vm, ' '); // commit with the bomb button up
+      const committed = readVar(vm, 'cabinet-entry-name-buffer');
+      writeVar(vm, 'cabinet-entry-char', 2); // C, in flight
+      keyDown(vm, 'b');
+      writeVar(vm, 'cabinet-entry-timer', 2);
+      const reachedTitle = stepUntil(vm, (v) => state(v) === 'title');
+      keyUp(vm, 'b');
+      return {
+        heldCell,
+        releasedCell,
+        committed,
+        stateAfter: reachedTitle ? 'title' : state(vm),
+        landed: readVar(vm, 'eco-high-score-names')[1], // rank 2 -> JS index 1
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.heldCell, 'glyph/a', 'with the bomb button held the active cell draws the lowercase letter');
+      assert.equal(obs.releasedCell, 'glyph/B', 'with the bomb button up the active cell draws the uppercase letter');
+      assert.equal(obs.committed, 'aB', 'Space commits the lowercase letter only while the bomb button is held');
+      assert.equal(obs.stateAfter, 'title', 'the countdown expiring finishes entry and returns to the title');
+      assert.equal(obs.landed, 'aBC', 'a timeout keeps the in-flight letter uppercase even with the bomb button held');
+    },
+    // Point both lowercase reads (the commit on the Stage, the active cell on start_screen) back at the uppercase
+    // ring: holding the bomb button then changes nothing, so the 'a' cell and the 'aB' buffer assertions fail.
+    // roadmap-evidence: CAB-04 failure  (without the lowercase ring the bomb button no longer lowers the letter)
+    negativeMutation: (p) => {
+      for (const sprite of ['Stage', 'start_screen']) {
+        mutate.changeLetterOfString(p, sprite, 'abcdefghijklmnopqrstuvwxyz ', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ ');
+      }
+    },
+  },
+  {
     // ECO-04 (economy.game-over-routing, slice 19): the end-of-game ROUTING acts on the qualification verdict,
     // and it runs at the DEATH decision (state player-dead, the last craft gone), BEFORE any GAME OVER hold —
     // faithful to the arcade, which calls check_for_high_score the instant the game ends and reaches the

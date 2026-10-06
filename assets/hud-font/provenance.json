@@ -728,6 +728,136 @@
       "name": "glyph/.",
       "generator_version": 1
     },
+    "0f3988847f1afbee68df1e3d28c14b9c.png": {
+      "kind": "lowercase",
+      "name": "glyph/a",
+      "generator_version": 1
+    },
+    "a79c1fb04aefac4edb63c63176f27217.png": {
+      "kind": "lowercase",
+      "name": "glyph/b",
+      "generator_version": 1
+    },
+    "659e01eb6457b8063bd4b2700e7538bc.png": {
+      "kind": "lowercase",
+      "name": "glyph/c",
+      "generator_version": 1
+    },
+    "93d412fae8f6f3300525ba8abdcef5f1.png": {
+      "kind": "lowercase",
+      "name": "glyph/d",
+      "generator_version": 1
+    },
+    "a6726390e42af0223227d9e662087938.png": {
+      "kind": "lowercase",
+      "name": "glyph/e",
+      "generator_version": 1
+    },
+    "6e2a4b978a82c964b55155664d512f29.png": {
+      "kind": "lowercase",
+      "name": "glyph/f",
+      "generator_version": 1
+    },
+    "93cb01e16422daf84e3b7327304ce13d.png": {
+      "kind": "lowercase",
+      "name": "glyph/g",
+      "generator_version": 1
+    },
+    "1e1e9e5c7b4fe39bfcb431509cbc189a.png": {
+      "kind": "lowercase",
+      "name": "glyph/h",
+      "generator_version": 1
+    },
+    "de6ef5677373f11b48487ac4167ee727.png": {
+      "kind": "lowercase",
+      "name": "glyph/i",
+      "generator_version": 1
+    },
+    "0ced0e5bb8a71ae2b2fe7083aadc4313.png": {
+      "kind": "lowercase",
+      "name": "glyph/j",
+      "generator_version": 1
+    },
+    "9628f2c5e718ec393f3a19bcb4c76084.png": {
+      "kind": "lowercase",
+      "name": "glyph/k",
+      "generator_version": 1
+    },
+    "f41f7c3af1b085a9e3046f06f0731dcc.png": {
+      "kind": "lowercase",
+      "name": "glyph/l",
+      "generator_version": 1
+    },
+    "69c5adfc36f26a76dd9047cf470828e3.png": {
+      "kind": "lowercase",
+      "name": "glyph/m",
+      "generator_version": 1
+    },
+    "cd2bf4630f98b6ab1309895cc7b3298c.png": {
+      "kind": "lowercase",
+      "name": "glyph/n",
+      "generator_version": 1
+    },
+    "116e6b90533624305369770c45f91194.png": {
+      "kind": "lowercase",
+      "name": "glyph/o",
+      "generator_version": 1
+    },
+    "74de5e4ea35f492d20ee11abed539302.png": {
+      "kind": "lowercase",
+      "name": "glyph/p",
+      "generator_version": 1
+    },
+    "99e95a9048693151d59f76bccb2089f7.png": {
+      "kind": "lowercase",
+      "name": "glyph/q",
+      "generator_version": 1
+    },
+    "eeddcb26f2418b685b75506e6a075a17.png": {
+      "kind": "lowercase",
+      "name": "glyph/r",
+      "generator_version": 1
+    },
+    "20437ef6f3e16929aaa3113dcbd94401.png": {
+      "kind": "lowercase",
+      "name": "glyph/s",
+      "generator_version": 1
+    },
+    "ab5624cb1412a61c7344a7a456788125.png": {
+      "kind": "lowercase",
+      "name": "glyph/t",
+      "generator_version": 1
+    },
+    "794622384f4e023e17580e8e11213cfb.png": {
+      "kind": "lowercase",
+      "name": "glyph/u",
+      "generator_version": 1
+    },
+    "f49dd0d6280e1a77e9c77fba0db15823.png": {
+      "kind": "lowercase",
+      "name": "glyph/v",
+      "generator_version": 1
+    },
+    "1c3cb85fc99f9e303f304e71ba857808.png": {
+      "kind": "lowercase",
+      "name": "glyph/w",
+      "generator_version": 1
+    },
+    "5a9211550131f0dfd66b22d540fd69bc.png": {
+      "kind": "lowercase",
+      "name": "glyph/x",
+      "generator_version": 1
+    },
+    "9eee1dc32f90b8962cc71e625b69b3f5.png": {
+      "kind": "lowercase",
+      "name": "glyph/y",
+      "generator_version": 1
+    },
+    "929ed6a00789ed6936252c73b833f72d.png": {
+      "kind": "lowercase",
+      "name": "glyph/z",
+      "generator_version": 1
+    },
     "9836a3d3cefd9b8de6b5b333e48e7352.png": {
       "kind": "banner",
       "name": "banner-game-over",

@@ -81,6 +81,13 @@ eight table colours (its rows 11-14), and the yellow logo (its rows 10-15).
 The background's colour-0 pixels are its own black, kept opaque: the layer
 is opaque.
 
+The last row, 8x8 cells: the text layer's lowercase letters, which the
+initials entry draws while the bomb button is held. ``check_lowercase``
+(1784-1792) adds 0x2C to a letter's code (``A`` is 0x0A, the blank 0x24) when
+button 2 is down, for the cell it displays (1717) and the one it stores
+(1747), so ``a``-``z`` are text tiles 0x36-0x4F; the space becomes 0x50,
+which is blank. Each is ``fg_tile`` in the entry row's colour 0x1B (1690).
+
 A colour-table entry of 0x80 is beyond the 128-colour palette and draws nothing,
 so it is rendered as matte, like pixel value 0.
 
@@ -186,6 +193,10 @@ LOGO_YELLOW_STRINGS = [   # display_xevious_logo_yellow 1036-1086
 LOGO_YELLOW_COLOUR = 0x1B
 FG_BLANK_TILE = 0x24          # amiga.68k 1493-1496: cleared, never drawn
 LOGO_BG_ROW_SHIFT = 1         # the BG layer sits 12 px below the text grid at scroll 0; the title's scroll of 4 leaves one row
+# check_lowercase (1784-1792): button 2 held adds 0x2C to the letter code; A-Z are text tiles 0x0A-0x23.
+LOWERCASE_MODIFIER = 0x2C
+LOWERCASE_CODES = [code + LOWERCASE_MODIFIER for code in range(0x0A, 0x24)]
+ENTRY_TEXT_COLOUR = 0x1B   # the initials-entry row's colour byte, 1690
 LOGO_FIRST_COL, LOGO_FIRST_ROW = 8, 10
 LOGO_COLS, LOGO_ROWS = 20, 8
 CHAR = 8
@@ -207,7 +218,8 @@ LOGO_ROW_Y = TELEPORT_ROW_Y + TELEPORT_CELL
 # The ten logo cells, two a row: the background, the outline at the eight table colours, the yellow logo.
 LOGO_CELLS = 2 + len(LOGO_FLASH_COLOURS)
 LOGO_PER_ROW = 2
-SHEET_HEIGHT = LOGO_ROW_Y + LOGO_HEIGHT * (LOGO_CELLS // LOGO_PER_ROW)
+LOWERCASE_ROW_Y = LOGO_ROW_Y + LOGO_HEIGHT * (LOGO_CELLS // LOGO_PER_ROW)
+SHEET_HEIGHT = LOWERCASE_ROW_Y + CHAR
 
 
 def small_cell_origins(count: int, row_y: int, first: int = 0) -> list[tuple[int, int]]:
@@ -239,6 +251,7 @@ LOGO_ORIGINS = [
 LOGO_BG_ORIGIN = LOGO_ORIGINS[0]
 LOGO_OUTLINE_ORIGINS = LOGO_ORIGINS[1:1 + len(LOGO_FLASH_COLOURS)]
 LOGO_YELLOW_ORIGIN = LOGO_ORIGINS[-1]
+LOWERCASE_ORIGINS = [(CHAR * index, LOWERCASE_ROW_Y) for index in range(len(LOWERCASE_CODES))]
 
 
 def label_bytes(main: str, label: str) -> list[int]:
@@ -380,6 +393,16 @@ def render_sheet(checkout: Path) -> Image:
         for y in range(LOGO_HEIGHT):
             pixels[(oy + y) * SHEET_WIDTH + ox:(oy + y) * SHEET_WIDTH + ox + LOGO_WIDTH] = \
                 logo[y * LOGO_WIDTH:(y + 1) * LOGO_WIDTH]
+
+    fg_tile = _extract_c_array(_read_reference(checkout, GFX_C), "fg_tile", 512, 64)
+    ink = fg_colour(parse_gfx(_read_reference(checkout, GFX_C)).palette, ENTRY_TEXT_COLOUR)
+    for code, (ox, oy) in zip(LOWERCASE_CODES, LOWERCASE_ORIGINS):
+        if not any(fg_tile[code]):
+            raise SpriteExtractionError(f"text tile {code:#x} is blank")
+        for ty in range(CHAR):
+            for tx in range(CHAR):
+                if fg_tile[code][ty * CHAR + tx]:
+                    pixels[(oy + ty) * SHEET_WIDTH + ox + tx] = ink
 
     return Image(SHEET_WIDTH, SHEET_HEIGHT, tuple(pixels))
 

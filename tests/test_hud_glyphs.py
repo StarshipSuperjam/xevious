@@ -37,7 +37,9 @@ class HudGlyphsTests(unittest.TestCase):
         # + the slice-21 "START SPACE KEY" title hint, re-rendered through the same pipeline. 87 + 1 = 88.
         # + slice 21 (#31): the banner is two rows, so its 2 "GAME OVER PLAYER n" costumes become 3 (GAME OVER,
         # PLAYER 1, PLAYER 2). 88 + 1 = 89.
-        self.assertEqual(89, count)
+        # + slice 21 audit (CAB-04): the 26 lowercase initials letters glyph/a-z the bomb button selects,
+        # from the arcade's own text tiles (the CC-BY font has no lowercase). 89 + 26 = 115.
+        self.assertEqual(115, count)
 
     def test_rendering_is_byte_deterministic(self) -> None:
         first_glyphs = hg.render_glyphs(self.manifest)
@@ -180,6 +182,10 @@ class HudGlyphsTests(unittest.TestCase):
         } | {output.filename for output in game_sounds} | attract_filenames | banner_filenames
         self.assertEqual(expected_filenames, set(provenance["outputs"]))
         sheet_license = self.manifest["font_sheet"]["license"]
+        lowercase_filenames = {output.filename for output in hg.render_lowercase_costumes()}
+        self.assertEqual(len(hg.LOWERCASE_GLYPHS), len(lowercase_filenames))
+        self.assertLessEqual(lowercase_filenames, attract_filenames)
+        reference_license = hg._reference_art_sheet()[1]["license"]
         for filename in expected_filenames:
             self.assertIn(filename, overlay)
             record = overlay[filename]
@@ -202,6 +208,14 @@ class HudGlyphsTests(unittest.TestCase):
                 self.assertEqual(sheet_license, record["license"])
                 self.assertIn("did not create the font", record["notes"])
                 self.assertIn("not transcribed ROM text", record["notes"])
+            elif filename in lowercase_filenames:
+                # CAB-04 (slice 21 audit): the lowercase initials letters are NOT from the CC-BY font
+                # (it has none) — they come from the arcade's own text tiles via the reference_art
+                # sheet, so they carry that sheet's no-reusable-license rights and name the pin.
+                self.assertEqual(reference_license, record["license"])
+                self.assertIn("did not create", record["notes"])
+                self.assertIn("71473685a8c7856c8401c8519276cd97a38d4183", record["origin"])
+                self.assertIn("check_lowercase", record["notes"])
             elif filename in attract_filenames:
                 # CAB-01 (slice 17): the attract overlays render from the SAME credited CC-BY sheet,
                 # so they carry the font attribution; their CONTENT (prompts, placeholder initials)

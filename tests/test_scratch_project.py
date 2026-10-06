@@ -201,7 +201,7 @@ SPRITE_SHEET_HASHES = {
     # the pulsing Zakato bodies, the self-destruct and teleport frames, the Brag Spario, the shot and its
     # rebound, the title sparkle and the title logo's tile layers — decoded from the pin by tools/reference_art_render.py.
     "Reference Art": (
-        "434cd63483f066aa40361791dbafe4327749931ef172b6ab80f314b6c6a2d6f2"
+        "2c07f8f34a7ab131a331e35e9afaf755e3252eaadcd2db1f64be4ad06d1c82ae"
     ),
 }
 
@@ -432,7 +432,9 @@ class ScratchProjectTests(unittest.TestCase):
         # library sheet, re-rendered taller) + the START SPACE KEY hint re-rendered as attract text. 446 + 11 = 457.
         # - slice 21 (#31): the two-row banner replaces the two "GAME OVER PLAYER n" PNGs with GAME OVER (new) and
         # PLAYER 1 / PLAYER 2, which are byte-identical to the initials-entry tags and dedup. 457 - 2 + 1 = 456.
-        self.assertEqual(456, len(assets))
+        # + slice 21 audit (CAB-04): the 26 lowercase initials letters glyph/a-z on start_screen (the reference-art
+        # sheet grows a row in place, so it stays one asset). 456 + 26 = 482.
+        self.assertEqual(482, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -20200,6 +20202,66 @@ class ScratchProjectTests(unittest.TestCase):
         if not state_gate():
             failures.add("entry-state-gate")
 
+        # CAB-04 (slice 21 audit): holding the bomb button picks the lowercase letter — at the Space commit (the
+        # stored letter, `append_char` xevious_main.68k 1747) and on the active cell (the drawn letter, 1717), via
+        # `check_lowercase` (1784-1792). Each is an if/else on `key b pressed` whose then-branch sets the variable
+        # from the lowercase ring and whose else-branch from ENTRY_RING. The lowercase ring is read nowhere else:
+        # a timed-out entry keeps the base letter inc/dec stored, so the in-flight finish stays uppercase.
+        def rings_under(blocks: dict, top: str) -> list:
+            rings, stack = [], [top]
+            while stack:
+                b = blocks.get(stack.pop())
+                if b is None:
+                    continue
+                if b["opcode"] == "operator_letter_of":
+                    st = b["inputs"].get("STRING")
+                    if isinstance(st, list) and isinstance(st[1], list):
+                        rings.append(st[1][1])
+                for value in b["inputs"].values():
+                    if isinstance(value, list) and len(value) >= 2 and isinstance(value[1], str):
+                        stack.append(value[1])
+            return rings
+
+        def sets_from(blocks: dict, top: Any, var_id: str, ring: str) -> bool:
+            b = blocks.get(top) if isinstance(top, str) else None
+            return (
+                b is not None
+                and b["opcode"] == "data_setvariableto"
+                and b.get("fields", {}).get("VARIABLE", [None, None])[1] == var_id
+                and rings_under(blocks, top) == [ring]
+            )
+
+        def lowercase_branch(blocks: dict, var_id: str) -> bool:
+            for b in blocks.values():
+                if b["opcode"] != "control_if_else":
+                    continue
+                cond = blocks.get((b["inputs"].get("CONDITION") or [None, None])[1])
+                if cond is None or cond["opcode"] != "sensing_keypressed":
+                    continue
+                menu = blocks.get((cond["inputs"].get("KEY_OPTION") or [None, None])[1])
+                if menu is None or menu.get("fields", {}).get("KEY_OPTION", [None])[0] != "b":
+                    continue
+                then = (b["inputs"].get("SUBSTACK") or [None, None])[1]
+                otherwise = (b["inputs"].get("SUBSTACK2") or [None, None])[1]
+                if sets_from(blocks, then, var_id, director.ENTRY_RING_LOWER) and sets_from(
+                    blocks, otherwise, var_id, director.ENTRY_RING
+                ):
+                    return True
+            return False
+
+        if not lowercase_branch(sb, director.ENTRY_NAME_BUFFER_ID):
+            failures.add("entry-lowercase-commit")
+        if not lowercase_branch(ss_blocks, director.ATTRACT_DISPLAY_CHAR_ID):
+            failures.add("entry-lowercase-active")
+        lower_reads = sum(
+            rings_under(blocks, block_id).count(director.ENTRY_RING_LOWER)
+            for blocks in (sb, ss_blocks)
+            for block_id, b in blocks.items()
+            if b["opcode"] == "operator_letter_of"
+        )
+        if lower_reads != 2:
+            failures.add("entry-lowercase-only-held")
+
         return failures
 
     def test_high_score_entry_present(self) -> None:
@@ -20306,6 +20368,49 @@ class ScratchProjectTests(unittest.TestCase):
                         except (TypeError, ValueError):
                             pass
 
+        def lowercase_key(p: dict) -> dict:
+            # The `b` key menu feeding the commit's if/else on the stage (the stage reads `b` elsewhere too).
+            sb = stage_of(p)["blocks"]
+            for b in sb.values():
+                if b["opcode"] != "control_if_else":
+                    continue
+                cond = sb.get(b["inputs"].get("CONDITION", [None, None])[1])
+                if cond is not None and cond["opcode"] == "sensing_keypressed":
+                    menu = sb[cond["inputs"]["KEY_OPTION"][1]]
+                    if menu["fields"]["KEY_OPTION"][0] == "b":
+                        return menu
+            raise AssertionError("no key-b if/else on the stage")
+
+        def break_lowercase_key(p: dict) -> None:
+            # Held fire (space) instead of the bomb button: the commit branch no longer reads the bomb key.
+            lowercase_key(p)["fields"]["KEY_OPTION"][0] = "space"
+
+        def swap_active_branches(p: dict) -> None:
+            # The active cell shows lowercase when the bomb button is NOT held.
+            for b in ss_of(p)["blocks"].values():
+                if b["opcode"] == "control_if_else" and "SUBSTACK2" in b["inputs"]:
+                    cond = ss_of(p)["blocks"].get(b["inputs"]["CONDITION"][1])
+                    if cond is not None and cond["opcode"] == "sensing_keypressed":
+                        b["inputs"]["SUBSTACK"], b["inputs"]["SUBSTACK2"] = (
+                            b["inputs"]["SUBSTACK2"],
+                            b["inputs"]["SUBSTACK"],
+                        )
+
+        def lowercase_on_timeout(p: dict) -> None:
+            # The timed-out finish appends a lowercase letter (the arcade keeps the stored base letter).
+            sb = stage_of(p)["blocks"]
+            for b in sb.values():
+                if b["opcode"] != "operator_letter_of":
+                    continue
+                st = b["inputs"].get("STRING")
+                if isinstance(st, list) and isinstance(st[1], list) and st[1][1] == director.ENTRY_RING:
+                    parent = sb.get(b.get("parent"))
+                    grand = sb.get(parent.get("parent")) if parent else None
+                    top = sb.get(grand.get("parent")) if grand else None
+                    # the commit's else-branch set sits directly under its if/else; the in-flight one does not
+                    if top is not None and top["opcode"] != "control_if_else":
+                        st[1][1] = director.ENTRY_RING_LOWER
+
         for label, mutate_fn in (
             (f"costume-missing:{director.ATTRACT_COSTUME_ENTRY_HEADER}", drop_header_costume),
             ("entry-name-role-dispatch", break_name_role_dispatch),
@@ -20313,6 +20418,9 @@ class ScratchProjectTests(unittest.TestCase):
             ("entry-commit-ring", break_commit_ring),
             ("entry-finish-names-write", break_finish_write),
             ("entry-timer-countdown", break_timer_countdown),
+            ("entry-lowercase-commit", break_lowercase_key),
+            ("entry-lowercase-active", swap_active_branches),
+            ("entry-lowercase-only-held", lowercase_on_timeout),
         ):
             project = load_source(scratch.SOURCE_DIR)
             mutate_fn(project)
@@ -22803,6 +22911,7 @@ class ScratchProjectTests(unittest.TestCase):
         attract = (
             [(f"digit/{d}", (str(d),)) for d in range(10)]
             + [(f"glyph/{c}", (c,)) for c in hud_glyphs.ATTRACT_NAME_GLYPHS]
+            + [(f"glyph/{c}", (c,)) for c in hud_glyphs.LOWERCASE_GLYPHS]
             + [
                 (name, (text,))
                 for name, text in hud_glyphs.ATTRACT_LABELS
@@ -23604,7 +23713,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "e17cb90a496c19f1186c61b4a16faae4e290a1345954e77e55943e6db4b6e3fa",
+            "79ffccdd6f262b234f54470ca0d98657600c891cf5aa6018d2884849bb4319bb",
             build_hash,
         )
 
