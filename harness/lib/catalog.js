@@ -9038,6 +9038,66 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.removeClearGraphicEffects(p, 'ground'),
   },
   {
+    // BOSS-01 (andor.lifecycle #94; slice 21 release review): Andor Genesis is armed by its schedule record, not by
+    // a key. With the playtest keys gone (#119), this is the one scenario that arms the boss the way play does:
+    // area 4's `andor_genesis_start` record (op 76, `sub_2_fn_20__andor_genesis_start`) consumed by the real
+    // `advance area`, which bulk-arms the 15 parts into ground obj slots 1..15 in the source order
+    // (ANDOR_GENESIS_DATA), the master last, at the arcade start anchor, the ports taking the schedule-set fire mask.
+    // Driven like live-pressure-adaptive: the walk frozen, the cursor on the record and the clock one tick before
+    // its row, then `advance area` once.
+    key: 'andor-arms-from-the-schedule',
+    behavior:
+      "BOSS-01: area 4's Andor Genesis start record arms all 15 parts and the master in the source order, at the "
+      + 'arcade start anchor, with the ports on the schedule-set fire mask — no key involved',
+    playtestStep: 8,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'frozen');
+      step(vm, 1);
+      clearGroundBand(vm);
+      const handlers = readVar(vm, 'area-schedule-handler');
+      const triggers = readVar(vm, 'area-schedule-trigger-row');
+      const start = Number(readVar(vm, 'area-schedule-start')[3]); // area 4's first record, Scratch 1-based
+      const end = Number(readVar(vm, 'area-schedule-end')[3]);
+      let idx = start - 1;
+      while (idx < end - 1 && handlers[idx] !== 'andor_genesis_start') idx += 1;
+      assert.ok(idx < end - 1, "precondition: area 4's schedule has an andor_genesis_start record");
+      const row = Number(triggers[idx]);
+      // scroll row = floor(((0x0D00 - progress) mod 0x10000) / 256); land mid-row after the tick's +32.
+      const after = (((0x0d00 - row * 256 - 128) % 0x10000) + 0x10000) % 0x10000;
+      writeVar(vm, 'area-number', 4);
+      writeVar(vm, 'area-schedule-cursor', idx + 1);
+      writeVar(vm, 'area-progress', after - 32);
+      writeVar(vm, 'fire-mask-andor-genesis', 31); // the schedule-set mask the ports must take
+      writeVar(vm, 'andor-master-x', 12345); // a stale anchor the arm must overwrite
+      callProc(vm, 'Stage', 'advance area');
+      step(vm, 2);
+      const portSlots = [10, 11, 12, 13]; // obj 10..13 -> JS 10..13 (0x52, 0x51, 0x50, 0x4F)
+      return {
+        row,
+        scrollRow: Number(readVar(vm, 'area-scroll-row')),
+        cursorMoved: Number(readVar(vm, 'area-schedule-cursor')) > idx + 1,
+        types: readVar(vm, 'slot-type').slice(1, 16).map(Number),
+        flagSlot: Number(readVar(vm, 'slot-type')[0]),
+        masterX: Number(readVar(vm, 'andor-master-x')),
+        portMasks: portSlots.map((i) => Number(readVar(vm, 'slot-fire-mask')[i])),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.scrollRow, obs.row, "precondition: the tick lands on the start record's trigger row");
+      assert.ok(obs.cursorMoved, 'the schedule consumed the start record');
+      assert.deepEqual(obs.types, ANDOR_PART_TYPES_BY_OBJ, 'the 15 parts and the master arm in the source order');
+      assert.equal(obs.flagSlot, 0, 'obj slot 0 (the flag slot) is left alone');
+      assert.equal(obs.masterX, ANDOR.START_X, 'the master anchor starts at the arcade start, off the top');
+      assert.deepEqual(obs.portMasks, [31, 31, 31, 31], 'every gun port takes the schedule-set fire mask');
+    },
+    // Sever the start dispatch (its handler == comparison never matches): the record is still consumed, but
+    // nothing arms, so the ground band stays empty and the type assertion fails.
+    // roadmap-evidence: BOSS-01 failure  (without the start dispatch the schedule never arms the boss)
+    negativeMutation: (p) => mutate.changeEqualsOperand(p, 'Stage', 'andor_genesis_start', '__never__'),
+  },
+  {
     // BOSS-02 / andor.defenses (#95): the four gun ports fire on the SHARED periodic gate under the boss fire
     // mask captured at arm (update andor part -> fire permission gate, gated on SLOT_ACTIVE, xevious_main.68k
     // 5533/5584/5635/5686 -> chk_timer_fire_bullet_reinit_timer 4999-5010), and the NON-contiguous mask 47
