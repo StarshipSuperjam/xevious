@@ -1142,6 +1142,11 @@
       "name": "attract row",
       "scope": "start_screen"
     },
+    "attract-display-tick": {
+      "kind": "variable",
+      "name": "attract tick",
+      "scope": "start_screen"
+    },
     "audio-andor-drone-timer": {
       "kind": "variable",
       "name": "andor drone timer",
@@ -1345,6 +1350,11 @@
     "cabinet-swap-tmp": {
       "kind": "variable",
       "name": "swap tmp",
+      "scope": "Stage"
+    },
+    "cabinet-title-tick": {
+      "kind": "variable",
+      "name": "title tick",
       "scope": "Stage"
     },
     "cabinet-two-player": {

@@ -44,8 +44,9 @@ class SpriteExtractorTests(unittest.TestCase):
         # 6 colours (the five pulsing ones and the teleport's 0x24), the Brag Spario x4 flips, the shot's 2
         # codes x 2 colours unflipped and its 4 rebound codes mirrored — the only flips the build's two-frame
         # tick draws — 16 title-sparkle codes, and 5 teleport frames x2 flips — none and x, the only ones the
-        # build's even slot timer draws).
-        self.assertEqual(292, count)
+        # build's even slot timer draws), plus the 10 slice-21 title-logo layers (the background, the eight
+        # outline flash colours, the yellow demo logo), rendered from the main CPU's tile strings.
+        self.assertEqual(302, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -290,7 +291,12 @@ class SpriteExtractorTests(unittest.TestCase):
                 for index in range(1, 6)
                 for token in ("none", "x")
             ]
-            + [f"zakato-self-destruct/burst/{code:02d}/c24" for code in range(1, 6)],
+            + [f"zakato-self-destruct/burst/{code:02d}/c24" for code in range(1, 6)]
+            # Slice 21: the title logo's tile layers (display_xevious_logo 891-1019, the yellow demo logo
+            # 1036-1086): the background, the outline at each of the eight flash colours, and the yellow logo.
+            + ["title-logo/background/01"]
+            + [f"title-logo/outline/{index:02d}" for index in range(1, 9)]
+            + ["title-logo/yellow/01"],
             [costume["name"] for costume in toroid["costumes"]],
         )
         self.assertFalse(toroid["visible"])
@@ -315,6 +321,9 @@ class SpriteExtractorTests(unittest.TestCase):
                 expected_center = (16, 16)
             elif costume["name"].startswith("bacura/"):
                 expected_center = (16, 8)
+            elif costume["name"].startswith("title-logo/"):
+                # Slice 21: the 160x64 title-logo layers, centred so every layer registers at one point.
+                expected_center = (80, 32)
             else:
                 expected_center = (8, 8)
             self.assertEqual(

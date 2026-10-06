@@ -25,7 +25,7 @@ demonstration play → title …. On boot, when no credit is waiting, the main t
 title stage (`main_thread_main_loop` 348–357), and each frame dispatches on the current stage — index
 stage − 1 — through the jump table (`attract_mode_main_loop` 359–370, `attract_mode_jump_tbl` 1211); the
 demonstration stage appears twice per cycle because two table slots share its handler. The title stage runs
-~744 frames (~12.4 s: an initial hold, a sparkle appear/move/disappear sequence, then a flashing-logo phase
+~740 frames (~12.3 s: an initial hold, a sparkle appear/move/disappear sequence, then a flashing-logo phase
 — derived by tracing the stage's frame gating, recorded medium-confidence). The demonstration stage has no
 timer: the attract pilot (a random walk drawing from the shared stream, with a 1-in-16 chance of a
 simulated fire press per frame — `gen_rnd_dir` 2156–2165, `gen_rnd_shot` 2351–2354) plays until the

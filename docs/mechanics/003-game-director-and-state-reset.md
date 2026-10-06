@@ -42,7 +42,9 @@ The regression-recovery build discharges audit items B1-B10 and A1-A2, re-expres
 - **B3 terrain** — counted-cycle wrap (690 steps per strip), preserved-baseline; the position-threshold
   wrap is recorded as unreachable under Scratch sprite fencing.
 - **B4 title glide** — preserved-baseline (1 s glide from the top; no locked arcade value exists —
-  [cabinet flow](../spec/cabinet-flow.md) owns the title stage and is draft).
+  [cabinet flow](../spec/cabinet-flow.md) owns the title stage and is draft). *Superseded in slice 21
+  ([record 056](056-release-fidelity.md) item 10): the arcade draws its logo in place on the title's first
+  frame, so the glide is retired and B4 now pins the title clock that paces the logo's sparkle and flash.*
 - **B5 death cue / B10 post-death pause** — the explosion and pause cite
   [player craft and weapons](../spec/player-craft-and-weapons.md) (PLY-02). The pause lets the measured
   1.361 s death cue finish before the transition stops sounds (a ~0.1 s margin; confirmed at playtest).

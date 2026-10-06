@@ -177,9 +177,9 @@ SPRITE_SHEET_HASHES = {
     ),
     # Slice 21 (presentation.reference-art): the remaining enemy, shot and sparkle sprites — Giddo Spario,
     # the pulsing Zakato bodies, the self-destruct and teleport frames, the Brag Spario, the shot and its
-    # rebound, the title sparkle — decoded from the pin by tools/reference_art_render.py.
+    # rebound, the title sparkle and the title logo's tile layers — decoded from the pin by tools/reference_art_render.py.
     "Reference Art": (
-        "77baf0699dc8bfbbded68b6fef7fe797c9414b752a38f5db31d247977ccdcca2"
+        "434cd63483f066aa40361791dbafe4327749931ef172b6ab80f314b6c6a2d6f2"
     ),
 }
 
@@ -406,7 +406,9 @@ class ScratchProjectTests(unittest.TestCase):
         # = 454.
         # - the shot's mirrored flight frames and unmirrored rebound frames (8), which a tick's even countup never
         # draws. 454 - 8 = 446.
-        self.assertEqual(446, len(assets))
+        # + the slice-21 title logo's 10 tile layers on the proof pen (the sheet itself is the same reference-art
+        # library sheet, re-rendered taller) + the START SPACE KEY hint re-rendered as attract text. 446 + 11 = 457.
+        self.assertEqual(457, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -1343,6 +1345,9 @@ class ScratchProjectTests(unittest.TestCase):
             "attract",
             "attract epoch",
             "attract stage",
+            # Slice 21 (presentation.reference-art): `title tick`, the title hold's frame count that the logo
+            # outline's flash and the sparkle read. Zeroed on every title entry; transient machinery.
+            "title tick",
             # CAB-05 (slice 20): audio machinery. `coin sound` is the poll-to-loop coin-sound latch, `audio muted`
             # the last volume the attract mute applied (-1 unknown), `keep sounds` the death-complete handler's
             # one-transition stop-all skip, `death cue playing` the death cue's own stop-all skip while it sounds,
@@ -20596,9 +20601,27 @@ class ScratchProjectTests(unittest.TestCase):
             ):
                 fails.add(f"B3-wall-clock-{strip}")
 
-        # B4 — the title glides in.
-        if not has("start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy"):
-            fails.add("B4-glide")
+        # B4 — the title keeps the arcade's clock. Slice 21: the logo no longer glides in (the arcade draws it in
+        # place, display_xevious_logo_flashing xevious_main.68k 891-1019); the Stage's title hold counts its ticks
+        # into `title tick`, one a frame, and the outline's flash and the sparkle read that count (1217-1290).
+        # roadmap-evidence: CAB-01 success  (CAB-01.title-sparkle: the B4 title clock — a 370-tick title hold counting `title tick` one a frame, no glide — and PRES01-attract-grid placing the in-place logo, the sparkle's start and end and the START SPACE KEY hint; harness title-logo-sparkle-and-flash follows the sparkle and the outline flash on the arcade schedule, title-logo-holds-red-with-credit clears the sparkle and holds the red on a coin)
+        # roadmap-evidence: CAB-01 failure  (CAB-01.title-sparkle: reglide_title / double_title_clock / lengthen_title and logo_at_old_rest / hint_off_row / sparkle_moves_low / logo_at_text_size negatives bite; the harness negatives shift the flash colour and lift the coined-up exit)
+        def counts_title(b):
+            if b["opcode"] != "control_repeat" or num(b["inputs"].get("TIMES")) != director.ATTRACT_TITLE_HOLD_TICKS:
+                return False
+            body, link = [], (b["inputs"].get("SUBSTACK") or [None, None])[1]
+            while link:
+                body.append(blocks["Stage"][link])
+                link = blocks["Stage"][link]["next"]
+            return (
+                [step["opcode"] for step in body] == ["control_wait", "data_changevariableby"]
+                and num(body[0]["inputs"].get("DURATION")) == 0
+                and body[1]["fields"]["VARIABLE"][1] == director.TITLE_TICK_ID
+                and num(body[1]["inputs"].get("VALUE")) == 1
+            )
+
+        if has("start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy") or not has("Stage", counts_title):
+            fails.add("B4-title-clock")
 
         # B5/B10 — the tick-counted explosion then the post-death pause; no waits. #158 (slice 21): the walk owns
         # the 44-tick window, so the explosion keeps no clock of its own. Each tick the walk sends `death draw`;
@@ -20915,11 +20938,25 @@ class ScratchProjectTests(unittest.TestCase):
             b["opcode"] = "motion_changeyby"
             b["inputs"] = {"DY": [1, [4, -1.25]]}
 
-        def break_title_glide(p):  # B4: snap the title into place
+        def reglide_title(p):  # B4: glide the logo in again instead of drawing it in place
+            b = first(p, "start_screen", lambda b: b["opcode"] == "motion_gotoxy")
+            b["opcode"] = "motion_glidesecstoxy"
+
+        def double_title_clock(p):  # B4: the title hold counts two a frame, so the flash comes early
             b = first(
-                p, "start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy"
+                p, "Stage",
+                lambda b: b["opcode"] == "data_changevariableby"
+                and b["fields"]["VARIABLE"][1] == director.TITLE_TICK_ID,
             )
-            b["opcode"] = "motion_gotoxy"
+            b["inputs"]["VALUE"] = [1, [4, "2"]]
+
+        def lengthen_title(p):  # B4: the old 372-tick title hold
+            b = first(
+                p, "Stage",
+                lambda b: b["opcode"] == "control_repeat"
+                and (b["inputs"].get("TIMES") or [None, [None, None]])[1][1:2] == [director.ATTRACT_TITLE_HOLD_TICKS],
+            )
+            b["inputs"]["TIMES"] = [1, [6, "372"]]
 
         def break_death_pause(p):  # B10: end the walk's window straight after the explosion (no pause)
             b = first(
@@ -21006,7 +21043,9 @@ class ScratchProjectTests(unittest.TestCase):
             ("B2-arm", break_bomb_arm),
             ("B2-no-sprite-sound", break_drop_receive),
             ("B3-wall-clock-area_01a", free_running_terrain),
-            ("B4-glide", break_title_glide),
+            ("B4-title-clock", reglide_title),
+            ("B4-title-clock", double_title_clock),
+            ("B4-title-clock", lengthen_title),
             ("B5B10-explosion", break_explosion_holds),
             ("CAB05-death-hidden-pause", show_through_pause),
             ("B5B10-pause", break_death_pause),
@@ -21852,6 +21891,11 @@ class ScratchProjectTests(unittest.TestCase):
         # arcade's 1P line, so the pair centres under the prompt); the best-five header centred where the arcade's
         # 18-letter run 0x1615 centres; the table's rank/score/name columns two columns right of the arcade's (the
         # 3-letter ordinal at 0x17xx, the score from 0x12xx, the name from 0x09xx); the logo resting above it.
+        # Slice 21: the logo is the arcade's own tile layers (display_xevious_logo_flashing 891-1019), drawn in
+        # place over columns 8..27 and rows 10..17 (its background scrolled one row low, 896), so centred at
+        # (0, 40); the port's START SPACE KEY hint is a 15-letter run on row 20 from column 11; the sparkle starts
+        # at _X 0xD60 / _Y 0x1660 (1223-1226) on the sprite map and ends where it stops moving, 135 frames on at
+        # 1.25 units a frame (1237-1258). Its moving goto reads the title clock, so it has no literal X.
         def run_centre(offset, chars):
             col, row = 31 - (offset >> 8), offset & 0xFF
             return (10 * (col + (chars - 1) / 2) - 175, 175 - 10 * row)
@@ -21859,37 +21903,44 @@ class ScratchProjectTests(unittest.TestCase):
         def cells(offset, n):
             return {run_centre(offset - 0x100 * k, 1) for k in range(n)}
 
-        logo_size = round(100 * 200 / 304, 2)  # the logo body (304 units at 100%) on its 20 arcade columns
-        logo_rest = (0, round(50 - 51.5 * logo_size / 100))
+        logo_rest = (10 * (8 + 19 / 2) - 175, 175 - 10 * (10 + 7 / 2))
+        sparkle_start = (1.25 * (128 - (0x1660 // 32 + 8)), 210 - 1.25 * 0xD60 / 32)
+        sparkle_end = (sparkle_start[0] + 1.25 * 135, sparkle_start[1])
         expected_attract = (
-            {(0, 250), logo_rest, run_centre(0x0923, 6), run_centre(0x0223, 1), run_centre(0x0123, 1)}
+            {logo_rest, run_centre(0x0923, 6), run_centre(0x0223, 1), run_centre(0x0123, 1)}
             | {run_centre(0x1517, 17), run_centre(0x121C, 11), run_centre(0x1119, 8), run_centre(0x111A, 9)}
             | {run_centre(0x1509, 15), run_centre(0x160C, 19), run_centre(0x1112, 8)}
-            | {run_centre(0x1615, 18)}
+            | {run_centre(0x1615, 18), run_centre(0x1414, 15), sparkle_start, sparkle_end}
             | cells(0x1218, 10)
         )
         for row in range(0x18, 0x22, 2):
             expected_attract |= {run_centre(0x1700 | row, 3)} | cells(0x1200 | row, 7) | cells(0x0900 | row, 10)
         start = targets["start_screen"]["blocks"]
-        attract_gotos, glides = set(), set()
+        attract_gotos, moving_gotos, glides = set(), set(), 0
         for b in start.values():
             if isinstance(b, dict) and b["opcode"] in ("motion_gotoxy", "motion_glidesecstoxy"):
                 spot = (as_num(num(b["inputs"].get("X"))), as_num(num(b["inputs"].get("Y"))))
-                (glides if b["opcode"] == "motion_glidesecstoxy" else attract_gotos).add(spot)
-        # The logo body (bitmap rows 154-359, centred 51.5 units above the costume centre at 100%) glides to the
-        # centre of its arcade rows 9..16 (display_xevious_logo_flashing 891-1019): y 50.
-        if attract_gotos != {(float(x), float(y)) for x, y in expected_attract} or glides != {
-            (0.0, float(round(50 - 51.5 * logo_size / 100)))
-        }:
+                glides += b["opcode"] == "motion_glidesecstoxy"
+                (moving_gotos if spot[0] is None else attract_gotos).add(spot)
+        if (
+            attract_gotos != {(float(x), float(y)) for x, y in expected_attract}
+            or moving_gotos != {(None, sparkle_start[1])}
+            or glides
+        ):
             fails.add("PRES01-attract-grid")
         # The text costumes draw at the 10-unit pitch (a 20-px resolution-2 advance at 100%, CAB-05) and the logo
-        # at its arcade width; the text size is set on the clone's own script, so every text clone draws on the grid.
+        # and sparkle at the sprite scale (an 8-px cell = 10 units, SPRITE_RENDER_SIZE): the logo original on the
+        # green flag, the sparkle and outline clones on their own scripts. The text size is set on the clone's own
+        # script, so every text clone draws on the grid.
         text_size = 100.0
-        start_sizes = {
-            as_num(num(b["inputs"].get("SIZE"))): top_of(start, bid)
-            for bid, b in start.items() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
-        }
-        if start_sizes != {logo_size: "event_whenflagclicked", text_size: "control_start_as_clone"}:
+        start_sizes: dict = {}
+        for bid, b in start.items():
+            if isinstance(b, dict) and b["opcode"] == "looks_setsizeto":
+                start_sizes.setdefault(as_num(num(b["inputs"].get("SIZE"))), set()).add(top_of(start, bid))
+        if start_sizes != {
+            float(director.SPRITE_RENDER_SIZE): {"event_whenflagclicked", "control_start_as_clone"},
+            text_size: {"control_start_as_clone"},
+        } or director.SPRITE_RENDER_SIZE != 125:
             fails.add("PRES01-attract-grid")
         # The hidden credit on the arcade's credit rows 33-34 (display_easter_egg 6018-6048: 0x1921 / 0x1722), its
         # 20-character line centred on columns 8..27, its 20-px resolution-2 advance drawn at 100% on the 10-unit pitch.
@@ -22339,6 +22390,33 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (100, "100"):
                     b["inputs"]["SIZE"] = [4, [4, 58.82]]
 
+        def logo_at_old_rest(p):  # slice 21: the logo back at the old glide's resting y (16) off its rows
+            for b in target(p, "start_screen")["blocks"].values():
+                if b["opcode"] == "motion_gotoxy" and self._numeric(b["inputs"]["Y"]) in (40, "40"):
+                    b["inputs"]["Y"] = [4, [4, 16]]
+
+        def hint_off_row(p):  # slice 21: the START SPACE KEY hint half a row off its text row
+            for b in target(p, "start_screen")["blocks"].values():
+                if b["opcode"] == "motion_gotoxy" and self._numeric(b["inputs"]["Y"]) in (-25, "-25"):
+                    b["inputs"]["Y"] = [4, [4, -30]]
+
+        def sparkle_moves_low(p):  # slice 21: the moving sparkle a row below the letters' top edge
+            for b in target(p, "start_screen")["blocks"].values():
+                if (
+                    b["opcode"] == "motion_gotoxy"
+                    and self._numeric(b["inputs"]["X"]) is None
+                    and self._numeric(b["inputs"]["Y"]) in (76.25, "76.25")
+                ):
+                    b["inputs"]["Y"] = [4, [4, 66.25]]
+
+        def logo_at_text_size(p):  # slice 21: the logo original drawn at the text size, not the sprite scale
+            for b in target(p, "start_screen")["blocks"].values():
+                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (
+                    director.SPRITE_RENDER_SIZE, str(director.SPRITE_RENDER_SIZE)
+                ):
+                    b["inputs"]["SIZE"] = [4, [4, 100]]
+                    return
+
         def unscale_credit(p):  # the hidden credit back at the old 45.45% run-time downscale
             for b in target(p, director.EASTER_EGG_TARGET)["blocks"].values():
                 if b["opcode"] == "looks_setsizeto":
@@ -22380,6 +22458,10 @@ class ScratchProjectTests(unittest.TestCase):
             ("PRES01-attract-grid", drift_push_start),
             ("PRES01-attract-grid", unscale_attract_text),
             ("PRES01-attract-grid", unscale_credit),
+            ("PRES01-attract-grid", logo_at_old_rest),
+            ("PRES01-attract-grid", hint_off_row),
+            ("PRES01-attract-grid", sparkle_moves_low),
+            ("PRES01-attract-grid", logo_at_text_size),
             ("PRES01-attract-grid", credit_off_grid),
             ("PRES01-attract-grid", unshift_table),
             ("PRES01-attract-grid", selector_from_col_10),
@@ -22800,7 +22882,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "abce8e8bc109e1e0dd9a43c074509a8c92126f9633055776c5e9349d3e00071b",
+            "ca618342fd9a73e196e4cc450d6f87ba9390c3822a50093a267fbcaaf17d86d6",
             build_hash,
         )
 

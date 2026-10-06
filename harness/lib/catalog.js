@@ -135,9 +135,25 @@ function trapStageVar(vm, id, onSet) {
 }
 
 // CAB-01 (slice 17): green-flag and step past the title hold to the first attract demo (playing with the
-// attract flag still raised). The arcade title stage runs 744 frames before it auto-advances to the demo;
-// at FRAMES_PER_TICK=2 that is 372 ticks, so a 500-tick budget clears it. The title ticks are cheap (the
+// attract flag still raised). The arcade title stage runs 740 frames before it auto-advances to the demo
+// (attract_mode_title_screen main 1217-1290, slice 21); at FRAMES_PER_TICK=2 that is 370 ticks, so a 600-pump
+// budget clears it. The title ticks are cheap (the
 // walk only runs while playing). Returns true once the cabinet is demonstrating a game to an empty arcade.
+// Slice 21: the title's logo-outline (attract role 15) and sparkle (role 16) clones, as the costume each shows
+// ('hidden' / 'gone' for a sparkle not drawn / deleted; the sparkle carries its x).
+const pad2 = (k) => String(k).padStart(2, '0');
+function titleClones(vm) {
+  const clones = vm.runtime.targets.filter((t) => !t.isOriginal && t.sprite && t.sprite.name === 'start_screen');
+  const role = (c) => Object.values(c.variables).find((v) => v.name === 'attract role').value;
+  const name = (c) => c.sprite.costumes[c.currentCostume].name;
+  const sp = clones.find((c) => role(c) === 16);
+  const ol = clones.find((c) => role(c) === 15);
+  return {
+    sparkle: !sp ? 'gone' : sp.visible ? `${name(sp)} ${sp.x}` : 'hidden',
+    outline: ol ? name(ol) : 'none',
+  };
+}
+
 function reachDemo(vm) {
   vm.greenFlag();
   step(vm, 1);
@@ -794,14 +810,14 @@ export const SCENARIOS = [
   },
   {
     // CAB-01 (cabinet.attract-credits, slice 17): an idle cabinet auto-launches its demo. The title stage
-    // holds 744 frames (~372 ticks) then advances to `playing` with the attract flag still raised — a game
+    // holds 740 frames (370 ticks) then advances to `playing` with the attract flag still raised — a game
     // demonstrated to an empty arcade, not a real game. (arcade `attract_mode_main_loop` main 359-370; the
     // title stage is main 1217-1296.)
     key: 'attract-title-launches-demo',
     behavior: 'An idle title auto-launches the attract demo (playing, with the attract flag still raised)',
     playtestStep: 1,
     async drive(vm) {
-      const launched = reachDemo(vm); // steps past the ~372-tick title hold
+      const launched = reachDemo(vm); // steps past the 370-tick title hold
       return { launched, st: state(vm), attract: readVar(vm, 'cabinet-attract') };
     },
     assert(obs) {
@@ -811,6 +827,111 @@ export const SCENARIOS = [
     },
     // Remove the title -> playing edge so the auto-launch is a silent no-op → the demo never starts.
     negativeMutation: (p) => mutate.removeAllowedTransition(p, 'title -> playing'),
+  },
+  {
+    // Slice 21 (presentation.reference-art): the title runs the arcade's own logo sequence on the title clock
+    // (`title tick`, counted by the Stage's title hold, one a frame). attract_mode_title_screen (main 1217-1274)
+    // holds 64 frames, then the sparkle (codes 0x130-0x13F) appears in place for 15 frames, moves right along
+    // the top of the letters for 135, and disappears for 15; then animate_flashing_logo (1276-1290) steps the
+    // outline's colour down the table from index 7 every other frame — on the odd frames 229..737 in the port's
+    // 740-frame title. At two frames a tick: hidden before tick 32; twinkle/(n-30) at x -73.75 to tick 38;
+    // twinkle/(9+((2n+43)&7)) at x 2.5n-170 to tick 106; twinkle/(115-n) at x 95 to tick 113; then gone, and the
+    // outline red (outline/01) through tick 114 and then on colour (114-n) mod 8. Every sample is checked against the schedule at the clock's count, or the count
+    // before it: a harness pump can end part-way through a frame, after the Stage counts but before the clones
+    // redraw.
+    // roadmap-evidence: CAB-01 success  (the title's sparkle and outline flash follow the arcade schedule on the title clock)
+    key: 'title-logo-sparkle-and-flash',
+    behavior:
+      'The title logo sparkle appears, sweeps right along the letters and fades, then the outline flashes through its colours',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 1);
+      const samples = [];
+      let t = 0;
+      while (state(vm) === 'title' && t < 400) {
+        const n = Number(readVar(vm, 'cabinet-title-tick'));
+        if (n > 150) break;
+        const clones = titleClones(vm);
+        samples.push({ n, sparkle: clones.sparkle, outline: clones.outline });
+        step(vm, 1);
+        t += 1;
+      }
+      return { samples };
+    },
+    assert(obs) {
+      const sparkleAt = (n) => {
+        if (n < 32) return 'hidden';
+        if (n <= 38) return `title-sparkle/twinkle/${pad2(n - 30)} -73.75`;
+        if (n <= 106) return `title-sparkle/twinkle/${pad2(9 + ((2 * n + 43) & 7))} ${2.5 * n - 170}`;
+        if (n <= 113) return `title-sparkle/twinkle/${pad2(115 - n)} 95`;
+        return 'gone';
+      };
+      const outlineAt = (n) => `title-logo/outline/${pad2(n < 115 ? 1 : 1 + ((((114 - n) % 8) + 8) % 8))}`;
+      const phases = new Set();
+      const colours = new Set();
+      for (const s of obs.samples) {
+        const accepted = [s.n, Math.max(0, s.n - 1)];
+        assert.ok(
+          accepted.some((k) => sparkleAt(k) === s.sparkle),
+          `tick ${s.n}: the sparkle shows ${s.sparkle}, the schedule ${sparkleAt(s.n)}`,
+        );
+        assert.ok(
+          accepted.some((k) => outlineAt(k) === s.outline),
+          `tick ${s.n}: the outline shows ${s.outline}, the schedule ${outlineAt(s.n)}`,
+        );
+        if (s.sparkle.startsWith('title-sparkle/')) phases.add(s.n <= 38 ? 'appear' : s.n <= 106 ? 'move' : 'fade');
+        if (s.n >= 115) colours.add(s.outline);
+      }
+      assert.deepEqual([...phases].sort(), ['appear', 'fade', 'move'], 'the sparkle was seen appearing, moving and fading');
+      assert.equal(colours.size, 8, 'the outline was seen in all eight flash colours');
+    },
+    // Shift the outline's flash costume one colour on (`3 + ((114 - n) mod 8)` → `4 + ...`): every flash
+    // sample is then a step off the arcade's colour order, so the outline assertion fails.
+    // roadmap-evidence: CAB-01 failure  (an outline flash off the arcade's colour order is caught)
+    negativeMutation: (p) => mutate.changeAddLiteral(p, 'start_screen', 3, 4),
+  },
+  {
+    // Slice 21: a banked credit stops the title's logo sequence. coined_up (main 377-388) clears every object
+    // (zero_obj_state_tbl), so the sparkle goes, and redraws the logo static in its red; the flash never runs.
+    // Here a coin lands mid-sweep (tick 60) and the title is watched past tick 140, where the flash would be
+    // under way.
+    key: 'title-logo-holds-red-with-credit',
+    behavior: 'Inserting a coin on the title removes the sparkle and holds the logo outline static red',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 1);
+      let t = 0;
+      while (Number(readVar(vm, 'cabinet-title-tick')) < 60 && t < 200) {
+        step(vm, 1);
+        t += 1;
+      }
+      const before = titleClones(vm).sparkle;
+      insertCoin(vm, 1);
+      const after = [];
+      t = 0;
+      while (Number(readVar(vm, 'cabinet-title-tick')) < 140 && t < 300) {
+        step(vm, 1);
+        t += 1;
+        after.push(titleClones(vm));
+      }
+      return { before, after, st: state(vm), credits: readVar(vm, 'cabinet-credits'), n: readVar(vm, 'cabinet-title-tick') };
+    },
+    assert(obs) {
+      assert.ok(obs.before.startsWith('title-sparkle/'), `precondition: the sparkle is sweeping before the coin (${obs.before})`);
+      assert.equal(obs.st, 'title', 'the credited cabinet stays on the title');
+      assert.equal(obs.credits, 1, 'the coin was banked');
+      assert.ok(Number(obs.n) >= 140, 'the title clock ran past the flash start');
+      assert.ok(obs.after.length > 0, 'the title was sampled after the coin');
+      for (const s of obs.after) {
+        assert.equal(s.sparkle, 'gone', 'the sparkle is cleared once a credit is banked');
+        assert.equal(s.outline, 'title-logo/outline/01', 'the outline holds its red while a credit is banked');
+      }
+    },
+    // Lift the start_screen's `> 0` credit gates (`credits > 0` → `credits > 99`), among them the sparkle's
+    // coined-up exit: the sparkle keeps sweeping after the coin, so the cleared-sparkle assertion fails.
+    negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'start_screen', 0, 99),
   },
   {
     // CAB-01: the demo ends the way the arcade demo does — the craft dies (no timer). A demo death routes to
@@ -912,7 +1033,7 @@ export const SCENARIOS = [
     // CAB-05 (slice 20): no demo runs while a credit is banked. The arcade runs the attract cycle only with no
     // credits (main_thread_main_loop xevious_main.68k 348-357); with one it goes to coined_up (377-380), which
     // waits for START and never runs a demo — so every demo is a silent one. Here a coin at the title, then far
-    // past the 372-tick title hold: the title stays up and no demo starts.
+    // past the 370-tick title hold: the title stays up and no demo starts.
     key: 'attract-no-demo-with-a-credit',
     behavior: 'With a credit banked the title stays up and waits for START; the attract demo never starts',
     playtestStep: 1,
@@ -1404,8 +1525,9 @@ export const SCENARIOS = [
   },
   {
     // CAB-04 (cabinet.high-scores, slice 19): the LIVE table cells do not leak. Entering attract-scores stamps
-    // exactly 91 clones — 90 cells (5 rows × (1 rank + 10 name + 7 score), all role 7/8/9) plus the PRES-01
-    // header (role 14); they must ALL retire on
+    // exactly 92 clones — 90 cells (5 rows × (1 rank + 10 name + 7 score), all role 7/8/9) plus the PRES-01
+    // header (role 14) and, since slice 21, the logo's red outline (role 15, the arcade's text-layer half of the
+    // logo, flash_logo_and_high_score_table main 1465-1468); they must ALL retire on
     // the transition out — each cell self-deletes when its loop exits (`repeat until not attract-scores` → hide
     // → delete this clone) AND common_stop(clones=True) is the backstop. Without retirement every best-five
     // visit would stack a fresh 90-cell table on the previous one, climbing toward the scratch-vm 300-clone
@@ -1423,7 +1545,7 @@ export const SCENARIOS = [
       // Count the WHOLE start_screen clone pool, not role-filtered: a leak build blows past the 300-clone
       // ceiling and overwrites the leaked clones' `attract role` var, so a role filter reads 0 and misses
       // them. The total census is immune to both — the field is torn down in attract-scores, so the only
-      // start_screen clones alive are this screen's 90 table cells and its header.
+      // start_screen clones alive are this screen's 90 table cells, its header and the logo outline.
       const present = cloneCount(vm, 'start_screen');
       // The best-five hold auto-advances to demo 2 (~256 ticks); step until the screen leaves attract-scores.
       let t = 0;
@@ -1436,7 +1558,11 @@ export const SCENARIOS = [
       return { present, stateAfter: state(vm), afterExit: cloneCount(vm, 'start_screen') };
     },
     assert(obs) {
-      assert.equal(obs.present, 91, 'the best-five screen stamps exactly 90 table cells (5 × (1 + 10 + 7)) and the header');
+      assert.equal(
+        obs.present,
+        92,
+        'the best-five screen stamps exactly 90 table cells (5 × (1 + 10 + 7)), the header and the logo outline',
+      );
       // Demo 2 keeps only the handful of ordinary attract clones (≈6); the table cells are all gone. A
       // leak build carries all 90 cells (capped at the 300 ceiling) past the transition → far above this.
       assert.ok(obs.afterExit < 30, `the table cells are retired on leaving attract-scores (saw ${obs.afterExit})`);

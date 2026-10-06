@@ -51,10 +51,12 @@ rule is now built in the area clock — a death in the final fifth of an area ad
 instead of restarting. Since the visual-terrain slice the terrain is drawn from the area clock, so the
 area and its restart show on screen as well as in the `area progress`/`area number` watchers.)
 
-1. **Cold start.** Green flag: one title presentation (the logo entering as the spec's presentation
-   document records), music once, no stray sprites. The small "START SPACE KEY" hint baked into the logo
-   art is now too small to read; say whether to redraw it as a readable text line under the logo (that
-   would be new project text). Press Space: one READY presentation, then play.
+1. **Cold start.** Green flag: one title presentation, music once, no stray sprites. The logo is
+   the arcade's own art and is already in place — it no longer slides in. After about a second a small
+   sparkle twinkles at the left of the letters, slides right along their top and fades; then the logo's
+   outline flashes through its colours until the demo starts. "START SPACE KEY" now reads as its own text
+   line under the logo. Insert a coin during the sparkle: the sparkle vanishes and the outline stays red.
+   Press Space: one READY presentation, then play.
 2. **Held fire while moving.** Hold Space for five seconds while flying circles: the cadence stays
    steady the whole time — no stutter, no silencing when an arrow key joins, and never more than 3
    shots on screen. Shots vanish at the top edge, never parking there.

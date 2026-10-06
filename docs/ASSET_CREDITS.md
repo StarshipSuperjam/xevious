@@ -201,19 +201,23 @@ The same rights caveat as the terrain and the Andor parts applies.
 The Giddo Spario's flight and hit frames at its four colours, the Zakato, Brag
 Zakato and Garu Zakato bodies at the pulsing colour, the Zakato self-destruct and
 teleport frames, the Brag Spario, the player's shot and its rebound off a Bacura,
-and the title-screen sparkle (slice 21, `presentation.reference-art`) are decoded
-from the same pinned reference graphics (`assets/amiga/xevious_gfx.c`: the bank-1
-sprite codes, their colour tables and the palette) by
-`tools/reference_art_render.py` into one 400×128 sheet,
-`src/xevious/assets/4ad2478f0f60294ee6686cb817ba1fa4.png`, on the hidden
+the title-screen sparkle, and the title logo (slice 21, `presentation.reference-art`)
+are decoded from the same pinned reference graphics (`assets/amiga/xevious_gfx.c`:
+the bank-1 sprite codes, the tile bank, their colour tables and the palette) by
+`tools/reference_art_render.py` into one 400×448 sheet,
+`src/xevious/assets/c8028a15c77fd2068aa107476ead3bcc.png`, on the hidden
 `sprite_sheets` target; `--verify` re-derives it byte-for-byte at the pin. The
 `reference_art` entries in `assets/sprite-extraction/manifest.json` crop the
 frames from it, flip-expanding the Brag Spario, the shot, its rebound and the
-teleport sparkle.
+teleport sparkle. The logo is drawn from the two tile layers the arcade's
+`display_xevious_logo_flashing` and `display_xevious_logo_yellow` write: one
+background cell, the outline at the eight flash colours, and the demo's yellow
+logo. The fan-rip logo from asset 168901 stays only as the `start_screen`
+target's preserved baseline costume; the build no longer shows it.
 
 | Output | Description | Credit | Source | License |
 | --- | --- | --- | --- | --- |
-| Reference-art sheet and its Giddo Spario, Zakato body, self-destruct, teleport, Brag Spario, shot, rebound and title-sparkle costumes | Arcade enemy, shot and sparkle sprites at their colour steps and flips | Namco (Xevious, 1983); decoded from the arcade sprite ROM in the pinned reference by jotd666 | [jotd666/xevious](https://github.com/jotd666/xevious) at the pin | No reusable license specified by source; third-party copyrighted material |
+| Reference-art sheet and its Giddo Spario, Zakato body, self-destruct, teleport, Brag Spario, shot, rebound, title-sparkle and title-logo costumes | Arcade enemy, shot and sparkle sprites at their colour steps and flips, and the title logo's tile art | Namco (Xevious, 1983); decoded from the arcade sprite ROM in the pinned reference by jotd666 | [jotd666/xevious](https://github.com/jotd666/xevious) at the pin | No reusable license specified by source; third-party copyrighted material |
 
 The same rights caveat as the terrain and the Andor parts applies.
 

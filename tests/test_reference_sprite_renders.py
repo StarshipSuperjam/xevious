@@ -195,8 +195,9 @@ class ReferenceArtRenderTests(unittest.TestCase):
     def test_layout(self) -> None:
         # Seven rows: Giddo flight, Giddo hit, bodies, self-destruct (the widest, 25 cells), Brag Spario + shot +
         # rebound, sparkle, then the 32x32 teleport cells with every frame centred, followed on that row by the
-        # self-destruct at the teleport colour in 16x16 cells.
-        self.assertEqual((art.SHEET_WIDTH, art.SHEET_HEIGHT), (16 * 25, 16 * 6 + 32))
+        # self-destruct at the teleport colour in 16x16 cells; then the title logo's ten 160x64 layers, two a row
+        # (the background, the eight outline flash colours, the yellow demo logo).
+        self.assertEqual((art.SHEET_WIDTH, art.SHEET_HEIGHT), (16 * 25, 16 * 6 + 32 + 64 * 5))
         self.assertEqual(art.GIDDO_FLY_ORIGINS, [(16 * i, 0) for i in range(16)])
         self.assertEqual(art.GIDDO_HIT_ORIGINS, [(16 * i, 16) for i in range(16)])
         bodies = [art.ZAKATO_BODY_ORIGIN] + art.BRAG_ZAKATO_BODY_ORIGINS + art.GARU_ZAKATO_BODY_ORIGINS
@@ -208,6 +209,11 @@ class ReferenceArtRenderTests(unittest.TestCase):
         self.assertEqual(art.TELEPORT_ORIGINS, [(32 * i, 96) for i in range(5)])
         self.assertEqual(art.SELF_DESTRUCT_TELEPORT_ORIGINS, [(160 + 16 * i, 96) for i in range(5)])
         self.assertEqual(art.SELF_DESTRUCT_TELEPORT_CLUT, art.TELEPORT_CLUT)
+        self.assertEqual((art.LOGO_WIDTH, art.LOGO_HEIGHT), (160, 64))
+        self.assertEqual(art.LOGO_ORIGINS, [(160 * (i % 2), 128 + 64 * (i // 2)) for i in range(10)])
+        self.assertEqual(art.LOGO_BG_ORIGIN, (0, 128))
+        self.assertEqual(art.LOGO_OUTLINE_ORIGINS, art.LOGO_ORIGINS[1:9])
+        self.assertEqual(art.LOGO_YELLOW_ORIGIN, (160, 128 + 64 * 4))
         self.assertEqual(fx.ONE_BY_ONE_ORIGIN + asr.TILE // 2, art.TELEPORT_CELL // 2)
         self.assertEqual(fx.TWO_BY_TWO_ORIGIN + asr.TILE, art.TELEPORT_CELL // 2)
 

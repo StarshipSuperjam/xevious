@@ -142,6 +142,8 @@ CREDIT_TRANSPARENT = (0, 0, 0, 0)
 # default best-five table are the port's own strings, NOT the ROM's default name strings; only the
 # letterforms are the credited CC-BY font. See docs/mechanics 037 (CAB-01).
 ATTRACT_TARGET = "start_screen"
+# Slice 21: start_screen costumes game_director owns (the pinned title logo and sparkle), kept by the prune below.
+TITLE_ART_PREFIXES = ("title-logo/", "title-sparkle/")
 # CAB-04 (slice 19): the LIVE best-five table. It is no longer one pre-baked costume — an arbitrary live
 # table and typed names cannot be pre-rendered, so game_director draws it with per-cell clones that switch
 # to glyph/<c> (names) or digit/<d> (rank/score) at runtime. So the sheet font emits one costume per name
@@ -156,6 +158,10 @@ ATTRACT_LABELS = (
     # the arcade's does — generic cabinet control wording, the same class as INSERT COIN / CREDIT.
     ("push-start", "PUSH START BUTTON"),
     ("insert-coin", "INSERT COIN"),
+    # Slice 21 (CAB-01): the port's start-key hint, which the baseline baked into its logo costume. The logo
+    # is now the arcade's own tile art (game_director title-logo/), so the hint is set in the credited font
+    # like the prompts above — project-original control text, on its own row under the logo.
+    ("start-hint", "START SPACE KEY"),
 )
 # PRES-01 (slice 20 playtest): the best-five screen in the arcade's layout — a header above the table and
 # ordinal ranks. The ranks are plain English ordinals. The header is the PORT'S OWN wording: the arcade's
@@ -1003,7 +1009,9 @@ def expected_project(
     # slice-17 baked "best-five" costume, replaced by live per-glyph cells in CAB-04) is pruned
     # rather than lingering with a now-deleted asset — an idempotent filter keyed only on the NEW
     # output names would leave retired names behind.
-    # start_screen gets every overlay EXCEPT the CAB-03 banners routed to the HUD above.
+    # start_screen gets every overlay EXCEPT the CAB-03 banners routed to the HUD above. Slice 21: the title
+    # logo and sparkle art (TITLE_ART_PREFIXES) right after the base costume belongs to game_director, which
+    # mirrors it from the sprite proof; it is kept in place, so the two generators reach the same fixpoint.
     start_screen_outputs = [
         o for o in (attract_outputs or []) if o.name not in BANNER_COSTUME_NAMES
     ]
@@ -1019,6 +1027,7 @@ def expected_project(
             costume
             for costume in start_screen["costumes"]
             if costume.get("name") == ATTRACT_TARGET
+            or str(costume.get("name", "")).startswith(TITLE_ART_PREFIXES)
         ] + [_credit_costume(output) for output in start_screen_outputs]
     stage = next(target for target in result["targets"] if target.get("isStage"))
     # Rebuild the Stage's added sounds deterministically: keep the base music/start sounds, then

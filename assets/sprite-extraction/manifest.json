@@ -73,9 +73,9 @@
       "excluded_rects": []
     },
     "reference_art": {
-      "asset": "4ad2478f0f60294ee6686cb817ba1fa4.png",
-      "sha256": "77baf0699dc8bfbbded68b6fef7fe797c9414b752a38f5db31d247977ccdcca2",
-      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c, rendered by tools/reference_art_render.py; bank-1 tiles (amiga.68k 1883-1886). Row 1: the Giddo Spario flight, codes 0x100-0x103 at colours 0x26-0x29, code-major (handle_08_Giddo_Spario, xevious_main.68k 5219-5239). Row 2: its hit, codes 0x104-0x107 at the same four colours (giddo_spario_hit 5241-5252 keeps the colour). Row 3: the bodies at the pulsing colour (xevious_sub.68k 208-232: 0x10-0x14): the Zakato 0x111 once (it draws the same at every pulsing colour, 3749), the Brag Zakato 0x112 at 0x10-0x13 (3877, 3903; its 0x14 is the Zakato picture) and the Garu Zakato 0x113 at 0x10-0x14 (4014). Row 4: the Zakato self-destruct, codes 0x104-0x108 drawn 1x1 at the five pulsing colours, code-major (zakato_exploding_sprite_tbl 3953-3959; zakato_explode 3931-3950 never stores the size bits). Row 5: the Brag Spario 0x115 at colour 0x26 (handle_09_Brag_Spario 3080-3121), the player's shot 0x116/0x117 at colours 0x23/0x24 (2374-2388) and its Bacura rebound 0x118-0x11B at 0x23 (shot_destroyed 2400-2417). Row 6: the title sparkle 0x130-0x13F at colour 0x0F (attract_mode_title_screen 1217-1290: 0x130-0x137 a code every 2 frames as it appears and disappears, 0x138-0x13F a code every frame while it moves, 1255-1258). Row 7, 32x32 cells, every frame centred: the Zakato teleport sparkle at colour 0x24 (zakato_teleport_sprite_tbl 3986-3992: 0x10C and 0x108 at 2x2, then 0x107, 0x106, 0x105); flip-expanded as a whole, as the Neo Geo renderer flips a 2x2 (neogeo.68k 952-961) from the flip bits the game stores (3978-3981), which the Amiga renderer drops on a 2x2 (amiga.68k 2530). Cut unflipped and x-flipped only: the flip bits are TIMER & 3 (3978-3981) and the build's slot timer steps 2 frames a tick, so only the even values (none, x) are drawn. Then, in 16x16 cells after the sparkle, the self-destruct 0x104-0x108 at the teleport colour 0x24: a Zakato that fires on its first live frame never wrote the pulsing colour (the fire test precedes the colour write, 3755-3757) and keeps init_teleport's 0x24 (4002). A colour-table entry of 0x80 draws nothing.",
+      "asset": "c8028a15c77fd2068aa107476ead3bcc.png",
+      "sha256": "434cd63483f066aa40361791dbafe4327749931ef172b6ab80f314b6c6a2d6f2",
+      "source": "Pinned arcade reference jotd666/xevious @71473685a8c7856c8401c8519276cd97a38d4183, assets/amiga/xevious_gfx.c and src/xevious_main.68k, rendered by tools/reference_art_render.py; bank-1 tiles (amiga.68k 1883-1886). Row 1: the Giddo Spario flight, codes 0x100-0x103 at colours 0x26-0x29, code-major (handle_08_Giddo_Spario, xevious_main.68k 5219-5239). Row 2: its hit, codes 0x104-0x107 at the same four colours (giddo_spario_hit 5241-5252 keeps the colour). Row 3: the bodies at the pulsing colour (xevious_sub.68k 208-232: 0x10-0x14): the Zakato 0x111 once (it draws the same at every pulsing colour, 3749), the Brag Zakato 0x112 at 0x10-0x13 (3877, 3903; its 0x14 is the Zakato picture) and the Garu Zakato 0x113 at 0x10-0x14 (4014). Row 4: the Zakato self-destruct, codes 0x104-0x108 drawn 1x1 at the five pulsing colours, code-major (zakato_exploding_sprite_tbl 3953-3959; zakato_explode 3931-3950 never stores the size bits). Row 5: the Brag Spario 0x115 at colour 0x26 (handle_09_Brag_Spario 3080-3121), the player's shot 0x116/0x117 at colours 0x23/0x24 (2374-2388) and its Bacura rebound 0x118-0x11B at 0x23 (shot_destroyed 2400-2417). Row 6: the title sparkle 0x130-0x13F at colour 0x0F (attract_mode_title_screen 1217-1290: 0x130-0x137 a code every 2 frames as it appears and disappears, 0x138-0x13F a code every frame while it moves, 1255-1258). Row 7, 32x32 cells, every frame centred: the Zakato teleport sparkle at colour 0x24 (zakato_teleport_sprite_tbl 3986-3992: 0x10C and 0x108 at 2x2, then 0x107, 0x106, 0x105); flip-expanded as a whole, as the Neo Geo renderer flips a 2x2 (neogeo.68k 952-961) from the flip bits the game stores (3978-3981), which the Amiga renderer drops on a 2x2 (amiga.68k 2530). Cut unflipped and x-flipped only: the flip bits are TIMER & 3 (3978-3981) and the build's slot timer steps 2 frames a tick, so only the even values (none, x) are drawn. Then, in 16x16 cells after the sparkle, the self-destruct 0x104-0x108 at the teleport colour 0x24: a Zakato that fires on its first live frame never wrote the pulsing colour (the fire test precedes the colour write, 3755-3757) and keeps init_teleport's 0x24 (4002). A colour-table entry of 0x80 draws nothing. Rows 8-12, 160x64 cells, two a row: the title logo from the tile layers, not the sprite bank (display_xevious_logo_flashing 891-1019): the background strings xevious_logo_flashing_pt1-pt7 and tile 0xF9 with their colour runs, drawn one text row low (the title's background scroll of 4, 896, where the outline fills the letters exactly), decoded like the terrain; then the outline strings pt8-pt11 (text layer, fg_tile pen 1, palette entry ((attr & 0x3C) >> 2) | ((attr & 3) << 4), amiga.68k 1518-1526) at the eight xevious_flashing_logo_colour_tbl colours 0x1A, 0x17, 0x18, 0x07, 0x3A, 0x1B, 0x1F, 0x15 (1207-1208; 0x1A is the red the logo rests at, 1004); then the demo's yellow logo xevious_logo_yellow_pt1-pt6 at 0x1B (display_xevious_logo_yellow 1036-1086). Every logo cell spans text columns 8-27, rows 10-17. The background's colour-0 pixels are its own opaque black.",
       "credit": "Namco (arcade graphics); decoded from the arcade sprite ROM in the pinned reference by jotd666",
       "license": "No reusable license specified by source; third-party copyrighted material",
       "excluded_rects": []
@@ -2803,6 +2803,116 @@
       "family": "zakato-self-destruct",
       "animation": "burst",
       "duration_frames": 4
+    },
+    {
+      "name": "title-logo/background/01",
+      "sheet": "reference_art",
+      "rect": [0, 128, 160, 64],
+      "canvas": [160, 64],
+      "anchor": [80, 32],
+      "target": "toroid_sprite_proof",
+      "family": "title-logo",
+      "animation": "background",
+      "duration_frames": 2
+    },
+    {
+      "name": "title-logo/outline/01",
+      "sheet": "reference_art",
+      "rect": [160, 128, 160, 64],
+      "canvas": [160, 64],
+      "anchor": [80, 32],
+      "target": "toroid_sprite_proof",
+      "family": "title-logo",
+      "animation": "outline",
+      "duration_frames": 2
+    },
+    {
+      "name": "title-logo/outline/02",
+      "sheet": "reference_art",
+      "rect": [0, 192, 160, 64],
+      "canvas": [160, 64],
+      "anchor": [80, 32],
+      "target": "toroid_sprite_proof",
+      "family": "title-logo",
+      "animation": "outline",
+      "duration_frames": 2
+    },
+    {
+      "name": "title-logo/outline/03",
+      "sheet": "reference_art",
+      "rect": [160, 192, 160, 64],
+      "canvas": [160, 64],
+      "anchor": [80, 32],
+      "target": "toroid_sprite_proof",
+      "family": "title-logo",
+      "animation": "outline",
+      "duration_frames": 2
+    },
+    {
+      "name": "title-logo/outline/04",
+      "sheet": "reference_art",
+      "rect": [0, 256, 160, 64],
+      "canvas": [160, 64],
+      "anchor": [80, 32],
+      "target": "toroid_sprite_proof",
+      "family": "title-logo",
+      "animation": "outline",
+      "duration_frames": 2
+    },
+    {
+      "name": "title-logo/outline/05",
+      "sheet": "reference_art",
+      "rect": [160, 256, 160, 64],
+      "canvas": [160, 64],
+      "anchor": [80, 32],
+      "target": "toroid_sprite_proof",
+      "family": "title-logo",
+      "animation": "outline",
+      "duration_frames": 2
+    },
+    {
+      "name": "title-logo/outline/06",
+      "sheet": "reference_art",
+      "rect": [0, 320, 160, 64],
+      "canvas": [160, 64],
+      "anchor": [80, 32],
+      "target": "toroid_sprite_proof",
+      "family": "title-logo",
+      "animation": "outline",
+      "duration_frames": 2
+    },
+    {
+      "name": "title-logo/outline/07",
+      "sheet": "reference_art",
+      "rect": [160, 320, 160, 64],
+      "canvas": [160, 64],
+      "anchor": [80, 32],
+      "target": "toroid_sprite_proof",
+      "family": "title-logo",
+      "animation": "outline",
+      "duration_frames": 2
+    },
+    {
+      "name": "title-logo/outline/08",
+      "sheet": "reference_art",
+      "rect": [0, 384, 160, 64],
+      "canvas": [160, 64],
+      "anchor": [80, 32],
+      "target": "toroid_sprite_proof",
+      "family": "title-logo",
+      "animation": "outline",
+      "duration_frames": 2
+    },
+    {
+      "name": "title-logo/yellow/01",
+      "sheet": "reference_art",
+      "rect": [160, 384, 160, 64],
+      "canvas": [160, 64],
+      "anchor": [80, 32],
+      "target": "toroid_sprite_proof",
+      "family": "title-logo",
+      "animation": "yellow",
+      "duration_frames": 2
     }
   ]
 }

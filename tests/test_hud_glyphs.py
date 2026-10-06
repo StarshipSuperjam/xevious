@@ -32,7 +32,8 @@ class HudGlyphsTests(unittest.TestCase):
         # credited font at the SMALL_TEXT_GEOM cell (glyphs already in SHEET_TEXT_RECTS). 77 + 4 = 81.
         # + the 6 slice-20 PRES-01 best-five costumes on start_screen (the header and the ordinal ranks
         # 1ST..5TH, ATTRACT_TABLE_LABELS); PUSH START became PUSH START BUTTON in place. 81 + 6 = 87.
-        self.assertEqual(87, count)
+        # + the slice-21 "START SPACE KEY" title hint, re-rendered through the same pipeline. 87 + 1 = 88.
+        self.assertEqual(88, count)
 
     def test_rendering_is_byte_deterministic(self) -> None:
         first_glyphs = hg.render_glyphs(self.manifest)

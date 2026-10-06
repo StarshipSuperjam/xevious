@@ -533,6 +533,11 @@
       "name": "insert-coin",
       "generator_version": 1
     },
+    "4f50772ac29b90a7ceb253d544337787.png": {
+      "kind": "attract",
+      "name": "start-hint",
+      "generator_version": 1
+    },
     "d52065e8b2d4a14f993b9ff66aa95d02.png": {
       "kind": "attract",
       "name": "select-1p",

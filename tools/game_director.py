@@ -420,7 +420,7 @@ HUD_LIFE_MAX = 28
 # text costume — the HUD glyphs (manifest downscale 5), the two-player banner and the attract text
 # (SMALL_TEXT_GEOM), the hidden credit — at its drawn size, one 20-px column at bitmap resolution 2 =
 # TEXT_COSTUME_COLUMN_UNITS, so text draws at 100% and is resampled only once. The size is still set, as a
-# clone inherits its parent's (start_screen's parent draws the logo at ATTRACT_LOGO_SIZE). The 16-px
+# clone inherits its parent's (start_screen's parent draws the logo at SPRITE_RENDER_SIZE). The 16-px
 # resolution-1 life icon is art, not text, and keeps its run-time scale.
 TEXT_COSTUME_COLUMN_UNITS = 10
 HUD_GLYPH_SIZE = round(100 * HUD_TEXT_PITCH / TEXT_COSTUME_COLUMN_UNITS)
@@ -1281,12 +1281,51 @@ def text_run_x(first_col: int, chars: int) -> float:
     return text_cell_x(first_col + (chars - 1) / 2)
 
 
-# The title logo (the original start_screen costume, 304 x 103 units at 100% centred 51.5 units above its rotation
-# point) drawn at the arcade logo's width: cols 8..27 x rows 9..16 (display_xevious_logo_flashing xevious_main.68k
-# 891-1019) = 200 units, centred on (0, 50). It glides in from ATTRACT_LOGO_START_Y as before.
-ATTRACT_LOGO_SIZE = round(100 * 200 / 304, 2)
-ATTRACT_LOGO_Y = round(50 - 51.5 * ATTRACT_LOGO_SIZE / 100)
-ATTRACT_LOGO_START_Y = 250
+# Slice 21 (CAB-01/CAB-05): the title logo is the arcade's own tile art, rendered from the pin
+# (tools/reference_art_render.py title-logo/, 160 x 64 px cells spanning text columns 8..27 and rows 10..17 of
+# display_xevious_logo_flashing xevious_main.68k 891-1019), drawn at the sprite scale so one 8-px character is one
+# 10-unit text cell, and centred on that block: x = text_cell_x(17.5) = 0, y = text_cell_y(13.5) = 40. It is
+# drawn in place from the first frame, as the arcade draws it — the baseline's one-second glide is retired.
+#   * background (BG tile layer, opaque, drawn by the original): title, best five and coined-up;
+#   * outline (FG text layer, a clone above the sparkle): red 0x1A at rest (1004), and on the title the eight
+#     xevious_flashing_logo_colour_tbl colours (1207-1208) once the sparkle has gone (animate_flashing_logo
+#     1276-1290); static red with a credit banked (coined_up 377-388) and on the best five (1465-1468);
+#   * yellow (FG only, display_xevious_logo_yellow 1036-1086): over the demo (attract_mode_gameplay 1319).
+# The costumes sit on start_screen right after its preserved baseline logo (costume 1), at fixed ordinals.
+TITLE_LOGO_X = 0
+TITLE_LOGO_Y = 40
+TITLE_LOGO_BG_COSTUME = "title-logo/background/01"
+TITLE_LOGO_YELLOW_COSTUME = "title-logo/yellow/01"
+TITLE_LOGO_BG_ORDINAL = 2
+TITLE_LOGO_OUTLINE_BASE_ORDINAL = 3  # outline/01 (red, colour-table index 0) .. outline/08 (index 7)
+TITLE_LOGO_COLOURS = 8
+TITLE_LOGO_YELLOW_ORDINAL = TITLE_LOGO_OUTLINE_BASE_ORDINAL + TITLE_LOGO_COLOURS  # 11
+TITLE_SPARKLE_BASE_ORDINAL = TITLE_LOGO_YELLOW_ORDINAL + 1  # twinkle/01 (code 0x130) = 12 .. twinkle/16 = 27
+TITLE_ART_FAMILIES = ("title-logo/", "title-sparkle/")
+# The sparkle (attract_mode_title_screen 1217-1274), in port ticks n from the title's entry (tick n shows arcade
+# frame 2n). The 0x40 countdown runs out at frame 63; the sparkle appears for 15 frames (timer 1..15, code
+# 0x30 + ((timer >> 1) & 7)), moves for 135 (timer 0x79.., code 0x38 + (timer & 7), _Y - 0x20 a frame) and
+# disappears for 15 (timer 15..1); it is removed on frame 228, and the outline's first flash step falls on frame
+# 229. So: hidden below tick 32; appearing on ticks 32..38 (twinkle/(n - 30)); moving on ticks 39..106
+# (twinkle/(9 + ((2n + 43) & 7))); disappearing on ticks 107..113 (twinkle/(115 - n)); gone from tick 114, and
+# the outline flashing from tick 115.
+TITLE_SPARKLE_APPEAR_TICK = 32
+TITLE_SPARKLE_MOVE_TICK = 39
+TITLE_SPARKLE_DISAPPEAR_TICK = 107
+TITLE_FLASH_TICK = 114
+# Screen position (the render map, stage x = 1.25 * (128 - (_Y / 32 + 8)), y = 210 - 1.25 * _X / 32): it starts
+# at _X 0xD60 / _Y 0x1660, so (-73.75, 76.25); from frame 78 it moves 1.25 units a frame, so on frame f = 2n it
+# sits at 1.25 * (f - 136) = 2.5n - 170, ending at 95 on tick 106, where it disappears.
+TITLE_SPARKLE_START_X = -73.75
+TITLE_SPARKLE_Y = 76.25
+TITLE_SPARKLE_STEP_X = 2.5
+TITLE_SPARKLE_X_ORIGIN = -170
+TITLE_SPARKLE_END_X = TITLE_SPARKLE_STEP_X * (TITLE_SPARKLE_DISAPPEAR_TICK - 1) + TITLE_SPARKLE_X_ORIGIN  # 95
+# The port's start-key hint (tools/hud_glyphs.py "start-hint"), once baked into the baseline logo, on its own text
+# row under the logo, centred like the prompts (cols 11..25, centre 18).
+ATTRACT_COSTUME_START_HINT = "start-hint"
+ATTRACT_START_HINT_X = text_run_x(11, 15)
+ATTRACT_START_HINT_Y = text_cell_y(20)
 # "CREDIT" at (22,35) with its two digits at (29,35)/(30,35) (display_credits xevious_main.68k 774-787).
 ATTRACT_CREDIT_LABEL_X = text_run_x(22, 6)
 ATTRACT_CREDIT_LINE_Y = text_cell_y(35)
@@ -1320,6 +1359,10 @@ ATTRACT_TABLE_SCORE_COL0 = 11 + ATTRACT_TABLE_COL_SHIFT  # the most-significant 
 ATTRACT_TABLE_NAME_COL0 = 20 + ATTRACT_TABLE_COL_SHIFT
 ATTRACT_RANK_PREFIX = "rank/"  # ordinal rank costumes rank/1..rank/5 (tools/hud_glyphs.py ATTRACT_TABLE_LABELS)
 ATTRACT_ROLE_TABLE_HEADER = 14  # the best-five header (static)
+ATTRACT_ROLE_LOGO_OUTLINE = 15  # slice 21: the logo's outline (title and best five)
+ATTRACT_ROLE_SPARKLE = 16  # slice 21: the title sparkle
+ATTRACT_ROLE_START_HINT = 17  # slice 21: the START SPACE KEY hint (title)
+TITLE_TICK_ID = "cabinet-title-tick"  # slice 21: ticks since the title began, counted by the Stage title hold
 ATTRACT_COSTUME_TABLE_HEADER = "best-five-header"
 ATTRACT_TABLE_HEADER_CHARS = 16  # the port's "BEST FIVE PILOTS"
 ATTRACT_TABLE_HEADER_X = text_cell_x(17.5)  # centred on the screen like the arcade's (9,21) run
@@ -2366,11 +2409,12 @@ BOMB_ACCEL_PER_FRAME = 2  # the bomb's `_dX` gains -2 per arcade frame, then `_X
 # $30E8: +16 units/arcade-frame). Per tick that is AREA_PROGRESS_STEP (32); per frame, half of it.
 SCROLL_UNITS_PER_FRAME = AREA_PROGRESS_STEP // FRAMES_PER_TICK  # 16
 
-# CAB-01 attract hold lengths, in port ticks. The arcade title stage runs 744 frames exactly (main
-# 1217-1296: 64 hold + 16 + 136 + 16 sparkle + 512 flashing logo) before it auto-advances to the demo;
-# the best-five stage runs 512 frames (main 1336-1344). Each is divided by FRAMES_PER_TICK (2). The demo
-# itself has no timer — it exits when the auto-pilot craft dies (main 1298-1328).
-ATTRACT_TITLE_HOLD_TICKS = 744 // FRAMES_PER_TICK  # 372
+# CAB-01 attract hold lengths, in port ticks. The arcade title stage (main 1217-1296) holds 63 frames, shows the
+# sparkle for 15 + 135 + 15, starts the flash on frame 228 and steps the 256-count flash timer on every other frame,
+# so it leaves on frame 738 and the demo starts on frame 740 (slice 21: the earlier "64 + 16 + 136 + 16 + 512 = 744"
+# over-counted each phase by one frame); the best-five stage runs 512 frames (main 1336-1344). Each is divided by
+# FRAMES_PER_TICK (2). The demo itself has no timer — it exits when the auto-pilot craft dies (main 1298-1328).
+ATTRACT_TITLE_HOLD_TICKS = 740 // FRAMES_PER_TICK  # 370
 ATTRACT_SCORES_HOLD_TICKS = 512 // FRAMES_PER_TICK  # 256
 
 # AIR-06 Terrazi (handle_11_Terrazi 3667-3729): the first periodically-firing aerial family. Aimed
@@ -11731,10 +11775,22 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     attract_snapshot = blocks.set_var(
         "attract epoch", ATTRACT_EPOCH_ID, variable("state epoch", EPOCH_ID)
     )
+    # Slice 21: the title hold counts its own frames into `title tick`, which the logo-outline and sparkle clones
+    # read, so the sparkle and the flash stay locked to the hold that ends the title (main 1217-1290 run them off
+    # the same frame count) however often the clones' own loops get scheduled.
+    title_count = blocks.add("control_repeat", inputs={"TIMES": number(ATTRACT_TITLE_HOLD_TICKS)})
+    blocks.substack(
+        title_count,
+        [
+            blocks.add("control_wait", inputs={"DURATION": number(0)}),
+            blocks.change_var("title tick", TITLE_TICK_ID, 1),
+        ],
+    )
     title_hold = blocks.if_state(
         "title",
         [
-            blocks.hold_frames(ATTRACT_TITLE_HOLD_TICKS),
+            blocks.set_var("title tick", TITLE_TICK_ID, number(0)),
+            title_count,
             blocks.if_reporter(
                 _attract_demo_launch(blocks, "title"),
                 [
@@ -12581,23 +12637,20 @@ def title_blocks() -> dict[str, dict[str, Any]]:
     common_stop(blocks, hide=True, clones=True)
     reset = blocks.receive("director reset")
     blocks.chain(reset, [blocks.hide()])
-    # PRES-01 (docs/mechanics/054): the logo at the arcade logo's width. The committed target size is preserved, so
-    # it is set on the green flag; every text clone sets ATTRACT_TEXT_SIZE as it starts.
+    # Slice 21: the logo is the pinned tile art (TITLE_LOGO_*), 1 costume px per arcade px, so the original draws at
+    # the shared sprite scale. The committed target size is preserved, so it is set on the green flag; every text
+    # clone sets ATTRACT_TEXT_SIZE as it starts, and the logo and sparkle clones set the sprite scale back.
     blocks.chain(
         blocks.flag(),
-        [blocks.add("looks_setsizeto", inputs={"SIZE": number(ATTRACT_LOGO_SIZE)})],
+        [blocks.add("looks_setsizeto", inputs={"SIZE": number(SPRITE_RENDER_SIZE)})],
     )
     enter = blocks.receive("director enter")
-    # B4: the logo enters at the top and glides to center (baseline: 1 s from y=250). Preserved-baseline
-    # presentation; the glide is a WALL-CLOCK block (a presentation beat, not gameplay timing) — it does not
-    # advance under the headless harness's fixed-step pump. So the display clones are stamped FIRST, before
-    # the glide, so nothing that must run every attract entry sits behind the glide's wall-clock wait.
-    #
     # CAB-01 display spawn: each clone is positioned by the original just before create_clone (Python-constant
-    # coords, the HUD spawn idiom) and dresses itself in its start-as-clone body; the original NEVER switches
-    # its own costume, so the visible logo is never disturbed. The stamps run in one frame (no blocking block
-    # between the go/create_clone pairs), then the original returns to the glide start and glides in.
-    title_body: list[str] = [blocks.go(0, ATTRACT_LOGO_START_Y), blocks.show()]
+    # coords, the HUD spawn idiom) and dresses itself in its start-as-clone body. The stamps run in one frame (no
+    # blocking block between the go/create_clone pairs); then the original, wearing the logo's background layer,
+    # returns to the logo's place and shows. Slice 21: it is drawn there from the first frame, as the arcade
+    # draws it (display_xevious_logo_flashing) — the baseline's wall-clock glide in from the top is retired.
+    title_body: list[str] = [blocks.switch_costume(TITLE_LOGO_BG_COSTUME)]
     title_body += [
         blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_CREDIT_LABEL)),
         blocks.go(ATTRACT_CREDIT_LABEL_X, ATTRACT_CREDIT_LINE_Y),
@@ -12625,10 +12678,22 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         blocks.go(ATTRACT_SELECTOR_2P_X, ATTRACT_SELECTOR_2P_Y),
         blocks.create_clone(),
     ]
+    # Slice 21: the start-key hint, then the sparkle and the logo's outline, which place themselves. The sparkle is
+    # stamped before the outline, so the outline (fronted after it) draws over it: the arcade draws sprites
+    # between the background and text layers, so the sparkle passes behind the outline and over the background.
+    # `title tick` is zeroed first, so neither clone can read the previous title's count before the Stage's hold
+    # (which zeroes it too) runs in this frame.
     title_body += [
-        # back to the glide start; the logo glides in with the clones already stamped
-        blocks.go(0, ATTRACT_LOGO_START_Y),
-        blocks.glide(1, 0, ATTRACT_LOGO_Y),
+        blocks.set_var("title tick", TITLE_TICK_ID, number(0)),
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_START_HINT)),
+        blocks.go(ATTRACT_START_HINT_X, ATTRACT_START_HINT_Y),
+        blocks.create_clone(),
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_SPARKLE)),
+        blocks.create_clone(),
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_LOGO_OUTLINE)),
+        blocks.create_clone(),
+        blocks.go(TITLE_LOGO_X, TITLE_LOGO_Y),
+        blocks.show(),
     ]
     title = blocks.if_state("title", title_body)
     # CAB-04: the LIVE best-five table. Each cell is its own clone (the credit-digit idiom) — a rank digit,
@@ -12670,8 +12735,15 @@ def title_blocks() -> dict[str, dict[str, Any]]:
                 blocks.create_clone(),
             ]
     # PRES-01: the logo rests above the table, as the arcade draws it with the best five (flash_logo_and_high_
-    # score_table). Shown after the stamps, so the clones (which hide first) never flash the logo costume.
-    scores_body += [blocks.go(0, ATTRACT_LOGO_Y), blocks.show()]
+    # score_table 1465-1468: display_xevious_logo_flashing, so the background and the outline in its red). Shown
+    # after the stamps, so the clones (which hide first) never flash the logo costume.
+    scores_body += [
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_LOGO_OUTLINE)),
+        blocks.create_clone(),
+        blocks.switch_costume(TITLE_LOGO_BG_COSTUME),
+        blocks.go(TITLE_LOGO_X, TITLE_LOGO_Y),
+        blocks.show(),
+    ]
     scores = blocks.if_state(ATTRACT_SCORES_STATE, scores_body)
 
     # CAB-04 (slice 19): the initials-entry screen. On entering high-score-entry, stamp the two headers, the
@@ -12711,7 +12783,23 @@ def title_blocks() -> dict[str, dict[str, Any]]:
             blocks.create_clone(),
         ]
     entry = blocks.if_state(HIGH_SCORE_ENTRY_STATE, entry_body)
-    blocks.chain(enter, [title, scores, entry])
+    # Slice 21: the demo shows the yellow logo over the play field for its whole run (attract_mode_gameplay 1319:
+    # display_xevious_logo_yellow, on the text layer, so above the sprites). A real game (attract 0) shows none.
+    demo = blocks.if_state(
+        "playing",
+        [
+            blocks.if_reporter(
+                blocks.op_eq(variable("attract", ATTRACT_ID), number(1)),
+                [
+                    blocks.switch_costume(TITLE_LOGO_YELLOW_COSTUME),
+                    blocks.go(TITLE_LOGO_X, TITLE_LOGO_Y),
+                    blocks.to_front(),
+                    blocks.show(),
+                ],
+            )
+        ],
+    )
+    blocks.chain(enter, [title, scores, entry, demo])
 
     # start-as-clone: dispatch on the snapshotted role. The clone inherits the visible original, so it hides
     # first and each role shows itself only once it has switched to its own costume (no logo flash).
@@ -13116,6 +13204,137 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         ATTRACT_ROLE_SELECTOR_2P, ATTRACT_COSTUME_SELECTOR_2P, 2
     )
 
+    # Slice 21: the title's logo and sparkle clones read `title tick`, the frame count the Stage's title hold keeps
+    # (attract_enter), and pace their own loops with a wait-0 (safe: the walk is off outside `playing`).
+    def tick() -> str:
+        return variable("title tick", TITLE_TICK_ID)
+
+    def sprite_size() -> str:
+        return blocks.add("looks_setsizeto", inputs={"SIZE": number(SPRITE_RENDER_SIZE)})
+
+    # The logo's outline. It rests at red (outline/01); on the title, after TITLE_FLASH_TICK, it steps through the
+    # colour table once a tick from index 7 down (animate_flashing_logo 1276-1290: the timer drops from 0 on every
+    # other frame and indexes the table with its low three bits). The port's 740-frame title is the phase whose
+    # steps fall on the odd frames 229..737 (step 256, on frame 739, exits instead of recolouring), so on tick n
+    # (frame 2n) the index is (114 - n) mod 8: still red on tick 114, and the last tick, 369, on index 1.
+    # A banked credit holds it at red, as coined_up redraws the logo (377-388). On the best five the loop ends at
+    # once and the outline stays red; common_stop retires it on the next transition, like the static labels.
+    outline_loop = blocks.add("control_repeat_until")
+    blocks.blocks[outline_loop]["inputs"]["CONDITION"] = [2, blocks.not_state(outline_loop, "title")]
+    flashing = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(variable("credits", CREDITS_ID), number(0)),
+            blocks.op_gt(tick(), number(TITLE_FLASH_TICK - 1)),
+        ),
+        [
+            blocks.switch_costume_expr(
+                blocks.op_add(
+                    number(TITLE_LOGO_OUTLINE_BASE_ORDINAL),
+                    blocks.op_mod(blocks.op_sub(number(TITLE_FLASH_TICK), tick()), number(TITLE_LOGO_COLOURS)),
+                )
+            )
+        ],
+    )
+    coined_up = blocks.if_reporter(
+        blocks.op_gt(variable("credits", CREDITS_ID), number(0)),
+        [blocks.switch_costume("title-logo/outline/01")],
+    )
+    blocks.substack(
+        outline_loop,
+        [flashing, coined_up, blocks.hold_frames(1)],
+    )
+    logo_outline_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_LOGO_OUTLINE,
+        [
+            sprite_size(),
+            blocks.switch_costume("title-logo/outline/01"),
+            blocks.go(TITLE_LOGO_X, TITLE_LOGO_Y),
+            blocks.to_front(),
+            blocks.show(),
+            outline_loop,
+        ],
+    )
+
+    # The sparkle (TITLE_SPARKLE_*): hidden, then appearing in place, moving right along the top of the letters,
+    # and disappearing at the far end. It is removed when the flash starts, when the title ends, or when a credit is
+    # banked (coined_up clears every object, zero_obj_state_tbl).
+    def between(low: int, high: int) -> str:
+        return blocks.op_and(
+            blocks.op_gt(tick(), number(low - 1)), blocks.op_lt(tick(), number(high + 1))
+        )
+
+    sparkle_loop = blocks.add("control_repeat_until")
+    sparkle_done = blocks.op_or(
+        blocks.not_state(sparkle_loop, "title"),
+        blocks.op_or(
+            blocks.op_gt(variable("credits", CREDITS_ID), number(0)),
+            blocks.op_gt(tick(), number(TITLE_FLASH_TICK - 1)),
+        ),
+    )
+    blocks.blocks[sparkle_done]["parent"] = sparkle_loop
+    blocks.blocks[sparkle_loop]["inputs"]["CONDITION"] = [2, sparkle_done]
+    twinkle_base = TITLE_SPARKLE_BASE_ORDINAL - 1  # twinkle/k is ordinal twinkle_base + k
+    appearing = blocks.if_reporter(
+        between(TITLE_SPARKLE_APPEAR_TICK, TITLE_SPARKLE_MOVE_TICK - 1),
+        [
+            # twinkle/(n - 30)
+            blocks.switch_costume_expr(blocks.op_add(tick(), number(twinkle_base - 30))),
+            blocks.show(),
+        ],
+    )
+    moving = blocks.if_reporter(
+        between(TITLE_SPARKLE_MOVE_TICK, TITLE_SPARKLE_DISAPPEAR_TICK - 1),
+        [
+            # twinkle/(9 + ((2n + 43) & 7)), at x = 2.5n - 170
+            blocks.switch_costume_expr(
+                blocks.op_add(
+                    number(twinkle_base + 9),
+                    blocks.op_mod(blocks.op_add(blocks.op_mul(tick(), number(2)), number(43)), number(8)),
+                )
+            ),
+            blocks.go_expr(
+                blocks.op_add(blocks.op_mul(tick(), number(TITLE_SPARKLE_STEP_X)), number(TITLE_SPARKLE_X_ORIGIN)),
+                number(TITLE_SPARKLE_Y),
+            ),
+            blocks.show(),
+        ],
+    )
+    disappearing = blocks.if_reporter(
+        between(TITLE_SPARKLE_DISAPPEAR_TICK, TITLE_FLASH_TICK - 1),
+        [
+            # twinkle/(115 - n), at the far end
+            blocks.switch_costume_expr(blocks.op_sub(number(twinkle_base + 115), tick())),
+            blocks.go(TITLE_SPARKLE_END_X, TITLE_SPARKLE_Y),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(
+        sparkle_loop,
+        [
+            appearing,
+            moving,
+            disappearing,
+            blocks.hold_frames(1),
+        ],
+    )
+    sparkle_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_SPARKLE,
+        [
+            sprite_size(),
+            blocks.go(TITLE_SPARKLE_START_X, TITLE_SPARKLE_Y),
+            blocks.to_front(),
+            sparkle_loop,
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ],
+    )
+
+    # The START SPACE KEY hint (static, title only; common_stop retires it like the CREDIT label).
+    start_hint_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_START_HINT,
+        [blocks.switch_costume(ATTRACT_COSTUME_START_HINT), blocks.to_front(), blocks.show()],
+    )
+
     blocks.chain(
         clone,
         [
@@ -13134,6 +13353,9 @@ def title_blocks() -> dict[str, dict[str, Any]]:
             entry_subheader_role,
             entry_player_role,
             entry_name_role,
+            logo_outline_role,
+            sparkle_role,
+            start_hint_role,
         ],
     )
     return blocks.blocks
@@ -16744,6 +16966,26 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         names = [c.get("name") for c in marker["costumes"]]
         if base is not None and not str(names[base - 1]).startswith(family):
             raise AssertionError(f"{marker_name}: the pinned art must start at ordinal {base}")
+    # Slice 21 (CAB-01): the title logo and sparkle, rendered from the pin, go on start_screen right after its
+    # preserved baseline logo (costume 1, which no block selects any more), ahead of the text costumes
+    # tools/hud_glyphs.py appends — so they hold fixed ordinals (TITLE_LOGO_*_ORDINAL, TITLE_SPARKLE_BASE_ORDINAL).
+    # hud_glyphs keeps them in place, so the two generators reach the same fixpoint. Idempotent.
+    start_screen = next((t for t in result["targets"] if t.get("name") == "start_screen"), None)
+    if proof is not None and start_screen is not None:
+        kept = [c for c in start_screen["costumes"] if not str(c.get("name", "")).startswith(TITLE_ART_FAMILIES)]
+        title_art = [c for family in TITLE_ART_FAMILIES for c in proof_by_family(family)]
+        start_screen["costumes"] = kept[:1] + title_art + kept[1:]
+        start_screen["currentCostume"] = 0
+        names = [c.get("name") for c in start_screen["costumes"]]
+        expected = {
+            TITLE_LOGO_BG_ORDINAL: TITLE_LOGO_BG_COSTUME,
+            TITLE_LOGO_OUTLINE_BASE_ORDINAL: "title-logo/outline/01",
+            TITLE_LOGO_YELLOW_ORDINAL: TITLE_LOGO_YELLOW_COSTUME,
+            TITLE_SPARKLE_BASE_ORDINAL: "title-sparkle/twinkle/01",
+            TITLE_SPARKLE_BASE_ORDINAL + 15: "title-sparkle/twinkle/16",
+        }
+        if names[0] != "start_screen" or any(names[o - 1] != n for o, n in expected.items()):
+            raise AssertionError("start_screen: the title art must sit at its fixed ordinals")
     stage = next(target for target in result["targets"] if target["isStage"])
     owned_stage_variables = {
         STATE_ID,
@@ -16863,6 +17105,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         ATTRACT_ID,
         ATTRACT_EPOCH_ID,
         ATTRACT_STAGE_ID,
+        TITLE_TICK_ID,
         # CAB-05 (slice 20): the audio machinery (coin-sound latch, attract mute, death-cue keep and playing latch,
         # Andor drone).
         COIN_SOUND_ID,
@@ -17086,6 +17329,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         ATTRACT_ID: ["attract", 0],
         ATTRACT_EPOCH_ID: ["attract epoch", 0],
         ATTRACT_STAGE_ID: ["attract stage", 0],
+        TITLE_TICK_ID: ["title tick", 0],
         COIN_SOUND_ID: ["coin sound", 0],
         AUDIO_MUTED_ID: ["audio muted", -1],
         KEEP_SOUNDS_ID: ["keep sounds", 0],
@@ -17396,6 +17640,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 # and a name cell's per-tick cached letter (read once, then tested/rendered from the cache).
                 ATTRACT_DISPLAY_ROW_ID: ["attract row", 0],
                 ATTRACT_DISPLAY_CHAR_ID: ["attract char", ""],
+                # Slice 21: a title logo/sparkle clone's ticks since the title began.
             }
         elif target["name"] == "hud":
             # ECO-02: all HUD state is sprite-local (never a Stage variable) — the role
