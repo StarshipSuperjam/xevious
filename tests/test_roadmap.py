@@ -26,6 +26,20 @@ roadmap = load_module("roadmap", ROOT / "tools" / "roadmap.py")
 closures = load_module("check_roadmap_closures", ROOT / "tools" / "check_roadmap_closures.py")
 
 
+def replanned(manifest: dict, *keys: str) -> dict:
+    # Every leaf is delivered as of the slice-21 release (#170), so a fixture that needs live work re-plans
+    # the release leaves in its own copy: back to `planned`, with no delivering PR.
+    changed = copy.deepcopy(manifest)
+    for leaf in changed["leaves"]:
+        if leaf["key"] in keys:
+            leaf["status"] = "planned"
+            leaf.pop("delivered_by", None)
+    return changed
+
+
+RELEASE_LEAVES = ("release.full-soak", "release.audit")
+
+
 class RoadmapManifestTests(unittest.TestCase):
     def setUp(self) -> None:
         self.manifest = json.loads((ROOT / "docs" / "roadmap" / "manifest.json").read_text())
@@ -39,9 +53,10 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("assigned to both" in item for item in roadmap.validate_manifest(changed)))
 
     def test_unsettled_spec_cannot_gain_executable_leaf(self) -> None:
-        # Every parent is settled as of slice 21, so the test unsettles `release` in its own copy: a
-        # planned leaf under a provisional parent must be rejected, and the committed planned leaf proves it.
-        changed = copy.deepcopy(self.manifest)
+        # Every parent is settled and every leaf delivered as of slice 21, so the test re-plans a release
+        # leaf and unsettles `release` in its own copy: a planned leaf under a provisional parent is rejected.
+        changed = replanned(self.manifest, *RELEASE_LEAVES)
+        self.assertEqual([], roadmap.validate_manifest(changed))
         parent = next(item for item in changed["parents"] if item["key"] == "release")
         leaf = next(item for item in changed["leaves"] if item["key"] == "release.full-soak")
         self.assertEqual("planned", leaf["status"])
@@ -57,10 +72,11 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("blocker cycle" in item for item in roadmap.validate_manifest(changed)))
 
     def test_issue_body_carries_stable_identity_and_closure_contract(self) -> None:
-        # `release` is locked as of slice 21, so its leaves render "Executable now: yes"; a provisional
-        # copy of the same parent must render "no".
-        parent = next(item for item in self.manifest["parents"] if item["key"] == "release")
-        leaf = next(item for item in self.manifest["leaves"] if item["key"] == "release.full-soak")
+        # `release` is locked as of slice 21, so a planned release leaf renders "Executable now: yes"; a
+        # provisional copy of the same parent must render "no".
+        changed = replanned(self.manifest, *RELEASE_LEAVES)
+        parent = next(item for item in changed["parents"] if item["key"] == "release")
+        leaf = next(item for item in changed["leaves"] if item["key"] == "release.full-soak")
         body = roadmap.leaf_body(leaf, parent)
         self.assertIn("<!-- roadmap-key: release.full-soak -->", body)
         self.assertIn("Executable now: **yes**", body)
@@ -102,7 +118,7 @@ class RoadmapManifestTests(unittest.TestCase):
         # #116: a cancelled leaf is `dropped` — valid without a delivering PR, refused with one, never executable,
         # and projected as a closed-as-not-planned issue with the Dropped board role.
         blocking = {blocker for leaf in self.manifest["leaves"] for blocker in leaf.get("blocked_by", [])}
-        changed = copy.deepcopy(self.manifest)
+        changed = replanned(self.manifest, *RELEASE_LEAVES)
         leaf = next(item for item in changed["leaves"] if item["status"] == "planned" and item["key"] not in blocking)
         leaf["status"] = "dropped"
         self.assertEqual([], roadmap.validate_manifest(changed))
@@ -119,7 +135,7 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("never delivered" in item for item in roadmap.validate_manifest(changed)))
 
     def test_live_work_cannot_wait_on_a_dropped_leaf(self) -> None:
-        changed = copy.deepcopy(self.manifest)
+        changed = replanned(self.manifest, *RELEASE_LEAVES)
         waiting = next(item for item in changed["leaves"] if item["status"] == "planned" and item.get("blocked_by"))
         blocker = next(item for item in changed["leaves"] if item["key"] == waiting["blocked_by"][0])
         blocker["status"] = "dropped"
