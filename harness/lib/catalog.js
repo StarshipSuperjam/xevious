@@ -1761,12 +1761,13 @@ export const SCENARIOS = [
     // the active cell it draws (1717) and on the letter `append_char` stores (1747); the ring itself is unchanged.
     // A timed-out entry keeps the base letter inc/dec stored (name_entry_finished never calls check_lowercase), so
     // the in-flight letter lands uppercase even with the button held. We hold `b` on cell 1 (A -> 'a', shown and
-    // committed), release it on cell 2 (B stays 'B'), then hold it through a timeout on cell 3 (C stays 'C').
+    // committed), release it on cell 2 (B stays 'B'), hold it on a space on cell 3 (the full stop), then hold it
+    // through a timeout on cell 4 (D stays 'D').
     // roadmap-evidence: CAB-04 success  (bomb held: the active cell shows and Space commits the lowercase letter;
     //   released: uppercase; a timeout keeps the uppercase in-flight letter)
     key: 'high-score-entry-lowercase',
     behavior:
-      'Holding the bomb button (B) during initials entry shows and commits a lowercase letter; a timed-out letter stays uppercase',
+      'Holding the bomb button (B) during initials entry shows and commits a lowercase letter (a space becomes a full stop); a timed-out letter stays uppercase',
     playtestStep: 1,
     async drive(vm) {
       assert.ok(enterEntry(vm, { row: 2, timer: 1000000 }), 'precondition: the cabinet reaches the entry screen');
@@ -1790,8 +1791,15 @@ export const SCENARIOS = [
       step(vm, 2);
       const releasedCell = active(2);
       tapKey(vm, ' '); // commit with the bomb button up
+      // The space (ring 27) with the bomb button held: 0x24 + 0x2C = 0x50, the full stop of "M.N".
+      writeVar(vm, 'cabinet-entry-char', 26);
+      keyDown(vm, 'b');
+      step(vm, 2);
+      const heldSpaceCell = active(3);
+      tapKey(vm, ' ');
+      keyUp(vm, 'b');
       const committed = readVar(vm, 'cabinet-entry-name-buffer');
-      writeVar(vm, 'cabinet-entry-char', 2); // C, in flight
+      writeVar(vm, 'cabinet-entry-char', 3); // D, in flight
       keyDown(vm, 'b');
       writeVar(vm, 'cabinet-entry-timer', 2);
       const reachedTitle = stepUntil(vm, (v) => state(v) === 'title');
@@ -1799,6 +1807,7 @@ export const SCENARIOS = [
       return {
         heldCell,
         releasedCell,
+        heldSpaceCell,
         committed,
         stateAfter: reachedTitle ? 'title' : state(vm),
         landed: readVar(vm, 'eco-high-score-names')[1], // rank 2 -> JS index 1
@@ -1807,16 +1816,17 @@ export const SCENARIOS = [
     assert(obs) {
       assert.equal(obs.heldCell, 'glyph/a', 'with the bomb button held the active cell draws the lowercase letter');
       assert.equal(obs.releasedCell, 'glyph/B', 'with the bomb button up the active cell draws the uppercase letter');
-      assert.equal(obs.committed, 'aB', 'Space commits the lowercase letter only while the bomb button is held');
+      assert.equal(obs.heldSpaceCell, 'glyph/.', 'with the bomb button held the space cell draws the full stop');
+      assert.equal(obs.committed, 'aB.', 'Space commits the lowercase letter (a space: the full stop) only while the bomb button is held');
       assert.equal(obs.stateAfter, 'title', 'the countdown expiring finishes entry and returns to the title');
-      assert.equal(obs.landed, 'aBC', 'a timeout keeps the in-flight letter uppercase even with the bomb button held');
+      assert.equal(obs.landed, 'aB.D', 'a timeout keeps the in-flight letter uppercase even with the bomb button held');
     },
     // Point both lowercase reads (the commit on the Stage, the active cell on start_screen) back at the uppercase
     // ring: holding the bomb button then changes nothing, so the 'a' cell and the 'aB' buffer assertions fail.
     // roadmap-evidence: CAB-04 failure  (without the lowercase ring the bomb button no longer lowers the letter)
     negativeMutation: (p) => {
       for (const sprite of ['Stage', 'start_screen']) {
-        mutate.changeLetterOfString(p, sprite, 'abcdefghijklmnopqrstuvwxyz ', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ ');
+        mutate.changeLetterOfString(p, sprite, 'abcdefghijklmnopqrstuvwxyz.', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ ');
       }
     },
   },

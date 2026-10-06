@@ -1401,9 +1401,11 @@ ENTRY_RING_SIZE = 27
 # CAB-04 (slice 21 audit): holding the bomb button turns the letter lowercase. The arcade's `check_lowercase`
 # (xevious_main.68k 1784-1792) reads the bomb bit (dswb bit 0, the bit `init_bombing` reads at 2441, active-low)
 # and adds 0x2C to the letter code — on the active cell it draws (1717) and on the letter it stores (1747). The
-# ring index is unchanged (inc/dec still walk A-Z then space), so the lowercase ring is the same 27 places; a
-# space stays a space. A timed-out entry keeps the stored base letter, so `_high_score_finish` stays uppercase.
-ENTRY_RING_LOWER = "abcdefghijklmnopqrstuvwxyz "
+# ring index is unchanged (inc/dec still walk A-Z then space), so the lowercase ring is the same 27 places. The
+# space is shifted too: 0x24 + 0x2C = 0x50, the full stop the default best-five names use ("M.N",
+# `ROM_high_score_tbl_normal` 1588-1601), so a space entered with the button held is a full stop. A timed-out
+# entry keeps the stored base letter, so `_high_score_finish` stays uppercase.
+ENTRY_RING_LOWER = "abcdefghijklmnopqrstuvwxyz."
 ENTRY_NAME_LEN = 10  # ten characters (move.b #10,(name_entry_char_cnt) xevious_main.68k:1700; name field ds.b 10)
 # A fixed TOTAL countdown armed once at entry start and decremented one per frame — NOT an idle reset: the
 # reference seeds countdown_timer_1 = 0x80 once (xevious_main.68k:1701) and decrements it unconditionally

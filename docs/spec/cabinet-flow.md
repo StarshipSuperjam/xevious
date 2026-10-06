@@ -55,7 +55,8 @@ returns to player 1, and the cabinet resumes attract (556–591).
 initials (a score tying the fifth entry still places, shifting it down): ten
 characters from a 27-symbol set (A–Z and space, wrapping both directions). Holding the bomb button
 turns the letter lowercase: `check_lowercase` (1784–1792) reads the bomb bit and adds 0x2C to the letter
-code, on the active cell drawn (1717) and on the letter stored (1747); a timeout stores the capital. (Earlier
+code, on the active cell drawn (1717) and on the letter stored (1747); a space becomes the full stop (0x24 +
+0x2C = 0x50, the full stop of "M.N" in `ROM_high_score_tbl_normal` 1588–1601); a timeout stores the capital. (Earlier
 prose put this behind a DIP bit; the source reads the bomb button.) Entry auto-completes on the tenth
 character or when a fixed overall time limit of roughly 68 seconds — counted from when entry begins and
 **not** reset by input — runs out (derived from the compound frame gating, medium-confidence)
