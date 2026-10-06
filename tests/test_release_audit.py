@@ -400,5 +400,90 @@ class ReleaseCatalogAudit(unittest.TestCase):
         self.assertNotRegex(controls, r"(?m)^- [DGSPT]:")
 
 
+# The keys the shipped game reads: the arrows steer the craft and the title/initials selectors, Space fires and
+# starts, B bombs, C inserts a coin (docs/spec/core-game-systems.md, control mapping).
+SHIPPED_KEYS = {"left arrow", "right arrow", "up arrow", "down arrow", "space", "b", "c"}
+INVULN = "invuln"
+
+
+def debug_control_failures(project: dict) -> set[str]:
+    """Every way a development control could survive into the build: a key read outside the control mapping, a
+    variable, list, broadcast or custom block named for debugging, or any block that sets the harness-only
+    invulnerability hook (the game never sets it, so no key or control can reach it)."""
+    failures = set()
+    for target in project["targets"]:
+        name = target["name"]
+        for kind in ("variables", "lists", "broadcasts"):
+            for value in target.get(kind, {}).values():
+                label = value[0] if isinstance(value, list) else value
+                if "debug" in str(label).lower():
+                    failures.add(f"debug-{kind}:{name}:{label}")
+        for block in target["blocks"].values():
+            if not isinstance(block, dict):
+                continue
+            opcode = block.get("opcode")
+            if opcode in ("sensing_keyoptions", "event_whenkeypressed"):
+                key = block["fields"]["KEY_OPTION"][0]
+                if key not in SHIPPED_KEYS:
+                    failures.add(f"key:{name}:{key}")
+            elif opcode == "procedures_prototype" and "debug" in block["mutation"]["proccode"].lower():
+                failures.add(f"debug-proc:{name}:{block['mutation']['proccode']}")
+            elif opcode in ("data_setvariableto", "data_changevariableby"):
+                if block["fields"]["VARIABLE"][0] == INVULN:
+                    failures.add(f"invuln-written:{name}")
+    return failures
+
+
+class ReleaseNoDebugControls(unittest.TestCase):
+    # roadmap-evidence: RELEASE-02 success  (the built project reads only the mapped keys — arrows, Space, B, C —
+    #   names no debug variable, list, broadcast or custom block, and never sets the invulnerability hook)
+    # roadmap-evidence: RELEASE-02 failure  (a T key read, a debug-named variable or custom block, or a block that
+    #   sets `invuln` each fails)
+
+    @classmethod
+    def setUpClass(cls):
+        with tempfile.TemporaryDirectory() as tmp:
+            built = Path(tmp) / "Xevious.sb3"
+            scratch.build_project(output=built)
+            with zipfile.ZipFile(built) as archive:
+                cls.project = json.loads(archive.read("project.json"))
+
+    def test_no_debug_control_ships(self):
+        self.assertEqual(debug_control_failures(self.project), set())
+        stage = next(t for t in self.project["targets"] if t["isStage"])
+        self.assertIn(INVULN, {value[0] for value in stage["variables"].values()})
+
+    def test_debug_control_check_bites(self):
+        def corrupt(edit):
+            project = json.loads(json.dumps(self.project))
+            stage = next(t for t in project["targets"] if t["isStage"])
+            edit(stage)
+            return debug_control_failures(project)
+
+        def key_t(stage):
+            stage["blocks"]["neg-key"] = {"opcode": "sensing_keyoptions", "fields": {"KEY_OPTION": ["t", None]},
+                                          "inputs": {}, "next": None, "parent": None, "shadow": True,
+                                          "topLevel": False}
+
+        def debug_var(stage):
+            stage["variables"]["neg-var"] = ["debug spawn index", 0]
+
+        def debug_proc(stage):
+            stage["blocks"]["neg-proc"] = {"opcode": "procedures_prototype", "fields": {}, "inputs": {},
+                                           "mutation": {"proccode": "debug pause toggle"}, "next": None,
+                                           "parent": None, "shadow": True, "topLevel": False}
+
+        def set_invuln(stage):
+            invuln_id = next(key for key, value in stage["variables"].items() if value[0] == INVULN)
+            stage["blocks"]["neg-set"] = {"opcode": "data_setvariableto", "fields": {"VARIABLE": [INVULN, invuln_id]},
+                                          "inputs": {}, "next": None, "parent": None, "shadow": False,
+                                          "topLevel": True}
+
+        self.assertIn("key:Stage:t", corrupt(key_t))
+        self.assertIn("debug-variables:Stage:debug spawn index", corrupt(debug_var))
+        self.assertIn("debug-proc:Stage:debug pause toggle", corrupt(debug_proc))
+        self.assertIn("invuln-written:Stage", corrupt(set_invuln))
+
+
 if __name__ == "__main__":
     unittest.main()

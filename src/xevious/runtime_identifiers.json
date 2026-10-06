@@ -1363,31 +1363,6 @@
       "name": "two player",
       "scope": "Stage"
     },
-    "debug-ground-index": {
-      "kind": "variable",
-      "name": "debug ground index",
-      "scope": "Stage"
-    },
-    "debug-ground-key-held": {
-      "kind": "variable",
-      "name": "debug ground key held",
-      "scope": "Stage"
-    },
-    "debug-pause-key-held": {
-      "kind": "variable",
-      "name": "debug pause key held",
-      "scope": "Stage"
-    },
-    "debug-paused": {
-      "kind": "variable",
-      "name": "debug paused",
-      "scope": "Stage"
-    },
-    "debug-spawn-index": {
-      "kind": "variable",
-      "name": "debug spawn index",
-      "scope": "Stage"
-    },
     "difficulty-ai-adjust": {
       "kind": "variable",
       "name": "ai adjust",

@@ -221,6 +221,6 @@ which patterns.
 | Each family plays its recorded pattern — approach, trigger, fire rule, exit | Play scheduled waves of each family in the built `.sb3` against this document's descriptions | operator |
 | A Zakato that fires its shot self-destructs scoring nothing; one killed first scores | Play: let one fire, kill one early | operator |
 | A Garu Zakato left alone rings 16 bullets and releases four Brag Sparios | Play (or seeded fixture) the detonation | operator |
-| Sheonites cannot be killed and track the craft in the recorded pincer-and-dock pattern | Play the area-9 Sheonite spawn (or the T-key debug spawn) in the built `.sb3` | operator |
+| Sheonites cannot be killed and track the craft in the recorded pincer-and-dock pattern | Play the area-9 Sheonite spawn in the built `.sb3` | operator |
 | All families share one blaster hit window and one explosion; Giddo Spario's short variant excepted | Structural fixture over the build's collision and animation data | engine |
 | Fire timing draws from the shared stream under the family mask (seeded waves repeat exactly) | Seeded fixture: identical seeds reproduce identical wave behavior | engine |

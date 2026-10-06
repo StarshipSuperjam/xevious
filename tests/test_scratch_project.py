@@ -1408,23 +1408,8 @@ class ScratchProjectTests(unittest.TestCase):
             # #158 (slice 21): the walk-owned player-explosion window (the flag and its tick count).
             "dying",
             "dying tick",
-            # DEBUG (tracked for removal, #119): the T-key family-cycle cursor — a transient dev-tool
-            # register, not Stage-write-protected state.
-            "debug spawn index",
-            # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor — the ground analog
-            # of the T-key cursor, likewise a transient dev-tool register, not durable Stage state.
-            "debug ground index",
-            # DEBUG (tracked for removal, #119): the previous-tick G sample for rising-edge detection — so the
-            # Andor boss's debug DISMISS fires only on a FRESH G press, never on the press that summons it.
-            # A transient dev-tool register (default 0; the harness drives it only in the boss-summon scenario).
-            "debug ground key held",
-            # DEBUG (tracked for removal, #119): the P-key freeze/resume TOGGLE (1 = frozen) and its
-            # previous-tick P sample for rising-edge detection — transient dev-tool registers, not durable
-            # Stage state (both default 0; the harness never presses P, so the walk runs every tick).
-            "debug paused",
-            "debug pause key held",
             # CAB-02 (slice 17): the coin key's previous-tick sample for rising-edge (tap) coin detection —
-            # a transient input register like the debug-key held samples, not durable Stage state (the
+            # a transient input register, not durable Stage state (the
             # credit bank it feeds is economy state, below). Written by the always-on coin poll.
             "coin key held",
             # CAB-01 (slice 17): the attract-cycle machinery. `coin edge` is the one-tick coin-inserted pulse
@@ -1484,8 +1469,8 @@ class ScratchProjectTests(unittest.TestCase):
             "sheonite end flag",
             "sheonite phase",
             "sheonite lock col",
-            # BOSS-01 (slice 15): the Andor Genesis end flag — Stage-written (by the schedule end record / the
-            # debug dismiss), read and consumed by the master's update proc in the walk, which tears the composite
+            # BOSS-01 (slice 15): the Andor Genesis end flag — Stage-written (by the schedule end record),
+            # read and consumed by the master's update proc in the walk, which tears the composite
             # down on it. A schedule on/off flag like `sheonite end flag`: transient machinery, never sprite-written.
             "andor genesis end flag",
             # BOSS-01 (slice 15): the boss's two shared per-tick animation registers. `andor genesis colour`
@@ -1887,8 +1872,8 @@ class ScratchProjectTests(unittest.TestCase):
             # teleport->active->self-destruct update ending in a 5-bullet radiating fan (`brag zakato
             # shoot`); the Garu Zakato has its own no-teleport straight update whose fuse detonates into a
             # 16-bullet ring + 4 Brag Sparios (`garu zakato detonate`). All warp, no state write beyond the
-            # slot's own phase machine — dispatched from the same spawner / walk (the Garu stamped by the
-            # debug key). Plus the shared radiating-bullet emitter (AIR-12, slice 11) whose first live
+            # slot's own phase machine — dispatched from the same spawner / walk (the Garu placed by the
+            # add_object schedule). Plus the shared radiating-bullet emitter (AIR-12, slice 11) whose first live
             # callers are this family's fan and ring.
             director.INIT_BRAG_ZAKATO_PROCCODE,
             director.UPDATE_BRAG_ZAKATO_PROCCODE,
@@ -1899,8 +1884,8 @@ class ScratchProjectTests(unittest.TestCase):
             director.RADIATING_EMIT_PROCCODE,
             # AIR-11 (slice 11) air.bacura: the indestructible slab's spawn init and per-tick update, both
             # warp, no state write beyond the slot's own drift. Dispatched from the walk by BAND membership
-            # (its own reserved band 17-32), not by type; the init is also called by the debug direct-stamp
-            # and (Commit 3) the live per-second spawn pump. Its update deliberately makes NO CHECK_AIR_HIT
+            # (its own reserved band 17-32), not by type; the init is called by the live per-second spawn
+            # pump. Its update deliberately makes NO CHECK_AIR_HIT
             # call — that omission is the shot-invulnerability.
             director.INIT_BACURA_PROCCODE,
             director.UPDATE_BACURA_PROCCODE,
@@ -1911,12 +1896,6 @@ class ScratchProjectTests(unittest.TestCase):
             # `update bacura`. It marks an overlapping player shot SHOT_BOUNCE and never touches the slab —
             # the shot bounces (blaster clone reverses+animates), the Bacura is never destroyed or scored.
             director.CHECK_SHOT_BACURA_PROCCODE,
-            # DEBUG / temporary (tracked for removal): the playtest spawn-a-wave tool.
-            director.DEBUG_SPAWN_PROCCODE,
-            # DEBUG / temporary (tracked for removal, #119): the playtest cycle-a-ground-family tool.
-            director.DEBUG_GROUND_SPAWN_PROCCODE,
-            # DEBUG / temporary (tracked for removal, #119): the playtest freeze/resume (P) toggle.
-            director.DEBUG_PAUSE_PROCCODE,
             director.CULL_SLOT_PROCCODE,
             # WPN-02 (slice 8): the shot-vs-air overlap detector and the struck-Toroid explosion tick.
             director.CHECK_AIR_HIT_PROCCODE,
@@ -2990,8 +2969,8 @@ class ScratchProjectTests(unittest.TestCase):
                 failures.add("garu-zakato-lifecycle-procs-warp")
 
         # (3)-(6) Each family is driven: the formation spawner inits the Brags by type, the ordered walk
-        # dispatches to both updaters, and the Garu (no formation entry) is stamped by its own spawner
-        # (the debug key) — so a spawned member actually advances.
+        # dispatches to both updaters, and the Garu (no formation entry) is placed by the add_object
+        # schedule — so a spawned member actually advances.
         if not calls(director.INIT_BRAG_ZAKATO_PROCCODE):
             failures.add("spawn-inits-brag-zakato")
         if not calls(director.UPDATE_BRAG_ZAKATO_PROCCODE):
@@ -11207,7 +11186,7 @@ class ScratchProjectTests(unittest.TestCase):
         def direct_branch_ids(block, key):
             # Only the immediate statements of a branch (its `next` chain), NOT nested control bodies. Use
             # this to pin a per-family branch whose writes would otherwise be indistinguishable from siblings'
-            # writes swept in by `reach` (e.g. the debug seed's tight `if spawn found` under a broad clear-band).
+            # writes swept in by `reach` (e.g. a seed's tight `if spawn found` under a broader branch).
             sub = block["inputs"].get(key) if block else None
             cur = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
             out = set()
@@ -11605,12 +11584,12 @@ class ScratchProjectTests(unittest.TestCase):
         choice (ECO-03) — an if/else on `flag awards craft == 1`: craft arm adds a craft (+1) and broadcasts
         `craft changed` with NO `extend` jingle; points arm sets `award value` = 10,000 and routes through the
         single `score` proc — then play the bonus-flag sound and cull the slot. The renderer is a SINGLE clone
-        bound to GROUND_SLOTS[0] (not a 16-clone band — the 300-clone ceiling). Debug spawn seeds ACTIVE/HIDDEN/
+        bound to GROUND_SLOTS[0] (not a 16-clone band — the 300-clone ceiling). The add_object placement seeds ACTIVE/HIDDEN/
         1,000-pt/timer-0 only when the bounded random-lateral draw accepts a column (`spawn found`)."""
         h = cls._sec_helpers(project)
         failures = set()
         upd = _proc_body_blocks(h["stage"], director.UPDATE_BONUS_FLAG_PROCCODE)
-        debug = _proc_body_blocks(h["stage"], director.DEBUG_GROUND_SPAWN_PROCCODE)
+        place = _proc_body_blocks(h["stage"], director.PLACE_PENDING_OBJECT_PROCCODE)
 
         # (1) warp.
         p = h["proto"](director.UPDATE_BONUS_FLAG_PROCCODE)
@@ -11696,15 +11675,14 @@ class ScratchProjectTests(unittest.TestCase):
         if not h["dispatch_calls"](director.BONUS_FLAG_TYPE, director.UPDATE_BONUS_FLAG_PROCCODE):
             failures.add("bonus-flag-dispatch")
 
-        # (14) debug spawn: the flag branch (writes `slot type` = BONUS_FLAG_TYPE) seeds ACTIVE/HIDDEN/
-        # 1,000-pt/timer-0, gated on `spawn found == 1` (a rejected draw leaves the band empty).
+        # (14) spawn: the add_object placement's flag branch (writes `slot type` = BONUS_FLAG_TYPE) seeds
+        # ACTIVE/HIDDEN/1,000-pt/timer-0, gated on `spawn found == 1` (a rejected draw leaves the slot empty).
         flag_seed = set()
-        for b in debug:
+        for b in place:
             if b["opcode"] != "control_if":
                 continue
-            # The tight per-shape `if spawn found` gate writes the flag type DIRECTLY (no nested control), so
-            # match on its direct next-chain — not `branch_ids`, which would sweep in the broad clear-band's
-            # sibling writes and make the seed check pass on any family's values.
+            # The tight `if spawn found` gate writes the flag type DIRECTLY (no nested control), so match on
+            # its direct next-chain — not `branch_ids`, which would sweep in sibling writes.
             ids = h["direct_branch_ids"](b, "SUBSTACK")
             if h["writes_value"](ids, director.SLOT_TYPE_ID, director.BONUS_FLAG_TYPE):
                 flag_seed = ids
@@ -12038,8 +12016,7 @@ class ScratchProjectTests(unittest.TestCase):
             failures.add("andor-dispatch-part")
 
         # (13) LAYOUT EQUALITY: the schedule arm stamps exactly the andor-genesis.json part-type layout into
-        # slots base+1..base+15 (scoped to `advance area` — the debug arm's identical copy lives in its own
-        # proc, so a broken schedule arm still bites here).
+        # slots base+1..base+15 (scoped to `advance area`).
         layout = json.loads(
             (ROOT / "docs" / "spec" / "data" / "andor-genesis.json").read_text(encoding="utf-8")
         )["layout"]["values"]
@@ -12114,7 +12091,7 @@ class ScratchProjectTests(unittest.TestCase):
     # Roadmap closure evidence for leaf `andor.lifecycle` (BOSS-01): the Andor Genesis boss arrives (descends
     # to a fixed hold row), holds its position as one rigid composite of 15 parts pinned to the invisible
     # master, pulses colour on every visible part + the core's flip shimmer, and departs (retreats off the top
-    # and tears the composite down) on the schedule/debug end flag — no firing, no destruction (slice 16).
+    # and tears the composite down) on the schedule end flag — no firing, no destruction (slice 16).
     # roadmap-evidence: BOSS-01 success  (test_andor_lifecycle_authoring_present — master/part warp; colour +
     # flip driven from tick; end-flag state machine descends+clamps to hold, retreats, tears down 15 slots;
     # parts align to the master anchor + offset lists; dispatch routes master+part types; the arm matches the
@@ -15099,7 +15076,7 @@ class ScratchProjectTests(unittest.TestCase):
 
         def break_spawn(p):
             blocks = _stage(p)["blocks"]
-            for b in _proc_body_blocks(_stage(p), director.DEBUG_GROUND_SPAWN_PROCCODE):
+            for b in _proc_body_blocks(_stage(p), director.PLACE_PENDING_OBJECT_PROCCODE):
                 if b["opcode"] != "control_if":
                     continue
                 ids = _direct_branch(blocks, b, "SUBSTACK")
@@ -22714,8 +22691,8 @@ class ScratchProjectTests(unittest.TestCase):
         # sprite_draw_double_width_and_height (amiga.68k 2529-2544) draws its 32-px picture 8 px right of AND 8 px
         # below a 16-px sprite at the same position, so the ground pool places a SLOT_GARU_BASE slot 10 units right
         # (+x) and 10 down (-y) of the shared map — and only the base, of both families. The 1x1 node is seeded one
-        # cell below and one right of its base (node `_X` MSB 1, `_Y` = base `_Y` - 0x100) at all four Garu spawn
-        # sites (schedule + debug key, both families), which centres the top on the base at the arcade's place.
+        # cell below and one right of its base (node `_X` MSB 1, `_Y` = base `_Y` - 0x100) at both Garu spawn
+        # schedule sites (both families), which centres the top on the base at the arcade's place.
         ground = next(t for t in project["targets"] if t["name"] == director.GROUND_RENDER_TARGET)["blocks"]
         shifted_bases = 0
         for bid, b in ground.items():
@@ -22767,7 +22744,7 @@ class ScratchProjectTests(unittest.TestCase):
             director.DOUBLE_TILE_STAGE_OFFSET != 8 * scale
             or (director.GARU_NODE_SLOT_X, director.GARU_NODE_SLOT_Y_DELTA) != (256, -256)
             or shifted_bases != 2
-            or (node_x_seeds, node_y_seeds) != (4, 4)
+            or (node_x_seeds, node_y_seeds) != (2, 2)
         ):
             fails.add("PRES01-garu-double-tile")
         # PRES01-sol-double-tile — the Sol Tower rise frames (tools/sol_tower_render.py) are 32x32 cells laid from
@@ -23508,10 +23485,9 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(
             set(), sensed & arrow_keys, "the Stage walk must not steer the bomb sight by arrow keys"
         )
-        # Only the bomb-arm 'b' poll, the debug-spawn 't' poll, the debug-ground 'g' poll, the
-        # debug-pause 'p' poll, and the CAB-02 coin 'c' poll are expected Stage key reads ('t'/'g'/'p'
-        # are temporary dev tools tracked for removal, #119; 'c' is the permanent coin key — slice 17).
-        self.assertLessEqual(sensed, {"b", "t", "g", "p", "c"}, sensed)
+        # Only the bomb-arm 'b' poll and the CAB-02 coin 'c' poll are expected Stage key reads (the
+        # T/G/P playtest keys were removed in slice 21, #119; 'c' is the permanent coin key — slice 17).
+        self.assertLessEqual(sensed, {"b", "c"}, sensed)
 
         # Negative: re-add an arrow-key branch (an arrow-key poll on the Stage) → the guard fires.
         corrupt = copy.deepcopy(project)
@@ -23870,7 +23846,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "c2bc4c8a937767fa705a5f2d488b21072ce79b3f243640131f8463da249c4de1",
+            "a4714d0c09ec21674f282ac4fbd972e5dbc0162e8f66016e8d1234b4678f81b3",
             build_hash,
         )
 

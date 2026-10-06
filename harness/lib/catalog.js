@@ -3763,7 +3763,7 @@ export const SCENARIOS = [
   {
     key: 'zoshi-bottom-enters-edge',
     behavior:
-      'The bottom-entry Zoshi (type 14) is its own reachable object type with its own initializer — the arcade zoshi_0E bottom variant is a distinct spawnable, brought in here through the shared debug spawn cycle (its FIXED bottom-edge entry row 40 is the exact-value contract locked structurally in tests/test_scratch_project.py::_air03_failures, which the settling harness cannot observe — see note)',
+      'The bottom-entry Zoshi (type 14) is its own reachable object type with its own initializer — the arcade zoshi_0E bottom variant is a distinct spawnable, brought in here through the normal flying spawner (its FIXED bottom-edge entry row 40 is the exact-value contract locked structurally in tests/test_scratch_project.py::_air03_failures, which the settling harness cannot observe — see note)',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -3771,44 +3771,22 @@ export const SCENARIOS = [
       // row (40), set once by `init zoshi bottom`. That is a SPAWN-INSTANT value the settling harness
       // cannot read: `_step()` runs an unfixed, machine-speed-dependent number of ticks (harness.js
       // header), and BOTH top (row 0) and bottom (row 40) entrants converge on and overshoot the craft
-      // row, so within a single settling step they roam the same span (measured: top reaches ~38, bottom
-      // drops to ~15) — any post-settling row threshold is unfaithful. The exact entry row 40 is therefore
-      // pinned as an EXACT-VALUE structural contract in _air03_failures (zoshi-bottom-fixed-edge-entry).
-      // What IS pacing-invariant here is REACHABILITY: that the bottom variant is its own type with its own
-      // initializer that stamps a live type-14 slot. The shared debug cursor gallops by >1 per settling step
-      // (see debug-key-cycles-families), so an ordered per-family window is racy; instead hold the key,
-      // accumulate the types seen over a sustained hold, and require the bottom variant (type 14) to appear
-      // — order-independent, so the galloping cursor cannot false-fail it. Do NOT clear the field manually
-      // (the debug wave clears its own slots; a manual clear would drive the normal spawner and leak
-      // debug-only families, breaking the negative). The negative neutralizes the SHARED `init zoshi
-      // bottom` (used by both the debug and normal spawn paths, game_director.py install_spawn_flying), so
-      // no path can stamp a type-14 slot and the negative cannot be masked by normal-play leakage.
-      //
-      // Robustness (contention): `step()` bounds each settling pump by WALL CLOCK (loadBuild sets
-      // currentStepTime; harness.js header), so under full-suite CPU load a single pump advances far fewer
-      // internal ticks. The debug cursor's per-family dwell has grown every slice (Zakato, Bacura, and now
-      // the Sheonite escort, whose homing pair holds the field for a long bounded lifecycle at the tail of
-      // the cycle), so a free-galloping cursor completes fewer full cycles per budget and the bottom
-      // variant's brief live window can fall between two observed pumps — an intermittent false-fail. So
-      // rather than wait for the cursor to WANDER to the bottom variant, PIN the debug spawn cursor to its
-      // family index each pump: the debug gate then spawns the bottom variant (through the same shared debug
-      // spawn path this scenario is about) as soon as the field is clear and keeps re-spawning it, so a live
-      // type-14 slot is reliably present to observe. This removes the timing race while still proving
-      // reachability VIA THE DEBUG CYCLE (the gate, not a hand-called init). ZOSHI_BOTTOM is index 4 in
-      // game_director.py DEBUG_SPAWN_FAMILIES (terrazi, kapi, torkan, zoshi-top, zoshi-bottom, ...); a
-      // family reorder makes the POSITIVE fail loudly here rather than silently drift. The negative still
-      // bites: neutralizing `init zoshi bottom` (the shared initializer that stamps the type-14 slot on both
-      // the debug and normal paths) means no type-14 slot is ever stamped, even with the cursor pinned.
-      const ZOSHI_BOTTOM_DEBUG_INDEX = 4;
-      keyDown(vm, 't');
+      // row, so within a single settling step they roam the same span — any post-settling row threshold is
+      // unfaithful. The exact entry row 40 is therefore pinned as an EXACT-VALUE structural contract in
+      // _air03_failures (zoshi-bottom-fixed-edge-entry). What IS pacing-invariant here is REACHABILITY:
+      // that the bottom variant is its own type with its own initializer that stamps a live type-14 slot.
+      // Force every flying-type-table entry to the bottom variant (14) — the same direct-seeding pattern
+      // the sibling Zoshi scenarios use — so the NORMAL spawner draws only type 14, then accumulate the
+      // types seen in the flying band over a sustained run (order-independent). The negative neutralizes
+      // the `init zoshi bottom` the spawner dispatches to, so no type-14 slot is ever stamped.
+      const typeTable = readVar(vm, 'flying-type-table');
+      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 14;
       const seen = new Set();
-      for (let i = 0; i < 100; i += 1) {
-        writeVar(vm, 'debug-spawn-index', ZOSHI_BOTTOM_DEBUG_INDEX);
+      for (let i = 0; i < 100 && !seen.has(14); i += 1) {
         step(vm, 1);
         const type = readVar(vm, 'slot-type');
         for (const s of FLYING_SLOT_INDICES) if (type[s] !== 0) seen.add(type[s]);
       }
-      keyUp(vm, 't');
       return { saw: seen.has(14) };
     },
     assert(obs) {
@@ -5712,231 +5690,6 @@ export const SCENARIOS = [
     // updater is exactly the regression class (wrongly cloning Bacura's craft-death onto the inert pair):
     // now the craft dies while a Sheonite is advanced, so the inertness assertion bites.
     negativeMutation: (p) => mutate.graftVariableSetOnProc(p, 'Stage', 'update sheonite', 'player hit', 1),
-  },
-  {
-    key: 'debug-key-cycles-families',
-    behavior:
-      'The temporary debug key (T) brings enemies in through the shared spawner and, spawn by spawn, advances its family cursor through every built family (self-extending to the newly built Zakato entries), so each family can be cycled to for playtesting (tracked for removal)',
-    playtestStep: 4,
-    async drive(vm) {
-      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // Isolate the AIR debug cycle from live ground firers. GND-07's Domogram is self-moving: a path
-      // segment with dx=0 holds it on-screen indefinitely (the terrain scrolls past it) while it fires an
-      // aimed bullet into the flying band every few frames — a steady stream that intermittently re-occupies
-      // the band and blocks the debug wave's field-empty gate, stalling the cursor before it completes. (A
-      // static Logram scrolled off with the terrain and stopped firing, so it never stalled this.) Zero the
-      // ground-type column so no ground family spawns at all — same isolation enemy-bullet-fires uses; it
-      // touches only schedule data, never the debug air wave.
-      suppressGroundSpawns(vm);
-      // Family PRESENCE cannot prove the debug key did anything: normal play eventually scrolls into zones
-      // that spawn every family too (measured with no key held — all of types 12..17 appear within ~80
-      // settling steps, type 15 as early as step ~2), so accumulating seen types is confounded and cannot
-      // make the negative bite. The debug-specific, pacing-invariant signal is the CURSOR itself: the
-      // `debug spawn index` advances one step per fresh debug spawn and wraps mod len(DEBUG_SPAWN_FAMILIES)
-      // (game_director.py install_debug_spawn_wave); NORMAL play never touches it. Hold T, sweep the cursor,
-      // and collect the distinct residues seen — proving it self-extends across every built family rather
-      // than stopping at a fixed set. The exact residue→family binding is pinned structurally in
-      // tests/test_scratch_project.py (DEBUG_SPAWN_FAMILIES); this scenario proves the cursor drives the
-      // whole cycle at runtime.
-      //
-      // The cursor only advances on a FRESH debug spawn — i.e. when the flying band is empty (the debug wave
-      // brings in one solo, then waits for it to leave before the next). But the tail of the cycle includes
-      // the Garu Zakato, whose detonation seeds 4 Brag Sparios — accelerating homers that, against this
-      // harness's stationary, non-firing craft, orbit forever and never cull. Passively held, the cursor
-      // therefore parks at the family after Garu and never completes the cycle (measured: it froze after 9
-      // of 17 residues even over 3000 frames). So we clear the flying band ourselves each frame to reopen
-      // the field-empty gate — this does NOT drive the normal spawner: while T is held the debug wave sets
-      // `formation count`/`formation type offset` every tick before the spawner runs, so the only family
-      // that can enter is the debug wave's current one, and only the debug wave ever writes the cursor.
-      // How far the cursor jumps between our per-frame samples varies (in the opening frames several fresh
-      // spawns land in one settling, so it can step by >1), so "reached the max" is not "saw every residue".
-      // But across successive wraps every residue 0..N-1 is eventually sampled, so we loop until the set is
-      // a complete contiguous run 0..max (no residue skipped) that reaches the last built family. When each
-      // gate reopens is subject to scratch-vm execution jitter (full coverage was measured between ~50 and
-      // ~195 frames across runs), so budget a generous cap (early-exit on completion keeps the common case
-      // fast) and let the count self-extend: a new family just pushes `max` up, no threshold to re-tune.
-      keyDown(vm, 't');
-      const cursors = new Set([readVar(vm, 'debug-spawn-index')]);
-      let anyFlying = false;
-      let maxCursor = 0;
-      for (let i = 0; i < 600; i += 1) {
-        const slotType = readVar(vm, 'slot-type');
-        const slotState = readVar(vm, 'slot-state');
-        for (const s of FLYING_SLOT_INDICES) { slotType[s] = 0; slotState[s] = 0; }
-        step(vm, 1);
-        const cursor = readVar(vm, 'debug-spawn-index');
-        cursors.add(cursor);
-        if (cursor > maxCursor) maxCursor = cursor;
-        const type = readVar(vm, 'slot-type');
-        if (FLYING_SLOT_INDICES.some((s) => type[s] !== 0)) anyFlying = true;
-        // Complete: every residue 0..max collected (contiguous) and reached the last built family (>=16).
-        if (cursors.size === maxCursor + 1 && maxCursor >= 16) break;
-      }
-      keyUp(vm, 't');
-      const contiguous = cursors.size === maxCursor + 1;
-      return { distinctCursors: cursors.size, maxCursor, contiguous, anyFlying };
-    },
-    assert(obs) {
-      assert.equal(obs.anyFlying, true, 'holding the debug key stamps flying enemies through the shared spawner');
-      assert.ok(obs.contiguous, `the debug cursor steps +1 with no skips (residues 0..${obs.maxCursor} with no gaps); saw ${obs.distinctCursors} distinct`);
-      assert.ok(
-        obs.maxCursor >= 16,
-        `the debug cycle self-extends through every built family slot (residues 0..16, incl. the new Giddo Spario, four base Zakato, two Brag Zakato and Garu Zakato entries); reached ${obs.maxCursor}`,
-      );
-    },
-    // Empty `debug spawn wave` so the key never advances its cursor → `debug spawn index` stays 0 →
-    // maxCursor == 0 → the self-extension assertion (maxCursor >= 16) bites (normal play leaves the cursor
-    // untouched, so it cannot mask the mutation).
-    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug spawn wave'),
-  },
-  {
-    key: 'debug-ground-key-cycles-families',
-    behavior:
-      'The temporary debug ground key (G) stamps a built GROUND family into the band through the shared ground seed builders and, spawn by spawn, advances its family cursor through every built ground family (self-extending as later ground families are built), so each can be cycled to for a bomb playtest (tracked for removal, #119)',
-    playtestStep: 4,
-    async drive(vm) {
-      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // The G key is the ground analog of the T key. Family PRESENCE alone cannot make the negative bite — the
-      // area schedule scrolls ground families in on its own — so isolate the debug tool two ways: (1) suppress
-      // every SCHEDULED ground spawn (empty the schedule's ground-type column) so the ONLY ground objects that
-      // can appear are the debug key's, and (2) watch the debug-specific, pacing-invariant signal —
-      // `debug ground index`, which advances one step per FRESH debug ground spawn and wraps mod
-      // len(DEBUG_GROUND_FAMILIES) (game_director.py install_debug_ground_spawn); normal play never touches it.
-      // The exact residue→family binding is pinned in game_director.py (DEBUG_GROUND_FAMILIES); this scenario
-      // proves the cursor drives the whole cycle at runtime and that a fresh spawn actually stamps the band.
-      //
-      // The cursor only advances on a FRESH spawn — i.e. when the ground band is empty (the tool stamps one
-      // family, then defers until it scrolls off). Ground objects always scroll DOWN and cull off the field, so
-      // this never stalls; but to sweep the whole cycle quickly we clear the ground band (JS slots 0..15)
-      // ourselves each frame to reopen the field-empty gate. That does NOT drive the schedule (suppressed
-      // above): only the debug tool ever stamps ground or writes the cursor. How far the cursor jumps between
-      // samples varies (a family may cull within one settling), so we loop until the residues form a complete
-      // contiguous run 0..max that reaches the last built family; a new family just pushes max up, no threshold
-      // to re-tune.
-      suppressGroundSpawns(vm);
-      keyDown(vm, 'g');
-      const cursors = new Set([readVar(vm, 'debug-ground-index')]);
-      let anyGround = false;
-      let maxCursor = 0;
-      const LAST = 6; // Boza Logram is the 7th built ground family (index 6); self-extends as more are built
-      for (let i = 0; i < 600; i += 1) {
-        const slotType = readVar(vm, 'slot-type');
-        const slotState = readVar(vm, 'slot-state');
-        for (let s = 0; s < 16; s += 1) { slotType[s] = 0; slotState[s] = 0; }
-        step(vm, 1);
-        const cursor = readVar(vm, 'debug-ground-index');
-        cursors.add(cursor);
-        if (cursor > maxCursor) maxCursor = cursor;
-        const type = readVar(vm, 'slot-type');
-        for (let s = 0; s < 16; s += 1) if (type[s] !== 0) anyGround = true;
-        // Complete: every residue 0..max collected (contiguous) and reached the last built family (>= 6).
-        if (cursors.size === maxCursor + 1 && maxCursor >= LAST) break;
-      }
-      keyUp(vm, 'g');
-      const contiguous = cursors.size === maxCursor + 1;
-      return { distinctCursors: cursors.size, maxCursor, contiguous, anyGround };
-    },
-    assert(obs) {
-      assert.equal(obs.anyGround, true, 'holding the debug ground key stamps a ground family into the band');
-      assert.ok(obs.contiguous, `the debug ground cursor steps +1 with no skips (residues 0..${obs.maxCursor} with no gaps); saw ${obs.distinctCursors} distinct`);
-      assert.ok(
-        obs.maxCursor >= 6,
-        `the debug ground cycle self-extends through every built ground family (residues 0..6: Barra, Zolbak, Garu Barra, Logram, Derota, Garu Derota, Boza Logram); reached ${obs.maxCursor}`,
-      );
-    },
-    // Empty `debug ground spawn` so the key never stamps or advances → `debug ground index` stays 0 →
-    // maxCursor == 0 and no ground ever appears (the schedule is suppressed) → both the self-extension
-    // (>= 6) and the anyGround assertions bite (normal play never touches the cursor, so nothing masks it).
-    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug ground spawn'),
-  },
-  {
-    key: 'debug-ground-key-isolates-normal-enemies',
-    behavior:
-      'While the temporary debug ground key (G) is held it isolates the ground family under test (parity with the T aerial key): the normal flying-formation stream is suppressed — the formation-wave count is pinned at 0 and the flying band is cleared every tick — so no normal enemies enter the screen and the operator can focus on the ground family alone (tracked for removal, #119)',
-    playtestStep: 4,
-    async drive(vm) {
-      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // The operator's report: holding G still let normal flying waves pour in. The fix makes the G proc
-      // suppress the flying stream every tick it is held (game_director.py install_debug_ground_spawn: zero
-      // `formation count`, clear the flying band) so the spawner below it brings in nothing. Prove it by
-      // holding G through a long window in which normal play WOULD spawn flying enemies — the T-key scenario
-      // (debug-key-cycles-families) measures every flying type appearing within ~80 settling steps with no key
-      // held — and asserting the flying band NEVER populates. We clear the GROUND band each frame only so the
-      // debug tool keeps cycling; that never drives the flying spawner (only the schedule/spawner does, and G
-      // pins its count to 0). Deliberately NO suppressGroundSpawns: the normal stream must stay live so the
-      // negative (which strips the suppression) actually spawns and the assertion can bite.
-      keyDown(vm, 'g');
-      let anyFlying = false;
-      for (let i = 0; i < 140; i += 1) {
-        const slotType = readVar(vm, 'slot-type');
-        const slotState = readVar(vm, 'slot-state');
-        for (let s = 0; s < 16; s += 1) { slotType[s] = 0; slotState[s] = 0; }
-        step(vm, 1);
-        const type = readVar(vm, 'slot-type');
-        if (FLYING_SLOT_INDICES.some((s) => type[s] !== 0)) anyFlying = true;
-      }
-      const formationCount = readVar(vm, 'formation-count');
-      keyUp(vm, 'g');
-      return { anyFlying, formationCount };
-    },
-    assert(obs) {
-      assert.equal(
-        obs.anyFlying,
-        false,
-        'while G is held no normal flying enemy ever enters the flying band (the normal stream is isolated)',
-      );
-      assert.equal(
-        obs.formationCount,
-        0,
-        'while G is held the formation-wave count is pinned at 0 so the flying spawner brings in nothing',
-      );
-    },
-    // Empty `debug ground spawn` so the flying-stream suppression that lives inside it (the formation-count
-    // zero + flying-band clear) is gone → the normal schedule spawns flying formations again within the
-    // window → anyFlying becomes true → the isolation assertion bites. Normal play never suppresses the
-    // stream, so nothing masks the mutation.
-    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug ground spawn'),
-  },
-  {
-    key: 'debug-pause-key-freezes-and-resumes-the-walk',
-    behavior:
-      'The temporary debug pause key (P) is a freeze/resume TOGGLE: a tap freezes the whole tick so the walk stops advancing (letting the operator screenshot a ground-enemy issue), and a second tap resumes it (tracked for removal, #119)',
-    playtestStep: 4,
-    async drive(vm) {
-      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      step(vm, 1); // warm the walk live once so `tick` is advancing
-      // `tick` advances only inside ADVANCE_SLOTS, which runs only while NOT paused (game_director.py wraps
-      // the whole walk-loop body in `if debug paused == 0`, with the pause toggle running first and OUTSIDE
-      // that gate). So a frozen `tick` == a frozen screen. P is a rising-edge TAP toggle, so tapKey (one down
-      // pump, one up pump) flips it exactly once.
-      tapKey(vm, 'p'); // first tap -> paused
-      const paused = readVar(vm, 'debug-paused');
-      const tickAtPause = readVar(vm, 'tick');
-      step(vm, 5); // P no longer held; the walk must stay frozen across every pump
-      const tickWhilePaused = readVar(vm, 'tick');
-      tapKey(vm, 'p'); // second tap -> resume
-      const resumed = readVar(vm, 'debug-paused');
-      step(vm, 3);
-      const tickAfterResume = readVar(vm, 'tick');
-      return { paused, tickAtPause, tickWhilePaused, resumed, tickAfterResume };
-    },
-    assert(obs) {
-      assert.equal(obs.paused, 1, 'a tap of P engages the freeze (debug paused == 1)');
-      assert.equal(
-        obs.tickWhilePaused,
-        obs.tickAtPause,
-        'while frozen the walk does not advance (tick is held across the paused pumps)',
-      );
-      assert.equal(obs.resumed, 0, 'a second tap of P releases the freeze (debug paused == 0)');
-      assert.ok(
-        obs.tickAfterResume > obs.tickAtPause,
-        'after the resume tap the walk advances again (tick climbs)',
-      );
-    },
-    // Empty `debug pause toggle` so a P tap never flips `debug paused` → it stays 0 → the walk runs through
-    // the "paused" pumps → tick advances while we expect it frozen → the freeze assertion bites. (The resume
-    // path is vacuously fine because the walk was never frozen; the freeze assertion is the one that catches.)
-    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug pause toggle'),
   },
   {
     key: 'blaster-kills-toroid-and-scores',
@@ -9203,94 +8956,6 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.removeClearGraphicEffects(p, 'ground'),
   },
   {
-    // BOSS-01 / andor.lifecycle (#94): the LIVE debug-key summon path (install_debug_ground_spawn) — the one
-    // path the operator actually drives. Every OTHER boss scenario above FREEZES the walk and calls the update
-    // procs by hand, so none of them exercised the debug key's arm/dismiss handler. That gap let a same-tick
-    // self-dismiss ship: the original dismiss read the master slot AFTER the arm stamped it and set the end flag
-    // on the very press that summoned the boss, so the master tore the composite down at START_X before it could
-    // descend — "Andor never shows up; the ground enemies just start over" (operator playtest, 2026-09-27). The
-    // fix gates the dismiss on a FRESH press (rising edge of `debug ground key held`) AND a boss already present
-    // at the start of the tick. This scenario drives the real key end-to-end: HOLD G to summon and hold (the end
-    // flag must stay 0 while held), then RELEASE + a fresh press to dismiss (end flag set -> master retreats off
-    // the top -> composite freed). It is the regression net the frozen-walk scenarios could not be.
-    key: 'boss-summoned-and-dismissed-by-debug-key',
-    behavior:
-      "Holding the debug ground key (G) with the family cursor on the Andor entry ARMS all 15 composite parts and the invisible master, which then descends from off the top edge while the key stays held — the end flag stays 0, so the boss is NOT self-dismissed on the press that summoned it; releasing G and pressing it again (a fresh rising edge, boss present) sets the end flag, and the master retreats off the top and frees every boss slot",
-    playtestStep: 8,
-    async drive(vm) {
-      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // Suppress the scheduled ground stream and clear the live band so the ONLY ground object that can appear is
-      // the debug key's, then park the family cursor on the Andor entry (last in DEBUG_GROUND_FAMILIES) so the
-      // next fresh, field-empty spawn arms the boss.
-      suppressGroundSpawns(vm);
-      clearGroundBand(vm);
-      const ANDOR_FAMILY_INDEX = 16; // index of (ANDOR_MASTER_TYPE, 'andor') in DEBUG_GROUND_FAMILIES
-      writeVar(vm, 'debug-ground-index', ANDOR_FAMILY_INDEX);
-      const masterJs = ANDOR.BASE_SLOT + 15 - 1; // Scratch slot 16 -> JS index 15
-      const armedCount = () => {
-        const t = readVar(vm, 'slot-type');
-        let n = 0;
-        for (let s = 0; s <= 15; s += 1) {
-          const x = t[s];
-          if ((x >= 0x41 && x <= 0x4b) || (x >= 0x4f && x <= 0x52)) n += 1;
-        }
-        return n;
-      };
-      // SUMMON: hold G. The first field-empty tick arms the composite; subsequent held ticks let the master
-      // descend. Sample the end flag across several held pumps -> it must never be raised while held.
-      keyDown(vm, 'g');
-      step(vm, 1);
-      const armedFirst = armedCount();
-      const masterFirst = readVar(vm, 'slot-type')[masterJs];
-      const endHeld = [readVar(vm, 'andor-genesis-end-flag')];
-      for (let i = 0; i < 3; i += 1) {
-        step(vm, 1);
-        endHeld.push(readVar(vm, 'andor-genesis-end-flag'));
-      }
-      const armedHeld = armedCount();
-      const masterHeld = readVar(vm, 'slot-type')[masterJs];
-      const xHeld = readVar(vm, 'andor-master-x');
-      // DISMISS: release, then a fresh press. The rising edge with the boss present raises the end flag; the
-      // master then retreats off the top and frees every boss slot.
-      keyUp(vm, 'g');
-      step(vm, 1);
-      keyDown(vm, 'g');
-      let endRaised = false;
-      let tornDown = false;
-      for (let i = 0; i < 12 && !tornDown; i += 1) {
-        step(vm, 1);
-        if (readVar(vm, 'andor-genesis-end-flag') === 1) endRaised = true;
-        if (armedCount() === 0) tornDown = true;
-      }
-      keyUp(vm, 'g');
-      return { armedFirst, masterFirst, armedHeld, masterHeld, xHeld, endHeld, endRaised, tornDown };
-    },
-    assert(obs) {
-      // Summoned: all 15 parts armed, the invisible master typed at Scratch slot 16.
-      assert.equal(obs.armedFirst, 15, 'holding G on the Andor cursor arms all 15 composite parts');
-      assert.equal(obs.masterFirst, ANDOR.MASTER_TYPE, 'the invisible master is typed at Scratch slot 16');
-      // NOT self-dismissed while held: the end flag stays 0 across every held pump — the biting check for the
-      // shipped same-tick self-dismiss bug.
-      for (const e of obs.endHeld) {
-        assert.equal(e, 0, 'the end flag is NOT raised while G is held (no same-tick self-dismiss)');
-      }
-      // Still up and descending after the held pumps (moved off START_X toward the hold row).
-      assert.equal(obs.armedHeld, 15, 'the composite stays armed while G is held (not torn down)');
-      assert.equal(obs.masterHeld, ANDOR.MASTER_TYPE, 'the master stays present while G is held');
-      assert.ok(
-        obs.xHeld > ANDOR.START_X,
-        `the master descends from START_X while held (x=${obs.xHeld} > ${ANDOR.START_X})`,
-      );
-      // Dismissed by a fresh press: the end flag is raised and the whole composite is freed.
-      assert.ok(obs.endRaised, 'a fresh G press with the boss present raises the end flag (dismiss)');
-      assert.ok(obs.tornDown, 'after the dismiss the master retreats off the top and frees every boss slot');
-    },
-    // Reproduce the shipped bug: flip the rising-edge guard from `debug ground key held == 0` to `== 1`, so a
-    // HELD key (held is set to 1 each tick) fires the dismiss every tick -> the boss is self-dismissed on the
-    // press that summons it and torn down before it can hold -> the "armed while held" / "end stays 0" checks bite.
-    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'debug ground key held', 0, 1),
-  },
-  {
     // BOSS-02 / andor.defenses (#95): the four gun ports fire on the SHARED periodic gate under the boss fire
     // mask captured at arm (update andor part -> fire permission gate, gated on SLOT_ACTIVE, xevious_main.68k
     // 5533/5584/5635/5686 -> chk_timer_fire_bullet_reinit_timer 4999-5010), and the NON-contiguous mask 47
@@ -9877,90 +9542,6 @@ export const SCENARIOS = [
     // Empty the master update: the master slot is never tracked onto the core cell, so it stays off-cell and the
     // detector never awards its stale value -> the double-award (4,200) assertion bites.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update andor master'),
-  },
-  {
-    // BOSS-02/03 debug-summon band protection (operator playtest fix, 2026-09-28: "it retreated in pieces").
-    // A debug-G-summoned Andor Genesis drops into whatever area is live, whose schedule may still have pending
-    // add_ground_object / add_domogram records. The original suppression withheld those stamps only while the G
-    // key was HELD -- but the boss DEPARTS after G is released (its dismiss is a fresh G press, then the master
-    // retreats over the following G-up ticks), so the resuming schedule stamps landed in the boss's own ground
-    // slots (Scratch 2..16) and overwrote the composite one plate at a time as it retreated. The fix ALSO
-    // withholds every schedule ground stamp while the invisible master occupies its slot (andor_boss_present),
-    // for the boss's whole lifecycle -- hold through retreat through teardown. Real play is untouched: in areas
-    // 4/9/14 every add_ground_object record fires above andor_genesis_start and has scrolled off before the boss
-    // arms, so no schedule ground stamp is ever live while the master is present. Driven LIVE (real step() runs
-    // _consume_schedule): with the boss present the area-1 schedule scrolls a stream of ground records past the
-    // band and NONE lands in it; without the guard (negative) the band is cannibalized from the fourth step on.
-    key: 'andor-debug-summon-band-not-cannibalized-by-schedule',
-    behavior:
-      'While a debug-summoned Andor Genesis master occupies its slot, the area schedule\'s own ground stamps (add_ground_object / add_domogram) are withheld from the entire ground band -- so the part slots freed as the composite retreats are never refilled by a foreign ground type. Modelled mid-retreat (master present, its 14 part slots already empty): the live area-1 schedule tries to place its own ground records into those free slots every tick and the boss-present guard withholds every one; with the guard removed the schedule floods the band within a few ticks',
-    playtestStep: 8,
-    async drive(vm) {
-      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      const put = slotPutter(vm);
-      clearGroundBand(vm);
-      // Model the boss mid-retreat: the invisible master still occupies its slot (the boss-present guard is live
-      // for the WHOLE lifecycle -- descend, hold, retreat, teardown) while its 14 part slots have already been
-      // freed. Leaving those part slots EMPTY is the deterministic form of the shipped bug's trigger: the live
-      // area-1 schedule below has real ground records to place and free band slots to place them in, so with the
-      // guard OFF it floods the band every tick (58 stray stamps from step 3 in area 1). Holding (end flag 0)
-      // keeps the master stable so the guard stays live across every step -- no pacing-fragile wait for a
-      // retreating slot to free at exactly the tick a schedule record happens to fire (that race passed under one
-      // node runtime and not another; this models the same guarantee without depending on the schedule's timing).
-      put('slot-type', ANDOR.BASE_SLOT + 14, ANDOR.MASTER_TYPE); // master at JS 15 (arcade obj 15)
-      put('slot-state', ANDOR.BASE_SLOT + 14, 1);
-      writeVar(vm, 'andor-master-x', ANDOR.HOLD_X);
-      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y);
-      writeVar(vm, 'andor-genesis-end-flag', 0);
-      writeVar(vm, 'andor-destroyed-timer', 0);
-      const andorTypes = new Set([...ANDOR_PART_TYPES_BY_OBJ, 0x4c]); // the 15 part types + Bragza (0x4C)
-      const foreign = [];
-      let masterPresentEachStep = true;
-      // Keep the passive craft alive + isolate the ground band from the port bullets: clear the enemy-bullet
-      // (JS 39-57) and flying (JS 58-63) bands each frame before stepping.
-      const clearTraffic = () => {
-        const t = readVar(vm, 'slot-type');
-        const s = readVar(vm, 'slot-state');
-        for (let js = 39; js <= 63; js += 1) {
-          t[js] = 0;
-          s[js] = 0;
-        }
-      };
-      // Step live so the schedule genuinely runs beneath the boss; watch the 14 freed part slots (JS 1-14) for any
-      // foreign ground type, and confirm the master held its own slot every tick (so the guard was live throughout).
-      for (let k = 0; k < 20; k += 1) {
-        clearTraffic();
-        step(vm, 1);
-        const t = readVar(vm, 'slot-type');
-        if (t[ANDOR.BASE_SLOT + 14] !== ANDOR.MASTER_TYPE) masterPresentEachStep = false;
-        for (let n = 1; n <= 14; n += 1) {
-          const v = t[ANDOR.BASE_SLOT + n - 1];
-          if (v !== 0 && !andorTypes.has(v)) foreign.push({ step: k, obj: n, type: v });
-        }
-      }
-      const stateAfter = readVar(vm, 'game-director-state');
-      return { foreign, stateAfter, masterPresentEachStep };
-    },
-    assert(obs) {
-      assert.equal(
-        obs.stateAfter,
-        'playing',
-        'the game keeps playing while the boss holds, so the live schedule genuinely ran under it',
-      );
-      assert.ok(
-        obs.masterPresentEachStep,
-        'the invisible master occupied its slot on every step, so the boss-present guard was live throughout -- the band stayed clean because the guard withheld the schedule, not because the master had already gone',
-      );
-      assert.deepEqual(
-        obs.foreign,
-        [],
-        'no foreign (non-Andor) ground type ever lands in the freed part band while the master is present -- the schedule\'s own ground stamps are withheld for the boss\'s whole lifecycle',
-      );
-    },
-    // Disable the boss-present guard (item(16) of (slot type) == 75 -> == 999) so the schedule's ground stamps
-    // resume into the band while the master is present -> the freed band is flooded -> the band-clean (and
-    // master-held) assertions bite.
-    negativeMutation: (p) => mutate.changeListItemEqualsOperand(p, 'Stage', 'slot type', 75, 999),
   },
   {
     // SEC-02 / secrets.bonus-flag (#91): reveal-scores-once + fly-over collection (proximity, not a weapon).

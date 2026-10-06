@@ -36,6 +36,15 @@ SOLVALOU_EPOCH_ID = "solvalou-director-entry-epoch"
 DEATH_EPOCH_ID = "solv-death-director-entry-epoch"
 # CAB-05's death-sprite explosion counter, retired by #158 (the walk's `dying tick` drives the frames now).
 RETIRED_DEATH_EXPLOSION_TICK_ID = "solv-death-explosion-tick"
+# The T/G/P playtest keys' Stage variables, retired with the keys in slice 21 (#119). Generation preserves
+# unowned Stage variables, so these are dropped by name (idempotent).
+RETIRED_PLAYTEST_KEY_VARIABLE_IDS = (
+    "debug-spawn-index",
+    "debug-ground-index",
+    "debug-ground-key-held",
+    "debug-paused",
+    "debug-pause-key-held",
+)
 # Weapon state cleared by the reset scopes (never director `game state`). The bomb
 # guard is a Stage variable so the one-bomb poller and the in-flight bomb — which may
 # run on different threads — share it; the reload counter is blaster-local.
@@ -480,7 +489,6 @@ SCORE_ID = "eco-score"
 HIGH_SCORE_ID = "eco-high-score"
 # The resolved point value to add — a MACHINERY seam (parallel to `hit slot`): set by the
 # collision detector the enemy slice (slice 8) wires, so it is not write-forbidden to sprites.
-# The debug scoring fixture below sets it this slice so the economy is operator-verifiable.
 AWARD_VALUE_ID = "eco-award-value"
 SCORE_CAP = 9_999_990  # set_score_to_9999990: three BCD bytes, x10 implicit
 # next_bonus_life_Ks is a four-digit BCD thousands word; its add (check_for_extra_solvalou 163-171)
@@ -1086,8 +1094,7 @@ UPDATE_GROBDA_PROCCODE = "update grobda"
 # once bombed (HIT) it craters PERSISTENTLY like the Barra (handle_bomb_explosion) via `advance ground`.
 UPDATE_DOMOGRAM_PROCCODE = "update domogram"
 # BOSS-01 (andor.lifecycle #94): the invisible Andor Genesis master's per-tick update. In THIS commit it is
-# minimal — it consumes the end flag and tears the whole composite down (so the debug summon can be dismissed
-# and the non-scrolling boss never jams the ground-key cycle). The full descend->hold->leave state machine and
+# minimal — it consumes the end flag and tears the whole composite down. The full descend->hold->leave state machine and
 # the per-part alignment come in a later commit; this proc is the seam they extend.
 UPDATE_ANDOR_MASTER_PROCCODE = "update andor master"
 # BOSS-01 (andor.lifecycle #94): the shared per-part alignment update (C3). One proc for all 14 visible parts
@@ -1152,40 +1159,9 @@ UPDATE_BACURA_PROCCODE = "update bacura"  # AIR-11: craft-touch death + drift do
 PUMP_BACURA_PROCCODE = "pump bacura"  # AIR-11: per-tick inc->init live spawn pump (main_fn_5 + main_fn_3)
 FIRE_GATE_PROCCODE = "fire permission gate"  # the shared, family-agnostic periodic-fire gate
 CULL_SLOT_PROCCODE = "cull slot"
-# DEBUG (temporary playtest tool, tracked for removal): while the debug key is held, force the flying
-# formation to a Terrazi wave so a family that only spawns at high AI levels is reachable for a
-# playtest. Amends the locked control mapping (needs guardrail-ack). See docs/spec/core-game-systems.md
-# and the removal issue #119 (remove once all aerial families are built and playtested).
-DEBUG_SPAWN_PROCCODE = "debug spawn wave"
-DEBUG_SPAWN_KEY = "t"  # T = cycle a single debug enemy through the buildable families
-DEBUG_SPAWN_INDEX_ID = "debug-spawn-index"  # which DEBUG_SPAWN_FAMILIES entry T brings in next
-# DEBUG (temporary playtest tool, tracked for removal #119): the GROUND analog of the T key. Ground objects
-# only enter by scrolling up from the area schedule — a narrow, one-shot, non-repeatable window — so a
-# specific ground family (a five-slot Boza composite especially) is impractical to reach for a bomb test.
-# While the debug ground key (G) is held, CYCLE the built ground families one at a time into the ground band
-# from the top of the field, so each family's whole lifecycle (enter, scroll, fire if it fires, bomb ->
-# crater/score) is reachable in isolation and repeatably. Like the T key it self-gates on the key (normal
-# play untouched) and amends the LOCKED control mapping (docs/spec/core-game-systems.md; needs guardrail-ack).
-DEBUG_GROUND_SPAWN_PROCCODE = "debug ground spawn"
-DEBUG_GROUND_KEY = "g"  # G = cycle a single debug GROUND family (G for ground; freed when the death fixtures went)
-DEBUG_GROUND_INDEX_ID = "debug-ground-index"  # which DEBUG_GROUND_FAMILIES entry G brings in next
-DEBUG_GROUND_KEY_HELD_ID = "debug-ground-key-held"  # previous-tick G sample; the boss DISMISS fires only on a
-# fresh press (rising edge), never on the same press that armed the boss (see install_debug_ground_spawn)
-DEBUG_GROUND_SPRITE_Y = 112  # lateral column for the debug spawn — a central, common column (schedule median)
-# DEBUG (temporary playtest tool, tracked for removal #119): a PAUSE/FREEZE key so the operator can stop the
-# action on a single frame and take an OS screenshot of a ground- or air-enemy issue to report. It is a TOGGLE
-# on the P key (tap to freeze, tap again to resume) — deliberately a toggle, not a hold, so the operator has
-# both hands free to drive the OS screenshot tool while the frame is held. While paused, the whole per-tick
-# walk (input, area clock, object walk, bomb, spawns, death) is skipped; only the toggle's own rising-edge
-# detector runs each tick, so a second tap resumes. It amends the LOCKED control mapping (needs guardrail-ack)
-# and is never pressed by the headless harness (`debug paused` defaults 0), so automated play is unaffected.
-DEBUG_PAUSE_PROCCODE = "debug pause toggle"
-DEBUG_PAUSE_KEY = "p"  # P = pause/resume (toggle) for the playtest
-PAUSED_ID = "debug-paused"  # 1 while frozen, 0 while running; the walk body is gated on == 0
-PAUSE_KEY_HELD_ID = "debug-pause-key-held"  # previous-tick P sample, for a rising-edge (tap) toggle
 # CAB-02 (cabinet.attract-credits, slice 17): coins and the one-player credit gate. There is no coin-box
-# hardware in this port, so a keyboard key inserts a coin (a port necessity, like the debug keys stand in
-# for hardware the port lacks) — an amendment to the LOCKED control mapping (see core-game-systems.md).
+# hardware in this port, so a keyboard key inserts a coin (a port necessity: it stands in for hardware the
+# port lacks) — an amendment to the LOCKED control mapping (see core-game-systems.md).
 # The arcade reads coins + start together in a NAMCO-chip replacement routine
 # (`src/xevious_sub.68k` `sub_fn_4__handle_credits_and_start` 171-206); the port splits that into an
 # always-on C-key coin poll (here) and the credit-gated Space start (the title->ready hat). The arcade
@@ -1556,59 +1532,6 @@ _PLAYER_CONTEXT_BY_LIVE_ID = {
 }
 OTHER_SCORE_ID = _PLAYER_CONTEXT_BY_LIVE_ID[SCORE_ID]
 OTHER_CRAFT_ID = _PLAYER_CONTEXT_BY_LIVE_ID[LIVES_ID]
-# The flying-type-table offset whose 6-slot run is all Terrazi (0x11) — the game's own Terrazi
-# formation offset (formation_table indices 110-115); the spawner reads positions offset+1..offset+6.
-TERRAZI_FORMATION_OFFSET = 78
-# The flying-type-table offset whose 6-slot run is all Kapi (0x10) — code 16 sits at 0-based positions
-# 69-74 (object-types.json), the same six-wide derivation as the Terrazi offset. Used by the debug
-# spawner to force a Kapi wave.
-KAPI_FORMATION_OFFSET = 69
-# The flying-type-table offset whose 6-slot run is all Torkan (0x0F) — code 15 sits at 0-based positions
-# 25-30 (object-types.json), the same six-wide derivation as the Kapi/Terrazi offsets. The debug key
-# forces THIS all-Torkan run; the natural area-1 waves reach Torkan through the AI-level formation table
-# instead (other offsets), so a built Torkan still appears in normal area-1 play at standard difficulty
-# — not only via the debug key. See docs/mechanics/029 deviation 7 for the schedule trace.
-TORKAN_FORMATION_OFFSET = 25
-# The flying-type-table offsets whose runs select each Zoshi type (object-types.json 0-based starts):
-# rnd (0x0C) at 31-36 and top (0x0D) at 45-50 are full six-wide runs like the other families; bottom
-# (0x0E) has NO six-wide run (its longest is the three-wide 51-53), so its offset points at that run's
-# start. That shorter run is immaterial to the debug spawner, which forces `formation count` = 1 and so
-# reads only the run's first position; the natural area waves reach every Zoshi type through the AI-level
-# formation table (other offsets), independent of these debug offsets.
-ZOSHI_RND_FORMATION_OFFSET = 31
-ZOSHI_TOP_FORMATION_OFFSET = 45
-ZOSHI_BOTTOM_FORMATION_OFFSET = 51
-# The flying-type-table offsets for the two Jara types (object-types.json 0-based run starts): the
-# 0x55 shooter run is codes 13-18 and the 0x56 silent run is codes 19-24 (both full six-wide, like
-# the other families). The PAIR offset 18 straddles the boundary: its two-slot window reads codes[18]
-# = 0x55 then codes[19] = 0x56, so a debug spawn of COUNT 2 there brings in one shooter AND one
-# silent — the adjacent shooter+silent run the arcade wave data emits. Two independent craft-excluding
-# random-Y draws (one per spawn) put them at different rows, so they cross the proximity band at
-# different moments and peel opposite ways: the EMERGENT pair, made watchable on demand (see #74,
-# docs/mechanics/031). The natural area waves reach both types through the AI-level formation table.
-JARA_SHOOTER_FORMATION_OFFSET = 13
-JARA_SILENT_FORMATION_OFFSET = 19
-JARA_PAIR_FORMATION_OFFSET = 18
-# The flying-type-table offsets whose runs select each base Zakato variant (object-types.json 0-based run
-# starts): slow (0x12) at 54-56 and closeY (0x13) at 57-59 are three-wide runs; fast (0x14) at 60-65 is
-# six-wide; cont (0x15) at 110-113 is four-wide. The debug spawner forces `formation count` = 1, so only
-# the run's first position is read and the shorter runs are immaterial. NATURAL reachability differs by
-# variant: the area-1..16 formation waves DO reach fast (0x14, e.g. areas 4/9/14) and cont (0x15, areas
-# 9/14) through the AI-level formation table, so those two appear in normal play; slow (0x12) and closeY
-# (0x13) are NOT scheduled in any built area, so the debug key is the only way to see them until later
-# areas are wired (see docs/mechanics/034 for the schedule trace).
-ZAKATO_SLOW_FORMATION_OFFSET = 54
-ZAKATO_CLOSEY_FORMATION_OFFSET = 57
-ZAKATO_FAST_FORMATION_OFFSET = 60
-ZAKATO_CONT_FORMATION_OFFSET = 110
-# AIR-08 Brag Zakato: the flying-type-table runs whose first code selects each Brag variant
-# (object-types.json 0-based): rnd (0x16) is a four-wide run at 84-87, closeY (0x17) a four-wide run
-# at 88-91. The debug spawner forces `formation count` = 1, so only the run's first position is read.
-# NATURAL reachability is AI-level/formation-table dependent (set_flying_formation's signed offset is
-# an index into flying_enemy_offset_tbl, not a direct type-table offset), so the debug key is the
-# deterministic playtest lever, exactly as for the base slow/closeY variants.
-BRAG_ZAKATO_RND_FORMATION_OFFSET = 84
-BRAG_ZAKATO_CLOSEY_FORMATION_OFFSET = 88
 # The Terrazi family's fire-permission mask Stage var (set live by the area schedule's
 # `fire_mask_terrazi` record; one of FIRE_MASK_FAMILIES). Captured into `slot fire mask` at spawn.
 FIRE_MASK_TERRAZI_ID = "fire-mask-terrazi"
@@ -1756,13 +1679,6 @@ GIDDO_SPARIO_HIT_DURATION_FRAMES = 8  # burst runs 8 arcade frames, then the slo
 # velocity, moved by TICK_VELOCITY_SCALE). Velocity is unbounded, exactly as the arcade (no clamp).
 BRAG_SPARIO_ACCEL = 4  # raw velocity step per tick per axis (arcade +/-2/frame over 2 frames)
 BRAG_SPARIO_INIT_CODE = 0  # single body sprite; the arcade animates via ATTR flip, not CODE (3117-3119)
-# Giddo Spario's flying-type-table run (object-types.json 0-based): 0x08 is a six-wide run starting at
-# offset 39 (also 94/102/114). The debug spawner forces count 1 and reads only the run's first code, so
-# offset 39 gives the operator a solo Giddo on demand; natural area waves reach it through the AI-level
-# formation table. Brag Spario (0x09) is NOT in the type table at all — it is never a formation enemy;
-# it spawns only four-at-a-time from the Garu Zakato detonation (AIR-08, same PR), so it has no debug
-# formation entry and its in-play proof arrives with air.special-pairs.
-GIDDO_SPARIO_FORMATION_OFFSET = 39
 # AIR-08 Brag Zakato (Cracker) + Garu Zakato (Bullseye): the "special pairs" — the last of the Zakato
 # cluster. Two Brag variants teleport in exactly like the base Zakato (init_teleport, ~20-frame sparkle,
 # indestructible during it) but END their life with a terminal 5-bullet AIMED radiating FAN (two
@@ -1922,52 +1838,6 @@ SHEONITE_LOCK_COL_ID = "sheonite-lock-col"
 # start stamps the pair and clears the end-flag; end raises it. On/off flags, not a per-second pump.
 SHEONITE_START_HANDLER = "sheonite_start"
 SHEONITE_END_HANDLER = "sheonite_end"
-# DEBUG (tracked for removal, #119): the families the T key cycles through, one at a time — each a
-# (type, formation offset, spawn count) whose offset points the spawner at a run of that family and
-# whose count is how many to bring in as one group (almost always 1). T brings in the entry at `debug
-# spawn index`, then advances the index (mod len). The type element documents which family the offset
-# selects (the present check that keeps a group solo is family-agnostic). The final Jara entry is the
-# one exception to count 1: it spawns the shooter+silent PAIR (count 2 at the straddling offset 18) so
-# the operator can watch the emergent split — two Jara at different random Y peeling opposite ways.
-DEBUG_SPAWN_FAMILIES = (
-    (TERRAZI_TYPE, TERRAZI_FORMATION_OFFSET, 1),
-    (KAPI_TYPE, KAPI_FORMATION_OFFSET, 1),
-    (TORKAN_TYPE, TORKAN_FORMATION_OFFSET, 1),
-    (ZOSHI_TOP_TYPE, ZOSHI_TOP_FORMATION_OFFSET, 1),
-    (ZOSHI_BOTTOM_TYPE, ZOSHI_BOTTOM_FORMATION_OFFSET, 1),
-    (ZOSHI_RND_TYPE, ZOSHI_RND_FORMATION_OFFSET, 1),
-    (JARA_SHOOTER_TYPE, JARA_SHOOTER_FORMATION_OFFSET, 1),  # shooter solo
-    (JARA_SILENT_TYPE, JARA_SILENT_FORMATION_OFFSET, 1),  # silent solo
-    (JARA_SHOOTER_TYPE, JARA_PAIR_FORMATION_OFFSET, 2),  # emergent pair: one 0x55 + one 0x56
-    (GIDDO_SPARIO_TYPE, GIDDO_SPARIO_FORMATION_OFFSET, 1),  # solo Giddo Spario (fast aim-once flyby)
-    # The four base Zakato variants, one at a time. fast/cont also appear in natural area waves, but the
-    # T key gives the operator a solo of each variant on demand — and it is the ONLY way to see slow/closeY,
-    # which no built area schedules (see the ZAKATO_*_FORMATION_OFFSET note above).
-    (ZAKATO_SLOW_TYPE, ZAKATO_SLOW_FORMATION_OFFSET, 1),
-    (ZAKATO_CLOSEY_TYPE, ZAKATO_CLOSEY_FORMATION_OFFSET, 1),
-    (ZAKATO_FAST_TYPE, ZAKATO_FAST_FORMATION_OFFSET, 1),
-    (ZAKATO_CONT_TYPE, ZAKATO_CONT_FORMATION_OFFSET, 1),
-    # AIR-08: the two Brag Zakato variants spawn through the normal formation path (their type-table run
-    # first code selects them), one at a time.
-    (BRAG_ZAKATO_RND_TYPE, BRAG_ZAKATO_RND_FORMATION_OFFSET, 1),
-    (BRAG_ZAKATO_CLOSEY_TYPE, BRAG_ZAKATO_CLOSEY_FORMATION_OFFSET, 1),
-    # AIR-08: the Garu Zakato is NOT in the flying type table (its only arcade spawn is the area
-    # `add_object` schedule into obj 0x3B, areas 9/10/14 — `place pending object`). So it cannot come in
-    # through the formation spawner: its count is 0 (the spawner brings in nothing) and a dedicated
-    # direct-stamp branch in this proc stamps it into its own slot (GARU_ZAKATO_SLOT) instead. Offset is
-    # immaterial at count 0.
-    (GARU_ZAKATO_TYPE, 0, 0),
-    # AIR-11: the Bacura is not a flying-pool type at all — it lives in its own reserved band (17-32) and
-    # is spawned live by the area schedule. Like the Garu it has no formation-table run, so its count is 0
-    # (the formation spawner brings in nothing) and a dedicated direct-stamp branch stamps one slab into
-    # BACURA_SLOTS[0] instead. Offset is immaterial at count 0.
-    (BACURA_TYPE, 0, 0),
-    # AIR-09: the Sheonite is a schedule-spawned PAIR (sheonite_start/end), not a formation type, so its
-    # count is 0 and a dedicated direct-stamp branch stamps BOTH slots (right + left). The debug stamp also
-    # pre-arms the end-flag so the pair completes its lifecycle and self-culls (so holding T does not stall
-    # the cursor on an escort that would otherwise lock beside the craft forever). Keyed on the right type.
-    (RIGHT_SHEONITE_TYPE, 0, 0),
-)
 TOROID_PTS = 3  # 1-based value-table position of 30 points (init_toroid PTS byte 6)
 TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during the swing)
 
@@ -2035,10 +1905,6 @@ FIRE_MASK_ANDOR_ID = next(i for s, n, i in FIRE_MASK_FAMILIES if s == "andor_gen
 # special-cases it with a bit-exact reload (install_fire_permission_gate), and HANDLED_NON_CONTIGUOUS_FIRE_MASKS
 # below lists it so the generate-time guard passes.
 ANDOR_FIRE_MASK = 47
-# The mask the DEBUG ground key forces into the summoned ports (the live schedule sets the same value in areas
-# 4/9/14), so a hold-G playtest exercises the real non-contiguous cadence instead of the degenerate mask-0
-# fastest-fire a never-set var would give.
-ANDOR_GENESIS_DEBUG_FIRE_MASK = ANDOR_FIRE_MASK
 # The port's fixed initial fire countdown. Every port's handle_XX inits `_TIMER=1` ONCE at spawn (a plain 1, NOT
 # a masked-random draw — verified at the pin, xevious_main.68k:5513/5564/5615/5666); the MASK applies only to the
 # post-fire reload in the gate. So the arm seeds each port `slot fire timer = 1`.
@@ -2050,7 +1916,7 @@ ANDOR_PORT_FIRE_TIMER_INIT = 1
 # code from the andor block's NOT-USED range (arcade dispatch 0x4C..0x4E are `null_fn`, xevious_main.68k:6242-6244).
 ANDOR_BRAGZA_TYPE = 0x4C  # 76: port-synthetic; arcade-NOT-USED, disjoint from every real object type
 assert ANDOR_BRAGZA_TYPE not in ANDOR_PART_TYPES, "Bragza type must not collide with a real Andor part"
-# The schedule end record (C4) and the debug dismiss set this; the master's update proc tears the composite
+# The schedule end record (C4) sets this; the master's update proc tears the composite
 # down when it is set (mirrors andor_genesis_end_flag / remove_andor_genesis, xevious_sub.68k:569-572).
 ANDOR_GENESIS_END_FLAG_ID = "andor-genesis-end-flag"
 # The shared colour-cycle byte (cycle_andor_genesis_colour, xevious_main.68k:5758-5767): every visible part
@@ -2177,56 +2043,6 @@ DOMOGRAM_SPRITE_CODES = (0x3C, 0x3D, 0x3E, 0x3F, 0x3E, 0x3D)
 # (the anim timer only reaches (_TYPE>>2)<=5 once the same-tick fall-through decrements the freshly-set 24), so
 # they pad to the idle frame (ordinal 1). Derived from the source sprite table so the two never drift.
 DOMOGRAM_FRAME_ORDINALS = [c - 0x3C + 1 for c in DOMOGRAM_SPRITE_CODES] + [1, 1]
-# For the debug ground key: the vector a debug-spawned Domogram holds (no scripted path in the debug tool). Index
-# 8 = (dX 8 scroll-matched depth, dY 8 lateral) — it traverses the field at the terrain rate while drifting
-# laterally, so the operator has a long, bombable pass to watch it fire. See _debug_ground_seed.
-DOMOGRAM_DEBUG_VECTOR_INDEX = 8
-# DEBUG (tracked for removal #119): the families the ground debug key (G) cycles through, one at a time, in
-# roadmap order. Each entry is (object type, seed shape); the shape picks the shared seed builder
-# (_ground_seed_single / _garu / _garu_derota / _boza) so the debug spawn is the scheduled spawn's exact shape.
-# Extended as later ground families are built (Grobda, Domogram in slice 13's second build PR) — no new key.
-DEBUG_GROUND_FAMILIES = (
-    (BARRA_TYPE, "single"),
-    # SEC-01 (ground.sol-tower #90): a single hidden Sol Tower the operator can bomb to reveal (scores),
-    # watch rise through its 7 steps, then bomb again to destroy (scores again) for the persistent crater.
-    # Seeds through the single-slot shape, exactly like the scheduled add_ground_object spawn.
-    (SOL_TOWER_TYPE, "single"),
-    (ZOLBAK_TYPE, "single"),
-    (GARU_BARRA_TYPE, "garu"),
-    (LOGRAM_TYPE, "single"),
-    (DEROTA_TYPE, "single"),
-    (GARU_DEROTA_TYPE, "garu_derota"),
-    (BOZA_LOGRAM_TYPE, "boza"),
-    # GND-06 (ground.grobda #88): a representative spread the operator can cycle to verify the tank family —
-    # a stationary land tank, a crosshair-reactive mover, a bomb-targeted darter (the 10,000 tier), and a
-    # water variant that vanishes on a hit. Every Grobda uses the single-slot seed shape.
-    (0x2C, "single"),  # stationary (land)
-    (0x36, "single"),  # moves forward once in the crosshairs (land)
-    (0x39, "single"),  # darts back when targeted, then stops (land)
-    (0x3C, "single"),  # darts forward when targeted, re-arms — 10,000 pts (land)
-    (0x40, "single"),  # forward, darts back when targeted (water, vanishes on a hit)
-    # GND-07 (ground.domogram #89): a single Domogram the operator can watch cross the field and fire one aimed
-    # shot per animation, then bomb for the land crater. The debug seed uses an empty path + a representative
-    # diagonal vector (the scheduled path decode is exercised by the round-trip golden and the harness).
-    (DOMOGRAM_TYPE, "domogram"),
-    # SEC-02 (secrets.bonus-flag #91): a single hidden Bonus Flag the operator can bomb to reveal (+1,000) and
-    # then collect by flying the craft over it (extra craft or 10,000 by the cabinet DIP). Its own "flag" shape
-    # draws the lateral column from the SHARED random stream (gen_rnd_spriteY), unlike the fixed-column single
-    # shape, so the seeded-placement behaviour is exercised. Its natural spawn is the add_object schedule (areas
-    # 1/3/5/7, `place pending object`), which seeds through the same shared `_ground_seed_flag`.
-    (BONUS_FLAG_TYPE, "flag"),
-    # SEC-03 (secrets.hidden-credit #93): a single hidden Credit the operator can bomb to score the minimum 10
-    # points and watch the ~2 s original two-line credit overlay appear, then time out. It is an invisible
-    # single-slot add_ground_object (arcade _CODE=0), so it seeds through the shared single-slot shape exactly
-    # like the scheduled spawn — only its point value and hidden phase differ, seeded inside _ground_seed_single.
-    (EASTER_EGG_TYPE, "single"),
-    # BOSS-01 (andor.lifecycle #94): the Andor Genesis composite. Keyed on the invisible master type; the "andor"
-    # shape bulk-arms all 15 parts across the band. Unlike every other family the boss holds position (it does not
-    # scroll off), so the ground key's field-empty gate would jam on it forever — the debug handler adds a DISMISS
-    # branch (press G while the boss is present to set the end flag; the master proc then tears it down next tick,
-    # freeing the field for the next family). Reachable through the existing key, no new key, no locked-spec edit.
-    (ANDOR_MASTER_TYPE, "andor"),
-)
 BARRA_PTS = 6  # 1-based value-table position of 100 points (handle_1E_Barra _PTS=15 -> object_value_tbl)
 ZOLBAK_PTS = 8  # 1-based value-table position of 200 points (handle_1F_Zolbak _PTS=21)
 LOGRAM_PTS = 10  # 1-based value-table position of 300 points (handle_logram_init _PTS=27)
@@ -2779,8 +2595,7 @@ ANDOR_DESTROYED_COLOUR_FINAL = 6     # after the flash timer, the shared colour 
 # rounding of the arcade's 3, documented in the C5 mechanics record).
 ANDOR_DESTROYED_FLASH_TICKS = 1
 ANDOR_LATERAL_Y = 0x0e80  # 3712; the master's fixed `_Y` (sub_2_fn_20__andor_genesis_start, xevious_sub.68k:553)
-# — a boss constant hardcoded by the arm, NOT a schedule column. 3712/32 = 116 px, ~ the debug central column
-# (DEBUG_GROUND_SPRITE_Y 112). Both the scheduled arm and the debug summon use it (the boss lateral is intrinsic).
+# — a boss constant hardcoded by the arm, NOT a schedule column (3712/32 = 116 px; the boss lateral is intrinsic).
 # The Scratch `color` graphic effect this drives (boss_arm) scales the arcade palette index (2..6) up into a
 # visible hue sweep — a single Scratch color effect cannot reproduce the arcade's palette swaps, so this is a
 # port interpretation (recorded in the C5 mechanics record; tunable at playtest).
@@ -8443,7 +8258,7 @@ def install_garu_zakato_detonate(blocks: Blocks) -> None:
     # velocities from brag_spario_dX/dY_tbl; then FREE the
     # Garu slot (the arcade clr TYPE/STATE — no self-burst, no score). The final restore of `slot index`
     # to the Garu's own slot both frees it AND restores the advance-slots loop cursor. CONTRACT: the Garu
-    # occupies GARU_ZAKATO_SLOT (0x3B — the add_object schedule and the debug key both place it there), so
+    # occupies GARU_ZAKATO_SLOT (0x3B — where the add_object schedule places it), so
     # its 4 successors are the arcade's 0x3C-0x3F, the last 4 flying slots. DEVIATION: the 4 Sparios update once on the tick they spawn (the walk reaches their
     # higher slot indices later this same pass) — a one-tick head start, recorded in the mechanics note.
     definition = _install_warp_proc(blocks, GARU_ZAKATO_DETONATE_PROCCODE)
@@ -8602,9 +8417,8 @@ def install_update_andor_master(blocks: Blocks) -> None:
     #     whole composite (free every part slot type+state, mirroring remove_andor_genesis) and consume the flag.
     # The phase is derived from position + flag — no explicit phase var — so the ground band-isolation invariant
     # holds. (Source checks the SCHEDULE end flag only once HOLD is reached; here a flag set mid-descent reverses
-    # immediately. That edge never occurs in play — the schedule fires the end flag long after the hold, and the
-    # debug summon's dismiss fires only on a FRESH G press once the boss is already up (well after it has reached
-    # the hold row), never on the summoning press — so the derived-phase form is faithful in every reachable case.)
+    # immediately. That edge never occurs in play — the schedule fires the end flag long after the hold — so the
+    # derived-phase form is faithful in every reachable case.)
     # The CORE-BOMB destruction path is different and NOT an approximation: handle_4B's FIRST instruction, before the
     # descend/hold branch, tests the core (obj 0x0E) for `_STATE==3` every tick (xevious_main.68k:5387-5388), so
     # bombing the core mid-descent legitimately ends the boss. The port's core-destruction check (C4) likewise runs
@@ -8645,7 +8459,7 @@ def install_update_andor_master(blocks: Blocks) -> None:
         [],  # at HOLD: fixed screen position, no scroll
     )
     # TEAR DOWN (remove_andor_genesis, 5440-5443 + the parts' own removal): free every part slot type+state the
-    # belt-and-suspenders way `cull slot` and the debug band-clear do, then consume the end flag AND the destroyed
+    # belt-and-suspenders way `cull slot` does, then consume the end flag AND the destroyed
     # clock. TYPE-AWARE (F1): a slot that now holds the fly-up Bragza (the converted core, ANDOR_BRAGZA_TYPE) is
     # NOT cleared — the arcade's remove_andor_genesis frees only the master, the armor self-clears, the ports have
     # exploded, and the converted core is the independent Bragza, which must keep flying. A builder (fresh blocks
@@ -9084,7 +8898,7 @@ def install_place_pending_object(blocks: Blocks) -> None:
     # refill, so a placed single owns its slot before `spawn flying enemies` looks for empty ones (the arcade object
     # pass runs before main_fn_4). Re-checks the slot is still empty — nothing between the schedule and here
     # fills 0x00/0x3A/0x3B in real play, but a placement must never clobber a live object. Each type runs its
-    # EXISTING init (the same proc the formation spawner or the debug key calls), so the first update is the next
+    # EXISTING init (the same proc the formation spawner calls), so the first update is the next
     # tick, as the arcade's init runs the frame after pickup. The register is cleared every time.
     _check_add_object_records()
     definition = _install_warp_proc(blocks, PLACE_PENDING_OBJECT_PROCCODE)
@@ -9120,333 +8934,10 @@ def install_place_pending_object(blocks: Blocks) -> None:
     blocks.chain(definition, [gate])
 
 
-def install_debug_spawn_wave(blocks: Blocks) -> None:
-    # ENGINE-TODO(#119): remove this temporary debug spawn key (and its locked-spec control-mapping
-    # amendment) once every aerial family is built and playtested, so reachability no longer needs it.
-    # DEBUG / TEMPORARY (tracked for removal): while the debug key (T) is held, CYCLE through the
-    # buildable enemy families ONE AT A TIME so the operator can watch each enemy's full lifecycle
-    # (approach, fire, its family's manoeuvre, exit) instead of a confusing six-at-once wave. Each tick:
-    # point the formation at the CURRENT family's offset (`debug spawn index` selects the DEBUG_SPAWN_
-    # FAMILIES entry); if any flying enemy is already on the field, set the spawn count to 0 (let that
-    # one live out its life alone); otherwise clear the flying slots, set the count to 1 so the shared
-    # spawner (which runs right after this in the walk) brings in exactly one fresh enemy from the top,
-    # and ADVANCE the index (mod len) so the next fresh spawn is the next family — holding T walks
-    # Terrazi -> Kapi -> (wrap). It self-gates on the key, so normal play is untouched when the key is
-    # not held. Reachability recurs for every future aerial family (each just appends one DEBUG_SPAWN_
-    # FAMILIES entry, no new key), so this stays a dev tool until they are all built and playtested, then
-    # it is removed (it amends the locked control mapping — see core-game-systems.md and issue #119).
-    definition = _install_warp_proc(blocks, DEBUG_SPAWN_PROCCODE)
-    gate = blocks.add("control_if")
-    pressed = blocks.key_pressed(gate, DEBUG_SPAWN_KEY)
-    blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
-
-    # Point the formation at the current family's offset (an if-chain over DEBUG_SPAWN_FAMILIES keyed by
-    # `debug spawn index`). Set every tick, before the spawner runs; the fresh-spawn branch below then
-    # advances the index for next time.
-    set_offset = [
-        blocks.if_reporter(
-            blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(index)),
-            [blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(offset))],
-        )
-        for index, (_family_type, offset, _count) in enumerate(DEBUG_SPAWN_FAMILIES)
-    ]
-    # The current family's group size, set only on a fresh spawn (below): 1 for every solo family, 2
-    # for the Jara pair entry (offset 18, whose two-slot window brings in one shooter + one silent).
-    set_count = [
-        blocks.if_reporter(
-            blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(index)),
-            [blocks.set_var("formation count", FORMATION_COUNT_ID, number(count))],
-        )
-        for index, (_family_type, _offset, count) in enumerate(DEBUG_SPAWN_FAMILIES)
-    ]
-
-    # Any flying enemy already on the field?  (OR over the six flying slots — family-agnostic, so the
-    # spawned enemy, whatever family, lives out its life before the next one arrives.)
-    present = None
-    for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
-        occupied = blocks.op_not(
-            blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)), number(0))
-        )
-        present = occupied if present is None else blocks.op_or(present, occupied)
-    # AIR-11: also wait on the Bacura band (17-32). The Bacura lives in its OWN band, not the flying pool,
-    # so without this the cursor would flash past the Bacura entry while a slab is still drifting (the same
-    # family of trap as the PR-A homer stall). A live Bacura is invulnerable and self-culls off the bottom,
-    # so this is a BOUNDED wait, not a permanent stall. The `clear` step below deliberately does NOT wipe
-    # the band — the slab is left to drift off on its own (which also lets the operator exercise the #77
-    # shot-bounce on it in isolation before it leaves).
-    for slot in range(BACURA_SLOTS[0], BACURA_SLOTS[1] + 1):
-        occupied = blocks.op_not(
-            blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)), number(0))
-        )
-        present = occupied if present is None else blocks.op_or(present, occupied)
-
-    branch = blocks.add("control_if_else")
-    blocks.blocks[branch]["inputs"]["CONDITION"] = [2, present]
-    blocks.blocks[present]["parent"] = branch
-    # An enemy is alive: spawn nothing more this tick (keep it a solo).
-    blocks.substack(branch, [blocks.set_var("formation count", FORMATION_COUNT_ID, number(0))])
-    # Field empty: clear the flying slots and bring in this family's group (count 1, or 2 for the Jara
-    # pair) from the top, then advance the family index. Free each slot the same way `cull slot` does —
-    # BOTH `slot type` and `slot state` to 0 — so no slot is left type-empty but state-stale (a
-    # half-freed slot the walk could misread). This wipes any live flying enemy on the field with no
-    # explosion or score, which is the intended cost of the one-at-a-time isolation (the operator sees a
-    # clean single enemy or pair); the playtest checklist notes it so it does not read as a bug.
-    clear = [
-        block
-        for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1)
-        for block in (
-            blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0)),
-            blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
-        )
-    ]
-    advance_index = blocks.set_var_expr(
-        "debug spawn index",
-        DEBUG_SPAWN_INDEX_ID,
-        blocks.op_mod(
-            blocks.op_add(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(1)),
-            number(len(DEBUG_SPAWN_FAMILIES)),
-        ),
-    )
-    # AIR-08: the Garu Zakato is not in the flying type table, so the formation spawner (which runs right
-    # after this) cannot bring it in — its DEBUG_SPAWN_FAMILIES count is 0. Stamp it directly into its own
-    # slot instead (GARU_ZAKATO_SLOT, 0x3B, where the add_object schedule places it; INIT_GARU_ZAKATO draws its
-    # own random lateral column), so holding T shows a solo Garu that flies straight and detonates. Guarded on
-    # its family index; runs on the fresh spawn only, before the index advances.
-    garu_debug_index = next(
-        index for index, (family_type, _offset, _count) in enumerate(DEBUG_SPAWN_FAMILIES) if family_type == GARU_ZAKATO_TYPE
-    )
-    garu_stamp = blocks.if_reporter(
-        blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(garu_debug_index)),
-        [
-            blocks.set_var("slot index", SLOT_INDEX_ID, number(GARU_ZAKATO_SLOT)),
-            blocks.call_proc(INIT_GARU_ZAKATO_PROCCODE, warp=True),
-        ],
-    )
-    # AIR-11: the Bacura is likewise not in the flying type table (it has its own band, spawned live by the
-    # area schedule), so its DEBUG_SPAWN_FAMILIES count is 0 and the formation spawner brings it in nothing.
-    # Stamp one slab directly into the FIRST BACURA-band slot instead (INIT_BACURA draws its own random
-    # lateral column and enters at the top), so holding T shows a solo slab that drifts down and can't be
-    # destroyed. Guarded on its family index; runs on the fresh spawn only, before the index advances.
-    bacura_debug_index = next(
-        index for index, (family_type, _offset, _count) in enumerate(DEBUG_SPAWN_FAMILIES) if family_type == BACURA_TYPE
-    )
-    bacura_stamp = blocks.if_reporter(
-        blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(bacura_debug_index)),
-        [
-            blocks.set_var("slot index", SLOT_INDEX_ID, number(BACURA_SLOTS[0])),
-            blocks.call_proc(INIT_BACURA_PROCCODE, warp=True),
-        ],
-    )
-    # AIR-09: the Sheonite is a schedule-spawned PAIR, not a formation type, so its count is 0 and the
-    # formation spawner brings it in nothing. Stamp BOTH halves directly (right into 0x3f, left into 0x3e)
-    # — the same slots the natural sheonite_start uses — so holding T shows the escort pair on demand. The
-    # debug stamp ALSO pre-arms the end-flag (=1) so the pair completes its whole lifecycle and self-culls
-    # (dock -> right retreats off the top, left vanishes); without it the pair would lock beside the craft
-    # forever and stall the T cursor (the PR-A homer-stall trap). The `clear` step above has already wiped
-    # the flying slots this fresh-spawn tick, so the two stamps land in freshly-empty slots. Guarded on the
-    # right family index; runs on the fresh spawn only, before the index advances.
-    sheonite_debug_index = next(
-        index for index, (family_type, _offset, _count) in enumerate(DEBUG_SPAWN_FAMILIES) if family_type == RIGHT_SHEONITE_TYPE
-    )
-    sheonite_stamp = blocks.if_reporter(
-        blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(sheonite_debug_index)),
-        [
-            *_stamp_sheonite(blocks, SHEONITE_RIGHT_SLOT, RIGHT_SHEONITE_TYPE, -1),
-            *_stamp_sheonite(blocks, SHEONITE_LEFT_SLOT, LEFT_SHEONITE_TYPE, +1),
-            blocks.set_var("sheonite end flag", SHEONITE_END_FLAG_ID, number(1)),
-        ],
-    )
-    blocks.substack(
-        branch,
-        [*clear, *set_count, garu_stamp, bacura_stamp, sheonite_stamp, advance_index],
-        name="SUBSTACK2",
-    )
-    blocks.substack(gate, [*set_offset, branch])
-    blocks.chain(definition, [gate])
-
-
-def install_debug_ground_spawn(blocks: Blocks) -> None:
-    # ENGINE-TODO(#119): remove this temporary debug ground key (and its locked-spec control-mapping amendment)
-    # once every ground family is built and playtested, so reachability no longer needs it.
-    # DEBUG / TEMPORARY (tracked for removal): the ground analog of the T key. Ground objects only enter by
-    # scrolling up from the area schedule — a narrow, one-shot, non-repeatable window — so a specific ground
-    # family (a five-slot Boza composite especially) is impractical to reach for a bomb test. While the debug
-    # ground key (G) is held, CYCLE through the built ground families ONE AT A TIME: each tick, if any ground
-    # slot is occupied, stamp nothing (let the current family scroll down / crater / cull); otherwise clear the
-    # ground band, stamp the CURRENT family (`debug ground index` selects the DEBUG_GROUND_FAMILIES entry) at the
-    # band base in a central lateral column via the SHARED seed builders, and ADVANCE the index (mod len) so the
-    # next fresh spawn is the next family — holding G walks Barra -> ... -> Boza -> (wrap). It self-gates on the
-    # key, so normal play is untouched when G is not held. Called in the walk AFTER the ground walk (so the
-    # field-empty gate reads the fully-settled post-cull band) and outside the ADVANCE_AREA -> ADVANCE_SLOTS
-    # pair the area clock requires stay adjacent; a fresh stamp scrolls on the NEXT walk (an immaterial one-tick
-    # delay for a top-of-field spawn) and then travels toward the craft to be bombed. It defers to any scheduled
-    # ground object (only fills a genuinely empty field). Ground objects always scroll down and cull off the
-    # field (a crater too), so the "let it live" wait is BOUNDED — the cursor never stalls. Reachability recurs for every
-    # future ground family (each just appends one DEBUG_GROUND_FAMILIES entry, no new key), so this stays a dev
-    # tool until they are all built and playtested, then it is removed (it amends the locked control mapping —
-    # see core-game-systems.md and issue #119).
-    definition = _install_warp_proc(blocks, DEBUG_GROUND_SPAWN_PROCCODE)
-    gate = blocks.add("control_if_else")
-    pressed = blocks.key_pressed(gate, DEBUG_GROUND_KEY)
-    blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
-
-    # Any ground object already on the field? (OR over the whole ground band — family-agnostic, so whatever
-    # family is spawned lives out its scroll/crater before the next arrives. A bombed family keeps a non-zero
-    # `slot type` while its crater scrolls, so it too holds the cursor until it culls — a bounded wait.)
-    present = None
-    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
-        occupied = blocks.op_not(
-            blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)), number(0))
-        )
-        present = occupied if present is None else blocks.op_or(present, occupied)
-    field_empty = blocks.op_not(present)
-
-    # Field empty: free the whole ground band the same way `cull slot` does — BOTH `slot type` and `slot state`
-    # to 0 — so no slot is left type-empty but state-stale (a half-freed slot the walk could misread). The
-    # field-empty gate means nothing live is wiped; this is belt-and-suspenders against a stale state byte,
-    # matching the T-key tool.
-    clear = [
-        block
-        for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1)
-        for block in (
-            blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0)),
-            blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
-        )
-    ]
-    # One stamp branch per family, guarded on the current index; exactly one runs on a fresh spawn. Each uses the
-    # SAME seed builders as the schedule ingest (via _debug_ground_seed), so the debug spawn is faithful.
-    stamps = [
-        blocks.if_reporter(
-            blocks.op_eq(variable("debug ground index", DEBUG_GROUND_INDEX_ID), number(index)),
-            _debug_ground_seed(blocks, family_type, shape),
-        )
-        for index, (family_type, shape) in enumerate(DEBUG_GROUND_FAMILIES)
-    ]
-    advance_index = blocks.set_var_expr(
-        "debug ground index",
-        DEBUG_GROUND_INDEX_ID,
-        blocks.op_mod(
-            blocks.op_add(variable("debug ground index", DEBUG_GROUND_INDEX_ID), number(1)),
-            number(len(DEBUG_GROUND_FAMILIES)),
-        ),
-    )
-    spawn = blocks.if_reporter(field_empty, [*clear, *stamps, advance_index])
-    # ISOLATION (parity with the T key): while G is held, suppress the normal enemy stream so ONLY the debug
-    # ground family is on screen — otherwise the operator cannot focus on the family under test. Three sources
-    # feed the field, so all three are stopped while G is held: (a) the flying formation spawner — zero
-    # `formation count` (SPAWN_FLYING runs right after this in the walk and brings in nothing) and clear the
-    # flying band so any in-flight wave vanishes; (b) the Bacura pump — its walk call is gated on G-not-held
-    # (see the tick loop), and the band is cleared here so any drifting slab goes; (c) the area schedule's own
-    # add_ground_object stamps — gated on G-not-held in `_consume_schedule`, so the debug family is the sole
-    # ground object. The clears drop live enemies with no explosion or score, the intended cost of the
-    # one-at-a-time isolation (the checklist notes it so it does not read as a bug). All of this is scoped to
-    # the key-held gate, so normal play is untouched when G is not held.
-    suppress_air = [
-        blocks.set_var("formation count", FORMATION_COUNT_ID, number(0)),
-        *[
-            block
-            for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1)
-            for block in (
-                blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0)),
-                blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
-            )
-        ],
-        *[
-            block
-            for slot in range(BACURA_SLOTS[0], BACURA_SLOTS[1] + 1)
-            for block in (
-                blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0)),
-                blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
-            )
-        ],
-    ]
-    # BOSS-01 (andor.lifecycle #94): the Andor boss holds position and never scrolls off, so — unlike every other
-    # debug family, whose scroll-off the field-empty gate simply waits out — it would jam the cursor forever. Give
-    # it an explicit DISMISS, but one that does NOT fire on the same press that armed it (that self-dismiss left the
-    # boss torn down off-screen before it could descend — it never appeared). Two conditions:
-    #   (a) a FRESH G press (rising edge) — `debug ground key held` was 0 last tick — so simply HOLDING G lets the
-    #       composite descend and hold instead of being dismissed every tick; and
-    #   (b) the boss was ALREADY up at the START of this tick — its master slot is read HERE, before `spawn` runs,
-    #       so the press that arms the boss (master slot still 0 at this point) reads not-present and does not dismiss.
-    # It therefore runs BEFORE `spawn` in the pressed branch. A second G press (after a release) tears the composite
-    # down so the master proc frees the field and the cursor can advance to the next family.
-    master_slot = GROUND_SLOTS[0] + len(ANDOR_GENESIS_DATA)
-    rising = blocks.op_eq(
-        variable("debug ground key held", DEBUG_GROUND_KEY_HELD_ID), number(0)
-    )
-    boss_present = blocks.op_eq(
-        blocks.list_item("slot type", SLOT_TYPE_ID, number(master_slot)),
-        number(ANDOR_MASTER_TYPE),
-    )
-    dismiss = blocks.if_reporter(
-        blocks.op_and(rising, boss_present),
-        [blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(1))],
-    )
-    # Pressed branch: dismiss FIRST (it must read the pre-spawn master slot), then record that G is held so the next
-    # held tick is not a rising edge, then suppress the normal stream and run the field-empty spawn/cycle.
-    blocks.substack(
-        gate,
-        [
-            dismiss,
-            blocks.set_var("debug ground key held", DEBUG_GROUND_KEY_HELD_ID, number(1)),
-            *suppress_air,
-            spawn,
-        ],
-    )
-    # Released branch: clear the held sample so the next press registers as a fresh rising edge (a deliberate dismiss).
-    blocks.substack(
-        gate,
-        [blocks.set_var("debug ground key held", DEBUG_GROUND_KEY_HELD_ID, number(0))],
-        name="SUBSTACK2",
-    )
-    blocks.chain(definition, [gate])
-
-
-def install_debug_pause(blocks: Blocks) -> None:
-    # ENGINE-TODO(#119): remove this temporary debug pause key (and its locked-spec control-mapping amendment)
-    # once the ground families are built and playtested, alongside the T and G debug keys.
-    # DEBUG / TEMPORARY (tracked for removal): a freeze/resume TOGGLE on the pause key (P) so the operator can
-    # stop the screen and take a screenshot of a ground-enemy issue without playing on. It is a TAP toggle, not
-    # hold-to-pause, so both hands are free for an OS screenshot: each tick this proc samples P and flips
-    # `debug paused` on the RISING edge only (P down now, up last tick), tracked via `debug pause key held`.
-    # `debug paused` gates the walk-loop body (the body runs only while it is 0), and this toggle proc is called
-    # in the walk OUTSIDE that gate so a second tap can always resume. Both new vars default to 0, and the
-    # harness never presses P, so `debug paused` stays 0 there and the build stays deterministic. It amends the
-    # locked control mapping — see core-game-systems.md and issue #119.
-    definition = _install_warp_proc(blocks, DEBUG_PAUSE_PROCCODE)
-    gate = blocks.add("control_if_else")
-    pressed = blocks.key_pressed(gate, DEBUG_PAUSE_KEY)
-    blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
-
-    # P held down this tick: on the RISING edge only (held == 0 last tick) flip paused (1 - paused), then
-    # remember P is down so holding it does not re-toggle every tick.
-    rising = blocks.if_reporter(
-        blocks.op_eq(variable("debug pause key held", PAUSE_KEY_HELD_ID), number(0)),
-        [
-            blocks.set_var_expr(
-                "debug paused",
-                PAUSED_ID,
-                blocks.op_sub(number(1), variable("debug paused", PAUSED_ID)),
-            )
-        ],
-    )
-    blocks.substack(
-        gate,
-        [rising, blocks.set_var("debug pause key held", PAUSE_KEY_HELD_ID, number(1))],
-    )
-    # P up: clear the held sample so the next press is a fresh rising edge.
-    blocks.substack(
-        gate,
-        [blocks.set_var("debug pause key held", PAUSE_KEY_HELD_ID, number(0))],
-        name="SUBSTACK2",
-    )
-    blocks.chain(definition, [gate])
-
-
 def install_coin_poll(blocks: Blocks) -> None:
     # CAB-02: the coin poll — a warp custom block called every tick by the Stage's always-on coin loop (a
     # green-flag `forever`, unlike the walk which only runs while `playing`; coins must register in every
-    # state — title, attract-scores, and the demo). Mirrors the P-key debug toggle's rising-edge pattern:
+    # state — title, attract-scores, and the demo). A rising-edge sample:
     # each tick sample C; on the RISING edge only (`coin key held` == 0 last tick) add one credit, then
     # remember C is down so holding it does not add a credit every tick. Faithful to
     # `sub_fn_4__handle_credits_and_start` (`src/xevious_sub.68k` 171-206): the credit is added only while
@@ -9676,7 +9167,7 @@ def _enter_area_top(blocks: Blocks) -> list[str]:
         blocks.set_var("bacura inc cnt", BACURA_INC_CNT_ID, number(0)),
         blocks.set_var("one second cntr", ONE_SECOND_CNTR_ID, number(0)),
         # AIR-09: clear the Sheonite end-flag at each area entry so a raised flag never bleeds across an
-        # area boundary or a respawn (the natural sheonite_start also clears it, but a debug pre-arm or a
+        # area boundary or a respawn (the natural sheonite_start also clears it, but a
         # partial run must not carry a stuck "time to leave" into the next area).
         blocks.set_var("sheonite end flag", SHEONITE_END_FLAG_ID, number(0)),
         # AREA-01 (slice 20): the strips' state for the re-topped clock, and the strips draw it.
@@ -9735,14 +9226,11 @@ def _select_formation(blocks: Blocks, index_value: Any) -> list[str]:
 
 
 # GND ground-object seed builders — the block sequences that stamp a ground family into its band slot(s).
-# Shared by the schedule ingest (`_consume_schedule`, driven by the area-schedule cursor) and the debug
-# ground key (`install_debug_ground_spawn`, driven by fixed debug constants), so both paths seed a family
-# identically. Each takes zero-arg callables that return a FRESH reporter per call — a reporter attaches to
+# Used by the schedule ingest (`_consume_schedule`, driven by the area-schedule cursor). Each takes zero-arg
+# callables that return a FRESH reporter per call — a reporter attaches to
 # only one parent, so reusing one would silently steal it (the same rule the cursor accessors follow):
 # `slot`/`slot_next`/`slot_at(i)` give the ground-band target slot(s), `type_val` the object type, and
-# `sprite_y` the lateral sprite row. The schedule ingest passes its cursor accessors; the debug key passes
-# `lambda`s over debug constants. Emitted block order matches the former inline lists, so the schedule
-# path's generated blocks are unchanged by this extraction.
+# `sprite_y` the lateral sprite row. The schedule ingest passes its cursor accessors.
 def _ground_seed_single(blocks: Blocks, *, slot, type_val, sprite_y) -> list[str]:
     # GND (area.ground-dispatch #69): a single-slot ground object (Barra 0x1E, Zolbak 0x1F, Logram 0x26,
     # Derota 0x1B). Mirrors sub_2_fn_1__ground_object ($073F: it sets only _TYPE and _Y, leaving _X = 0 at
@@ -10152,15 +9640,14 @@ def _ground_seed_andor(blocks: Blocks, *, base: int, port_fire_mask) -> list[str
     #     bomb sweep skips them for free; still aligned/drawn (dispatch + render key off `slot type`).
     #   * core         -> ACTIVE + `slot pts` = ANDOR_CORE_PTS (4,000 on a direct bomb).
     #   * gun ports    -> ACTIVE + `slot pts` = ANDOR_PORT_PTS (1,000 on a direct bomb) + `slot fire mask`
-    #     (from the caller's factory: the live stage var, or the debug forced 47) + `slot fire timer` = the
+    #     (from the caller's factory: the live schedule-set stage var) + `slot fire timer` = the
     #     arcade's fixed init 1 (the mask drives the post-fire reload, not this seed).
     #   * master       -> ACTIVE, `slot pts` DELIBERATELY LEFT UN-SEEDED so it carries the previous tenant's
     #     value: the arcade never inits obj-15's `_PTS`, so a bomb on the co-located core awards the core's 4,000
     #     AND the master's stale leftover (the documented shell-slot bug — see C3, which tracks the master onto
     #     the core each tick so the bomb lands on it).
-    # `port_fire_mask()` returns a FRESH reporter per call (one per port). Shared by the debug key and the live
-    # schedule opcode, so the debug arm is the scheduled arm's exact shape (the lateral is a boss constant, not a
-    # schedule column); only the fire-mask SOURCE differs (debug forces 47, live reads the schedule-set var).
+    # `port_fire_mask()` returns a FRESH reporter per call (one per port). The lateral is a boss constant, not a
+    # schedule column.
     seed: list[str] = [
         blocks.set_var("andor master x", ANDOR_MASTER_X_ID, number(ANDOR_START_X)),
         blocks.set_var("andor master y", ANDOR_MASTER_Y_ID, number(ANDOR_LATERAL_Y)),
@@ -10225,7 +9712,7 @@ def _ground_seed_flag(blocks: Blocks) -> list[str]:
     # finished when either caller runs) through the SAME bounded random-lateral draw the flying spawners use, then
     # — ONLY if the draw accepted a column (`spawn found`) — stamp the slot ACTIVE + HIDDEN phase, x=0 (top of
     # field, scrolled DOWN by `advance ground`), the 1,000-pt value the shared detector scores at reveal, timer
-    # zeroed. Shared by the add_object placement (AREA-02 #166, the flag's only natural spawn) and the debug G key;
+    # zeroed. Called by the add_object placement (AREA-02 #166, the flag's only natural spawn);
     # an exhausted draw (SPAWN_DRAW_ATTEMPTS, the recorded bounded-draw port necessity) stamps nothing.
     reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=True)
     return [
@@ -10243,78 +9730,6 @@ def _ground_seed_flag(blocks: Blocks) -> list[str]:
             ],
         ),
     ]
-
-
-def _debug_ground_seed(blocks: Blocks, family_type: int, shape: str) -> list[str]:
-    # DEBUG (tracked for removal #119): build ONE ground family's spawn from fixed debug constants — the band
-    # base slot and a central lateral column (DEBUG_GROUND_SPRITE_Y) — through the SAME shared seed builders the
-    # area schedule uses, so a debug-stamped family is the scheduled family's exact shape (only the slot and
-    # column are fixed, not the behaviour). `shape` picks the builder. Each factory returns a FRESH reporter per
-    # call (a reporter attaches to one parent only — reuse silently steals it), exactly as the cursor accessors do.
-    base = GROUND_SLOTS[0]
-    type_val = lambda: number(family_type)
-    sprite_y = lambda: number(DEBUG_GROUND_SPRITE_Y)
-    if shape == "single":
-        return _ground_seed_single(
-            blocks, slot=lambda: number(base), type_val=type_val, sprite_y=sprite_y
-        )
-    if shape == "garu":
-        return _ground_seed_garu(
-            blocks,
-            slot=lambda: number(base),
-            slot_next=lambda: number(base + 1),
-            type_val=type_val,
-            sprite_y=sprite_y,
-        )
-    if shape == "garu_derota":
-        return _ground_seed_garu_derota(
-            blocks,
-            slot=lambda: number(base),
-            slot_next=lambda: number(base + 1),
-            type_val=type_val,
-            sprite_y=sprite_y,
-        )
-    if shape == "boza":
-        return _ground_seed_boza(
-            blocks, slot_at=lambda i: number(base + i), type_val=type_val, sprite_y=sprite_y
-        )
-    if shape == "domogram":
-        # GND-07 (#89): the debug spawn cannot carry a scripted path (the path columns live only in the schedule),
-        # so seed with an EMPTY path (count 0 -> the follower holds its vector forever) and directly seed a
-        # representative diagonal vector (DOMOGRAM_DEBUG_VECTOR_INDEX: scroll-matched depth + lateral drift), so
-        # the operator sees a Domogram cross the field and fire without needing the full schedule path decode.
-        return _ground_seed_domogram(
-            blocks,
-            slot=lambda: number(base),
-            sprite_y=sprite_y,
-            path_start=lambda: number(0),
-            path_count=lambda: number(0),
-        ) + [
-            blocks.list_replace(
-                "slot dx", SLOT_DX_ID, number(base),
-                number(DOMOGRAM_VECTOR_DX[DOMOGRAM_DEBUG_VECTOR_INDEX]),
-            ),
-            blocks.list_replace(
-                "slot dy", SLOT_DY_ID, number(base),
-                number(DOMOGRAM_VECTOR_DY[DOMOGRAM_DEBUG_VECTOR_INDEX]),
-            ),
-        ]
-    if shape == "flag":
-        return [
-            blocks.set_var("slot index", SLOT_INDEX_ID, number(base)),
-            *_ground_seed_flag(blocks),
-        ]
-    if shape == "andor":
-        # BOSS-01 (andor.lifecycle #94): the whole 15-part composite arms at once into the ground band, so unlike
-        # the other shapes it ignores the fixed single-slot column and stamps slots base+1..base+15 directly.
-        # BOSS-02 (#95): under a fresh hold-G no `fire_mask_andor_genesis` schedule record has run, so the stage
-        # var would be 0 and give a degenerate fastest-fire. Force the ports to the real arcade mask 47 here so
-        # the operator's live playtest exercises the true (non-contiguous) fire cadence; live area schedules set
-        # 47 or 15 per area from the var, and the static harness pins the numeric correctness regardless.
-        return _ground_seed_andor(
-            blocks, base=base, port_fire_mask=lambda: number(ANDOR_GENESIS_DEBUG_FIRE_MASK)
-        )
-    raise ValueError(f"unknown debug ground seed shape: {shape!r}")
 
 
 def _consume_schedule(blocks: Blocks) -> list[str]:
@@ -10368,19 +9783,6 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         # The next ground-band slot (N+1): a Garu Barra occupies two adjacent slots — the base at N and
         # its destructible node at N+1 (handle_20_Garu_Barra stamps a5 and a5+_OBJSIZE).
         return blocks.op_add(number(GROUND_SLOTS[0] + 1), ground_slot_at_cursor())
-
-    def andor_boss_present() -> str:
-        # DEBUG-summon guard (fresh reporter per call — single-parent rule). True while the Andor
-        # Genesis is on the field: its invisible master occupies Scratch slot GROUND_SLOTS[0] +
-        # len(ANDOR_GENESIS_DATA) for the boss's WHOLE lifecycle (armed by the seed, cleared only by the
-        # master's teardown). Used to keep schedule ground stamps off the boss band across a debug summon
-        # even after G is released — see the add_ground/add_domogram gates below.
-        return blocks.op_eq(
-            blocks.list_item(
-                "slot type", SLOT_TYPE_ID, number(GROUND_SLOTS[0] + len(ANDOR_GENESIS_DATA))
-            ),
-            number(ANDOR_MASTER_TYPE),
-        )
 
     end = blocks.list_item(
         "area schedule end", AREA_SCHEDULE_END_ID, variable("area number", AREA_NUMBER_ID)
@@ -10520,9 +9922,8 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         [blocks.set_var_expr("ground stop firing row", GROUND_STOP_FIRING_ROW_ID, arg_at_cursor())],
     )
     # GND (area.ground-dispatch #69) + GND-01..05: stamp a ground family into its band slot(s) via the
-    # shared seed builders (_ground_seed_single / _garu / _garu_derota / _boza). The schedule ingest drives
-    # them with the cursor accessors; the debug ground key (install_debug_ground_spawn) drives the same
-    # builders with fixed debug constants. Only families built to date stamp; every other add_ground_object
+    # shared seed builders (_ground_seed_single / _garu / _garu_derota / _boza), driven by the cursor
+    # accessors. Only families built to date stamp; every other add_ground_object
     # record advances the cursor WITHOUT stamping a slot, so no unbuilt family renders a live-but-inert object.
     spawn_ground = _ground_seed_single(
         blocks,
@@ -10608,26 +10009,8 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         path_start=ground_path_start_at_cursor,
         path_count=ground_path_count_at_cursor,
     )
-    # DEBUG / TEMPORARY (tracked for removal, #119): while the G ground-debug key is held, do NOT stamp the
-    # schedule's own add_ground_object records — the debug key owns the ground band so the operator sees one
-    # built family at a time, isolated from normal play. The cursor still advances at the loop's end regardless,
-    # so no schedule record is skipped or replayed; only the stamp is withheld while G is held. When G is not
-    # held this is exactly the original condition, so normal play is untouched.
-    # BOSS-01/02/03 (#94/#95/#96): the stamp is ALSO withheld while a debug-summoned Andor Genesis is present.
-    # The G-held gate alone protected the boss band only while G was down, but the boss DEPARTS after G is
-    # released (its debug dismiss fires on a fresh G press, then the master retreats over the following ticks
-    # with G up); the resuming schedule ground stamps would then land in the boss's own slots and tear the
-    # retreating composite apart plate by plate. Keying the suppression on the master's presence keeps the band
-    # protected across the whole summon (descend/hold/retreat/teardown). Real play is untouched: in areas
-    # 4/9/14 every add_ground_object record fires ABOVE andor_genesis_start and has scrolled off before the boss
-    # arms, so no schedule ground stamp is ever live while the master is present — this is a no-op there.
     add_ground_branch = blocks.if_reporter(
-        blocks.op_and(
-            blocks.op_eq(handler_at_cursor(), text(ADD_GROUND_OBJECT_HANDLER)),
-            blocks.op_not(
-                blocks.op_or(blocks.key_pressed(loop, DEBUG_GROUND_KEY), andor_boss_present())
-            ),
-        ),
+        blocks.op_eq(handler_at_cursor(), text(ADD_GROUND_OBJECT_HANDLER)),
         [
             blocks.if_reporter(is_single_slot_ground, spawn_ground),
             blocks.if_reporter(
@@ -10641,24 +10024,15 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             ),
         ],
     )
-    # GND-07 (ground.domogram #89): the Domogram's own placement handler. Like add_ground_object it is withheld
-    # while the G ground-debug key owns the band (the cursor still advances at the loop end, so no record is
-    # skipped or replayed). The ground-type guard mirrors every other ground family: a real Domogram record
-    # always carries type 0x2E, so this never changes normal play, but it keeps the Domogram spawn keyed off
-    # `area-schedule-ground-type` exactly like the static/Grobda/Garu/Boza branches — so a test (or a debug
-    # aid) that zeroes that column to isolate a scenario suppresses the Domogram uniformly with the rest.
-    # The Domogram stamp is withheld under the same two conditions as add_ground_object above: while G owns the
-    # band, and while a debug-summoned Andor master is present (so a retreating boss is not cannibalised by a
-    # resuming Domogram record after G is released). No-op in real play for the same reason.
+    # GND-07 (ground.domogram #89): the Domogram's own placement handler. The ground-type guard mirrors every
+    # other ground family: a real Domogram record always carries type 0x2E, so this never changes normal play,
+    # but it keeps the Domogram spawn keyed off `area-schedule-ground-type` exactly like the
+    # static/Grobda/Garu/Boza branches — so a test that zeroes that column to isolate a scenario suppresses the
+    # Domogram uniformly with the rest.
     add_domogram_branch = blocks.if_reporter(
         blocks.op_and(
-            blocks.op_and(
-                blocks.op_eq(handler_at_cursor(), text(ADD_DOMOGRAM_HANDLER)),
-                blocks.op_eq(ground_type_at_cursor(), number(DOMOGRAM_TYPE)),
-            ),
-            blocks.op_not(
-                blocks.op_or(blocks.key_pressed(loop, DEBUG_GROUND_KEY), andor_boss_present())
-            ),
+            blocks.op_eq(handler_at_cursor(), text(ADD_DOMOGRAM_HANDLER)),
+            blocks.op_eq(ground_type_at_cursor(), number(DOMOGRAM_TYPE)),
         ),
         spawn_domogram,
     )
@@ -10697,22 +10071,14 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         blocks.op_eq(handler_at_cursor(), text(SHEONITE_END_HANDLER)),
         [blocks.set_var("sheonite end flag", SHEONITE_END_FLAG_ID, number(1))],
     )
-    # BOSS-01 (andor.lifecycle #94): andor_genesis_start (op 76) arms the 15-part composite via the SAME
-    # bulk-arm the debug summon uses (_ground_seed_andor: master anchor at the arcade start, 15 slots stamped,
-    # end flag cleared), and andor_genesis_end (op 77) raises the end flag so the master retreats and tears the
-    # composite down. These records already live in the loaded area schedules (areas 4/9/14 — area 14 has two
-    # start/end pairs); wiring the branches makes real areas spawn and depart the boss. Like add_ground_object
-    # and add_domogram, the arm is withheld while the G ground-debug key owns the band (the cursor still advances
-    # at the loop end, so no record is skipped or replayed) — so a debug-summoned boss is never fought over by a
-    # live schedule record. The end flag write is likewise withheld while G is held, so a live end record cannot
-    # tear down the operator's debug boss mid-inspection; the two stay in sync. BOSS-02/03 (#95/#96): the arm now
-    # also seeds the combat state (armor immunity, core/port score indices, the ports' fire mask + timer) via the
-    # shared `_ground_seed_andor`; the only debug-vs-live difference is the fire-mask SOURCE (see that builder).
+    # BOSS-01 (andor.lifecycle #94): andor_genesis_start (op 76) arms the 15-part composite via the bulk-arm
+    # `_ground_seed_andor` (master anchor at the arcade start, 15 slots stamped, end flag cleared), and
+    # andor_genesis_end (op 77) raises the end flag so the master retreats and tears the composite down. These
+    # records live in the loaded area schedules (areas 4/9/14 — area 14 has two start/end pairs). BOSS-02/03
+    # (#95/#96): the arm also seeds the combat state (armor immunity, core/port score indices, the ports' fire
+    # mask from the schedule-set var + timer).
     andor_start_branch = blocks.if_reporter(
-        blocks.op_and(
-            blocks.op_eq(handler_at_cursor(), text(ANDOR_GENESIS_START_HANDLER)),
-            blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
-        ),
+        blocks.op_eq(handler_at_cursor(), text(ANDOR_GENESIS_START_HANDLER)),
         _ground_seed_andor(
             blocks,
             base=GROUND_SLOTS[0],
@@ -10720,10 +10086,7 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         ),
     )
     andor_end_branch = blocks.if_reporter(
-        blocks.op_and(
-            blocks.op_eq(handler_at_cursor(), text(ANDOR_GENESIS_END_HANDLER)),
-            blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
-        ),
+        blocks.op_eq(handler_at_cursor(), text(ANDOR_GENESIS_END_HANDLER)),
         [blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(1))],
     )
     # AREA-02 (area.add-object-dispatch #166): add_object writes its type into one raw arcade object slot (Scratch
@@ -11204,8 +10567,7 @@ def install_score(blocks: Blocks) -> None:
     # double-count or bypass the cap. Add the pending award to the score, pin it at the
     # 9,999,990 BCD ceiling (set_score_to_9999990), lift the running high score, then run the
     # bonus-life check after every award (check_for_extra_solvalou). `award value` is the
-    # resolved point value, set by the collision detector a later slice wires (machinery seam,
-    # parallel to `hit slot`); the debug S fixture sets it this slice.
+    # resolved point value, set by the collision detectors (machinery seam, parallel to `hit slot`).
     definition = _install_warp_proc(blocks, SCORE_PROCCODE)
     # NOTE: `set score = op_add(score, award value)` does NOT evaluate in the Scratch VM
     # (a `set var = operator(...)` value-input the runtime leaves unread); `change ... by` does.
@@ -11413,9 +10775,6 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_advance_slots(blocks)
     install_spawn_flying(blocks)
     install_place_pending_object(blocks)
-    install_debug_spawn_wave(blocks)  # DEBUG / temporary (tracked for removal)
-    install_debug_ground_spawn(blocks)  # DEBUG / temporary (tracked for removal, #119)
-    install_debug_pause(blocks)  # DEBUG / temporary (tracked for removal, #119)
     install_advance_area(blocks)
     install_update_terrain(blocks)
     install_score(blocks)
@@ -12076,23 +11435,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             ),
         ],
     )
-    # DEBUG (temporary, tracked for removal #119): while G is held, the Bacura pump is suppressed too, so no
-    # slabs drift in during ground isolation (parity with the T key). The G proc already zeros `formation count`
-    # and clears the flying/bacura bands each tick; gating the pump call stops it re-admitting. When G is not
-    # held this is exactly the original unconditional call.
-    pump_bacura = blocks.if_reporter(
-        blocks.op_not(blocks.key_pressed(walk_loop, DEBUG_GROUND_KEY)),
-        [
-            # AIR-11: the Bacura live-spawn pump runs in the spawn phase, after ADVANCE_AREA has loaded
-            # this tick's set/reset_bacura_count records and after the walk — so a freshly-stamped slab
-            # first drifts on the NEXT tick, matching the arcade's handle_01_Bacura (init, then yield)
-            # and the flying spawner above (spawn late, drive next tick).
-            blocks.call_proc(PUMP_BACURA_PROCCODE, warp=True),
-        ],
-    )
-    # The whole tick — read, area clock, walk, bomb, spawns, death — runs only while NOT paused. The
-    # ADVANCE_AREA -> ADVANCE_SLOTS pair stays adjacent inside this body, so the area-clock adjacency contract
-    # holds; the pause gate merely wraps the body.
+    # The whole tick — read, area clock, walk, bomb, spawns, death. The ADVANCE_AREA -> ADVANCE_SLOTS pair stays
+    # adjacent inside this body, so the area-clock adjacency contract holds.
     # CAB-01: the auto-pilot runs FIRST, and only during a demo (attract==1), so its shared-stream draws sit
     # at a fixed head-of-walk position (reproducible) and it has set the virtual inputs before READ_PLAYER and
     # the object walk read the craft this tick. A real game (attract==0) skips it entirely.
@@ -12127,35 +11471,16 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         # AREA-02 (#166): place this tick's add_object record (recorded by ADVANCE_AREA above) once the walk and
         # bomb have run, before the formation refill below — the arcade object pass precedes main_fn_4.
         blocks.call_proc(PLACE_PENDING_OBJECT_PROCCODE, warp=True),
-        # DEBUG (temporary, tracked for removal #119): while G is held, cycle one built GROUND family
-        # into the band. Placed after the ground walk (ADVANCE_SLOTS) so the field-empty gate reads the
-        # fully-settled post-cull band, and outside the ADVANCE_AREA -> ADVANCE_SLOTS pair the area clock
-        # requires be adjacent. The stamp scrolls on the NEXT walk, then travels down to the craft — a
-        # one-tick delay that is immaterial for a top-of-field spawn. Self-gated on the key; no effect on
-        # normal play, and it defers to any scheduled ground object (only fills a genuinely empty field).
-        blocks.call_proc(DEBUG_GROUND_SPAWN_PROCCODE, warp=True),
-        # DEBUG (temporary, tracked for removal): overrides the scheduled formation to a Terrazi
-        # wave while the debug key is held, so the spawner below fills a Terrazi wave for playtest.
-        blocks.call_proc(DEBUG_SPAWN_PROCCODE, warp=True),
         blocks.call_proc(SPAWN_FLYING_PROCCODE, warp=True),
-        pump_bacura,
+        # AIR-11: the Bacura live-spawn pump runs in the spawn phase, after ADVANCE_AREA has loaded
+        # this tick's set/reset_bacura_count records and after the walk — so a freshly-stamped slab
+        # first drifts on the NEXT tick, matching the arcade's handle_01_Bacura (init, then yield)
+        # and the flying spawner above (spawn late, drive next tick).
+        blocks.call_proc(PUMP_BACURA_PROCCODE, warp=True),
         dying_step,
         death_check,
     ]
-    run_when_unpaused = blocks.if_reporter(
-        blocks.op_eq(variable("debug paused", PAUSED_ID), number(0)),
-        tick_body,
-    )
-    # DEBUG (temporary, tracked for removal #119): the pause TOGGLE runs FIRST and OUTSIDE the freeze gate, so a
-    # tap of P can always flip `debug paused` back to 0 and resume. The harness never presses P, so `debug
-    # paused` stays 0 there and the full tick runs every frame as before — the build stays deterministic.
-    blocks.substack(
-        walk_loop,
-        [
-            blocks.call_proc(DEBUG_PAUSE_PROCCODE, warp=True),
-            run_when_unpaused,
-        ],
-    )
+    blocks.substack(walk_loop, tick_body)
     blocks.chain(walk_enter, [blocks.if_state("playing", [walk_loop])])
 
     # A NEW Stage `director reset` receiver — kept out of the transition procedure body
@@ -15732,7 +15057,7 @@ def bonus_flag_blocks() -> dict[str, dict[str, Any]]:
     # Unlike the full-band families (Sol Tower, Barra, ...), the Bonus Flag is NOT a per-slot pool: the
     # arcade `add_object` handler (sub_2_fb_0__type_only, xevious_sub.68k:649) stamps the flag's _TYPE at a
     # fixed obj offset, and every scheduled flag record targets obj slot 0x00 (area-schedules areas 1/3/5/7,
-    # one flag each, never concurrent); the debug seed stamps the same GROUND_SLOTS[0] slot. So one clone is
+    # one flag each, never concurrent). So one clone is
     # both faithful (the flag can live nowhere else) and necessary: a 16-clone pool would reserve 15 clones
     # for slots the flag never occupies, and the port's ground families already sit at scratch-vm's hard
     # 300-clone ceiling — those 15 phantom clones starved the player blaster (harness `shot-cap-ceiling`).
@@ -17321,15 +16646,6 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         INVULN_ID,
         DYING_ID,
         DYING_TICK_ID,
-        # DEBUG (tracked for removal, #119): the T-key family-cycle cursor.
-        DEBUG_SPAWN_INDEX_ID,
-        # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor and its rising-edge sample
-        # (the boss dismiss fires only on a fresh press, never on the press that armed it).
-        DEBUG_GROUND_INDEX_ID,
-        DEBUG_GROUND_KEY_HELD_ID,
-        # DEBUG (tracked for removal, #119): the P-key freeze/resume toggle and its rising-edge sample.
-        PAUSED_ID,
-        PAUSE_KEY_HELD_ID,
         # CAB-02 (cabinet.attract-credits, slice 17): the credit bank (economy) and the coin key's
         # previous-tick sample (machinery). Classified in the partition test to match.
         CREDITS_ID,
@@ -17366,8 +16682,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SHEONITE_LOCK_COL_ID,
         # SEC-03 (secrets.hidden-credit #93): the credit overlay's show/hide signal.
         EASTER_EGG_SHOWING_ID,
-        # BOSS-01 (andor.lifecycle #94): the Andor Genesis end flag — set by the schedule end record (later commit)
-        # or the debug dismiss; the master's update proc tears the composite down on it.
+        # BOSS-01 (andor.lifecycle #94): the Andor Genesis end flag — set by the schedule end record; the master's
+        # update proc tears the composite down on it.
         ANDOR_GENESIS_END_FLAG_ID,
         # BOSS-01: the shared colour-cycle byte (drives the `color` effect on every part) and the core's
         # flip-orientation phase (selects one of the four pre-flipped core costumes). Written by the master
@@ -17387,6 +16703,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         variable_id: value
         for variable_id, value in stage["variables"].items()
         if variable_id not in owned_stage_variables
+        and variable_id not in RETIRED_PLAYTEST_KEY_VARIABLE_IDS
         and value[0] not in {"death", "stage"}
     }
     stage["variables"] = preserved_variables | {
@@ -17543,18 +16860,6 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # #158: the player-explosion window (walk-owned; both 0 outside it, cleared on every reset scope).
         DYING_ID: ["dying", 0],
         DYING_TICK_ID: ["dying tick", 0],
-        # DEBUG (tracked for removal, #119): the T-key family-cycle cursor (0-based into
-        # DEBUG_SPAWN_FAMILIES); starts at the first family.
-        DEBUG_SPAWN_INDEX_ID: ["debug spawn index", 0],
-        # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor (0-based into
-        # DEBUG_GROUND_FAMILIES); starts at the first family. Its rising-edge sample starts 0, so the first G press
-        # is always a fresh edge; normal play never presses G, and the boss-summon harness scenario drives it live.
-        DEBUG_GROUND_INDEX_ID: ["debug ground index", 0],
-        DEBUG_GROUND_KEY_HELD_ID: ["debug ground key held", 0],
-        # DEBUG (tracked for removal, #119): the P-key freeze toggle (1 = frozen) and its previous-tick
-        # P sample for rising-edge detection; both start at 0 so the walk runs and the harness is unaffected.
-        PAUSED_ID: ["debug paused", 0],
-        PAUSE_KEY_HELD_ID: ["debug pause key held", 0],
         # CAB-02 (slice 17): the credit bank (0..99, `credits`) and the coin key's previous-tick sample
         # (`coin key held`), both cleared only at power-on (the Stage green flag). See install_coin_poll.
         CREDITS_ID: ["credits", 0],
@@ -17587,8 +16892,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SHEONITE_PHASE_TMP_ID: ["sheonite phase", 0],
         SHEONITE_LOCK_COL_ID: ["sheonite lock col", 0],
         # BOSS-01 (andor.lifecycle #94): the Andor Genesis end flag (0 = alive/holding, 1 = tear down). Cleared on
-        # every arm and consumed by the master proc. (The per-area re-clear joins the other schedule flags when the
-        # live start/end opcodes are wired in a later commit; the debug path arms and consumes it within a session.)
+        # every arm and consumed by the master proc.
         ANDOR_GENESIS_END_FLAG_ID: ["andor genesis end flag", 0],
         # BOSS-01: colour-cycle value (0 = untinted base) and core flip phase (0 = unflipped base). Both init 0
         # so the base crops render before the lifecycle proc (C3) drives them.
@@ -17599,7 +16903,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         ANDOR_MASTER_X_ID: ["andor master x", 0],
         ANDOR_MASTER_Y_ID: ["andor master y", 0],
         # BOSS-03: the destroyed-departure clock. Init 0 (alive); the master proc latches it on core death and
-        # resets it to 0 when the wreck clears the field, so a fresh boss (schedule or debug re-summon) starts alive.
+        # resets it to 0 when the wreck clears the field, so a fresh boss starts alive.
         ANDOR_DESTROYED_TIMER_ID: ["andor destroyed timer", 0],
     }
     owned_lists = {
