@@ -124,18 +124,27 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
             failures.append(f"{key}: every leaf needs a delivery slice")
         if leaf.get("proof") not in {"playable", "operator", "historical"}:
             failures.append(f"{key}: invalid proof level")
-        if leaf.get("status") not in {"planned", "provisional", "history"}:
+        if leaf.get("status") not in {"planned", "provisional", "history", "dropped"}:
             failures.append(f"{key}: invalid roadmap status")
         if leaf.get("status") == "history" and not leaf.get("delivered_by"):
             failures.append(f"{key}: history needs a delivering PR")
+        # #116: `dropped` is a cancelled leaf. It was never delivered, so it names no delivering PR.
+        if leaf.get("status") == "dropped" and leaf.get("delivered_by"):
+            failures.append(f"{key}: a dropped leaf was never delivered and names no delivering PR")
         if parent and parent.get("spec_status") in {"draft", "provisional"}:
-            if leaf.get("status") != "provisional":
+            if leaf.get("status") not in {"provisional", "dropped"}:
                 failures.append(f"{key}: work under an unsettled parent must be provisional")
         for blocker in leaf.get("blocked_by", []):
             if blocker not in leaf_map:
                 failures.append(f"{key}: unknown blocker {blocker}")
             if blocker == key:
                 failures.append(f"{key}: cannot block itself")
+            # A dropped blocker never closes as delivered, so live work waiting on it could never close.
+            if (
+                leaf.get("status") in {"planned", "provisional"}
+                and (leaf_map.get(blocker) or {}).get("status") == "dropped"
+            ):
+                failures.append(f"{key}: blocked by dropped leaf {blocker}; remove the blocker or re-plan it")
         leaf_criteria = leaf.get("criteria")
         if not isinstance(leaf_criteria, list) or not leaf_criteria:
             failures.append(f"{key}: needs at least one atomic criterion")
@@ -268,7 +277,7 @@ def leaf_body(leaf: dict[str, Any], parent: dict[str, Any], manifest: dict[str, 
     records = leaf.get("records", [])
     record_text = ", ".join(f"`{item}`" for item in records) if records else "None declared"
     provisional = parent.get("spec_status") in {"draft", "provisional"}
-    executable = not provisional and leaf.get("status") != "history"
+    executable = not provisional and leaf.get("status") not in {"history", "dropped"}
     lines = [
         marker(leaf["key"]),
         "",
@@ -308,6 +317,13 @@ def leaf_body(leaf: dict[str, Any], parent: dict[str, Any], manifest: dict[str, 
             "## Imported history",
             "",
             f"Delivered by PR #{leaf['delivered_by']}. This records original delivery evidence; it does not retroactively certify the work under today's closure controls.",
+        ]
+    if leaf.get("status") == "dropped":
+        lines += [
+            "",
+            "## Dropped",
+            "",
+            "This leaf was cancelled and will not be delivered. Its issue is closed as not planned and stays closed; the manifest keeps the leaf so its obligations remain accounted for.",
         ]
     return "\n".join(lines)
 
@@ -387,6 +403,7 @@ def live_plan(manifest: dict[str, Any]) -> dict[str, Any]:
             "create": sum(not item.get("issue") and item["key"] not in keyed for item in manifest["leaves"]),
             "reuse_or_update": sum(bool(item.get("issue")) or item["key"] in keyed for item in manifest["leaves"]),
             "close_as_imported_history": sum(item["status"] == "history" for item in manifest["leaves"]),
+            "close_as_dropped": sum(item["status"] == "dropped" for item in manifest["leaves"]),
         },
         "project_fields_to_create": sorted({"Roadmap role", "Delivery slice", "Proof level"} - field_names),
     }
@@ -415,13 +432,36 @@ def issue_labels(role: str, leaf: dict[str, Any] | None = None) -> list[str]:
             labels.append("spec:draft")
         if leaf["status"] == "history":
             labels.append("roadmap:history")
+        if leaf["status"] == "dropped":
+            labels.append("roadmap:dropped")
     return labels
+
+
+# How a leaf's status projects onto its issue and its Project card. A delivered (history) leaf and a dropped one
+# both close; the dropped one closes as not planned and its card carries the `Dropped` role, so a cancelled leaf
+# never reads as delivered on the board (#116).
+def closes(leaf: dict[str, Any]) -> bool:
+    return leaf["status"] in {"history", "dropped"}
+
+
+def close_reason(leaf: dict[str, Any]) -> str | None:
+    return "not_planned" if leaf["status"] == "dropped" else None
+
+
+def board_fields(leaf: dict[str, Any]) -> tuple[str, str]:
+    """The (Roadmap role, Status) a leaf's card should carry."""
+    if leaf["status"] == "history":
+        return "Imported history", "Done"
+    if leaf["status"] == "dropped":
+        return "Dropped", "Done"
+    return "Leaf", "Backlog"
 
 
 LABELS = {
     "roadmap:parent": ("Capability tracker; milestones belong to its delivery leaves", "5319E7"),
     "roadmap:leaf": ("Independently closable roadmap component", "0E8A16"),
     "roadmap:history": ("Imported delivery history; not retroactively certified", "6E7781"),
+    "roadmap:dropped": ("Cancelled leaf; closed as not planned", "6E7781"),
     "spec:draft": ("Blocked until its product specification is settled", "D4C5F9"),
     "proof:playable": ("Requires operator approval of the playable Scratch build", "FBCA04"),
     "proof:operator": ("Requires an operator-run acceptance or audit", "B60205"),
@@ -440,8 +480,10 @@ def ensure_label(repo: str, name: str, description: str, color: str) -> None:
         gh("api", "--method", "POST", f"repos/{repo}/labels", "-f", f"name={name}", "-f", f"description={description}", "-f", f"color={color}")
 
 
-def patch_issue(repo: str, number: int, *, title: str, body: str, labels: list[str], milestone: int | None, state: str = "open") -> dict[str, Any]:
+def patch_issue(repo: str, number: int, *, title: str, body: str, labels: list[str], milestone: int | None, state: str = "open", state_reason: str | None = None) -> dict[str, Any]:
     args = ["api", "--method", "PATCH", f"repos/{repo}/issues/{number}", "-f", f"title={title}", "-f", f"body={body}", "-f", f"state={state}"]
+    if state_reason:
+        args += ["-f", f"state_reason={state_reason}"]
     for label in labels:
         args += ["-f", f"labels[]={label}"]
     if milestone is None:
@@ -482,7 +524,7 @@ def ensure_project_fields(manifest: dict[str, Any], journal: dict[str, Any]) -> 
     current = gh("project", "field-list", number, "--owner", owner, "--format", "json")
     by_name = {field["name"]: field for field in current["fields"]}
     desired = {
-        "Roadmap role": ("SINGLE_SELECT", "Parent,Leaf,Imported history"),
+        "Roadmap role": ("SINGLE_SELECT", "Parent,Leaf,Imported history,Dropped"),
         "Delivery slice": ("TEXT", None),
         "Proof level": ("SINGLE_SELECT", "Playable,Operator,Historical"),
     }
@@ -601,13 +643,13 @@ def sync_project(manifest: dict[str, Any], journal: dict[str, Any]) -> int:
         desired.append((parent["key"], record, {"Roadmap role": "Parent", "Work type": "Feature", "Status": "Backlog"}))
     for leaf in manifest["leaves"]:
         record = journal["leaves"][leaf["key"]]
-        role = "Imported history" if leaf["status"] == "history" else "Leaf"
+        role, status = board_fields(leaf)
         desired.append((leaf["key"], record, {
             "Roadmap role": role,
             "Delivery slice": str(leaf["slice"]),
             "Proof level": leaf["proof"].title(),
             "Work type": "Feature",
-            "Status": "Done" if leaf["status"] == "history" else "Backlog",
+            "Status": status,
         }))
 
     missing = [(key, record) for key, record, _ in desired if record["url"] not in by_url]
@@ -695,7 +737,7 @@ def ensure_project_views(manifest: dict[str, Any], journal: dict[str, Any]) -> N
     write_json(MIGRATION_PATH, journal)
 
 
-def issue_up_to_date(issue: dict[str, Any] | None, *, title: str, body: str, labels: list[str], milestone: int | None, state: str) -> bool:
+def issue_up_to_date(issue: dict[str, Any] | None, *, title: str, body: str, labels: list[str], milestone: int | None, state: str, state_reason: str | None = None) -> bool:
     """Whether a live issue already matches the desired projection, so apply can skip it.
 
     Uses the same comparisons reconcile makes (nested milestone number, set of label
@@ -704,6 +746,8 @@ def issue_up_to_date(issue: dict[str, Any] | None, *, title: str, body: str, lab
     if issue is None:
         return False
     if issue.get("state") != state:
+        return False
+    if state_reason and issue.get("state_reason") != state_reason:
         return False
     if issue.get("title") != title or (issue.get("body") or "") != body:
         return False
@@ -755,7 +799,7 @@ def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
             raise RoadmapError(f"missing milestone {leaf['milestone']}")
         title, body, labels = leaf["title"], leaf_body(leaf, parents[leaf["parent"]], manifest), issue_labels("leaf", leaf)
         if existing:
-            desired_state = "closed" if leaf["status"] == "history" and issue and issue.get("state") == "closed" else "open"
+            desired_state = "closed" if closes(leaf) and issue and issue.get("state") == "closed" else "open"
             if issue_up_to_date(issue, title=title, body=body, labels=labels, milestone=milestone, state=desired_state):
                 result = issue
             else:
@@ -776,17 +820,19 @@ def apply(manifest: dict[str, Any], journal: dict[str, Any]) -> None:
     board_updates = sync_project(manifest, journal)
     ensure_project_views(manifest, journal)
 
-    # Historical leaves close last, after their parents, milestone, evidence and Project
-    # records exist — and only when the live issue is not already in the closed projection.
+    # Historical and dropped leaves close last, after their parents, milestone, evidence and Project
+    # records exist — and only when the live issue is not already in the closed projection. A dropped
+    # leaf closes as not planned (#116).
     for leaf in manifest["leaves"]:
-        if leaf["status"] != "history":
+        if not closes(leaf):
             continue
         number = journal["leaves"][leaf["key"]]["number"]
         issue = live.get(leaf["key"])
         title, body, labels = leaf["title"], leaf_body(leaf, parents[leaf["parent"]], manifest), issue_labels("leaf", leaf)
-        if issue_up_to_date(issue, title=title, body=body, labels=labels, milestone=milestones[leaf["milestone"]], state="closed"):
+        reason = close_reason(leaf)
+        if issue_up_to_date(issue, title=title, body=body, labels=labels, milestone=milestones[leaf["milestone"]], state="closed", state_reason=reason):
             continue
-        patch_issue(repo, number, title=title, body=body, labels=labels, milestone=milestones[leaf["milestone"]], state="closed")
+        patch_issue(repo, number, title=title, body=body, labels=labels, milestone=milestones[leaf["milestone"]], state="closed", state_reason=reason)
         patched += 1
 
     write_json(MIGRATION_PATH, journal)
@@ -831,9 +877,11 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
         actual = issue.get("milestone", {}).get("number") if issue.get("milestone") else None
         if actual != milestones.get(leaf["milestone"]):
             failures.append(f"{leaf['key']}: wrong milestone")
-        should_close = leaf["status"] == "history"
+        should_close = closes(leaf)
         if (issue.get("state") == "closed") != should_close:
             failures.append(f"{leaf['key']}: wrong open/closed state")
+        elif close_reason(leaf) and issue.get("state_reason") != close_reason(leaf):
+            failures.append(f"{leaf['key']}: a dropped leaf must be closed as not planned")
         expected_body = leaf_body(leaf, parents[leaf["parent"]], manifest)
         if issue.get("title") != leaf["title"] or (issue.get("body") or "") != expected_body:
             failures.append(f"{leaf['key']}: title or generated body drifted")
@@ -852,12 +900,13 @@ def reconcile(manifest: dict[str, Any], journal: dict[str, Any]) -> list[str]:
         }))
     for leaf in manifest["leaves"]:
         record = journal["leaves"][leaf["key"]]
+        role, status = board_fields(leaf)
         expected_project.append((leaf["key"], record["url"], {
-            "roadmap role": "Imported history" if leaf["status"] == "history" else "Leaf",
+            "roadmap role": role,
             "delivery slice": str(leaf["slice"]),
             "proof level": leaf["proof"].title(),
             "work type": "Feature",
-            "status": "Done" if leaf["status"] == "history" else "Backlog",
+            "status": status,
         }))
     for key, url, expected in expected_project:
         failures += project_card_failures(key, url, expected, project_by_url)
@@ -943,6 +992,9 @@ def deliver(journal: dict[str, Any], pr: int, manifest_path: Path = MANIFEST_PAT
         if status_by_key[key] == "history":
             print(f"skip {key} (#{number}): already recorded delivered", file=sys.stderr)
             continue
+        if status_by_key[key] == "dropped":
+            print(f"skip {key} (#{number}): dropped, so it is never delivered", file=sys.stderr)
+            continue
         targets.append(key)
 
     if not targets:
@@ -1001,7 +1053,7 @@ def main(argv: list[str] | None = None) -> int:
         if failures:
             print("\n".join(f"- {failure}" for failure in failures), file=sys.stderr)
             return 1
-        value = {"parents": len(manifest["parents"]), "leaves": len(manifest["leaves"]), "history": sum(leaf["status"] == "history" for leaf in manifest["leaves"]), "provisional": sum(leaf["status"] == "provisional" for leaf in manifest["leaves"])}
+        value = {"parents": len(manifest["parents"]), "leaves": len(manifest["leaves"]), "history": sum(leaf["status"] == "history" for leaf in manifest["leaves"]), "provisional": sum(leaf["status"] == "provisional" for leaf in manifest["leaves"]), "dropped": sum(leaf["status"] == "dropped" for leaf in manifest["leaves"])}
         if args.live:
             value["live_diff"] = live_plan(manifest)
         print(json.dumps(value, indent=2))

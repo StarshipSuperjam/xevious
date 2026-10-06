@@ -288,6 +288,12 @@ def validate_issue_event(event: dict[str, Any], manifest: dict[str, Any], migrat
     leaf = leaves_by_number.get(number)
     if not leaf or leaf["status"] == "history":
         return []
+    if leaf["status"] == "dropped":
+        # #116: a cancelled leaf closes as not planned and is never reopened for it; closed any other way it
+        # would read as delivered, so that closure is refused (and reopened) until it is closed as not planned.
+        if issue.get("state_reason") == "not_planned":
+            return []
+        return [f"dropped roadmap leaf #{number} must be closed as not planned, not as completed"]
     pr_number = source_pr_for_closed_issue(manifest["repository"], number)
     if pr_number is None:
         return [f"roadmap leaf #{number} closed without a delivering pull request"]

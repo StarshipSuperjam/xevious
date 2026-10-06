@@ -103,14 +103,21 @@ can never lag `main`.
    journal, land that change on `main` through a small pull request, like any other
    change (nothing reaches `main` except by pull request).
 
-**Dropping a leaf.** There is no `dropped` status yet, and the manifest has no field
-that expresses a cancelled leaf, so there is no clean edit to make one stick. Until the
-`dropped` status is added (tracked as its own roadmap issue), **leave the leaf's issue
-open** — the closure guard reopens a hand-closed `planned` leaf — and record the
-cancellation as a comment on that issue. Do not delete the leaf's manifest line either:
-its criteria are part of the exact criterion roster `validate` enforces, so removing it
-would need the roster updated in the same edit and is a change to make deliberately under
-review, not a quick cancellation.
+**Dropping a leaf.** A leaf that will not be delivered is set to `"status":"dropped"` in
+the manifest, under review like any other manifest edit. Keep its line: its criteria stay
+part of the exact criterion roster `validate` enforces. A dropped leaf names no delivering PR
+(`validate` refuses one), and no planned or provisional leaf may still list it as a blocker
+(`validate` names the waiting leaf, so the blocker is removed or re-planned in the same edit).
+After the edit merges, `apply` closes the issue **as not planned**, labels it
+`roadmap:dropped`, and gives its card the `Dropped` role (Status Done, as for any closed issue),
+so a cancelled leaf never reads as delivered; `reconcile` checks all three, and
+`deliver` never records a dropped leaf. The closure guard accepts a dropped leaf closed as not
+planned and reopens one closed any other way.
+
+The board's `Roadmap role` field gains the `Dropped` option only when the field is first
+created. On this project's existing board, add the `Dropped` option to `Roadmap role` by hand
+before the first `apply` that projects a dropped leaf: until then `apply` stops with
+"Project field Roadmap role has no option Dropped" instead of writing a wrong card.
 
 ## Archived board cards
 
