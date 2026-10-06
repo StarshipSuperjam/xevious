@@ -5,7 +5,9 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -274,6 +276,33 @@ class HudGlyphsTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(hg.HudGlyphsError, "falls outside the font sheet"):
             hg._binarize_glyph(source, (0, 0, source.width, 5), 128)
+
+    def test_glyph_inked_before_but_blank_after_downscale_is_rejected(self) -> None:
+        # #24: a glyph whose ink survives binarizing but not the downscale must not become an invisible costume.
+        def blank(image, factor):
+            return se.Image(image.width // factor, image.height // factor,
+                            ((0, 0, 0, 0),) * ((image.width // factor) * (image.height // factor)))
+
+        with mock.patch.object(hg, "_downscale_nearest", blank):
+            with self.assertRaisesRegex(hg.HudGlyphsError, "no ink after the downscale"):
+                hg.render_glyphs(self.manifest)
+            with self.assertRaisesRegex(hg.HudGlyphsError, "no ink after the downscale"):
+                hg.render_credit(hg._load_font_sheet(self.manifest), self.manifest["glyph_threshold"])
+
+    def test_shared_readers_raise_this_tools_error(self) -> None:
+        # #24: the readers are the extractor's, but a hud_glyphs failure still names hud_glyphs' error, and the
+        # provenance reader keeps the extractor's per-record type check the old copy had dropped.
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = Path(tmp) / "derivatives.json"
+            bad.write_text(json.dumps({"outputs": {"a.png": "not a record"}}), encoding="utf-8")
+            with mock.patch.object(hg, "DERIVATIVE_PROVENANCE_PATH", bad):
+                with self.assertRaisesRegex(hg.HudGlyphsError, "invalid output records"):
+                    hg._prior_output_records()
+            bad.write_text("[]", encoding="utf-8")
+            with self.assertRaisesRegex(hg.HudGlyphsError, "one JSON object"):
+                hg._read_json(bad)
+        with self.assertRaisesRegex(hg.HudGlyphsError, "missing name"):
+            hg._require_keys({"rect": []}, {"name", "rect"}, "glyph")
 
     def test_expected_project_requires_existing_hud_target(self) -> None:
         project = json.loads(hg.PROJECT_PATH.read_text(encoding="utf-8"))

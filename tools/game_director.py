@@ -14106,6 +14106,11 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
     # `director stop` (common_stop's clones=True) and rebuilt on `director enter`
     # whenever the state is HUD-visible (anything but title/boot) — director stop always
     # precedes director enter on every transition, so nothing ever double-stacks.
+    # Cost (#24): the whole set is rebuilt on EVERY transition, not only the ones that change a score or the
+    # craft, and each digit clone re-derives its glyph (floor/mod/join/switch costume) every frame it is shown.
+    # That is cheap at this scale and inside the 300-clone ceiling; the release soak (harness/soak.test.js)
+    # measures the clone headroom through every HUD-visible state. If HUD-visible transitions ever become
+    # frequent, rebuild only the roles whose value changed.
     blocks = Blocks("hud")
     common_stop(blocks, hide=True, clones=True)
     install_hud_spawn_craft(blocks)

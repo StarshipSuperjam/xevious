@@ -309,17 +309,17 @@ class CreditOutput:
     height: int
 
 
+# The manifest and provenance readers are the sprite extractor's own, raising this tool's error (#24: shared,
+# not copied — the copies had drifted).
 def _require_keys(value: dict, expected: set[str], label: str) -> None:
-    actual = set(value)
-    if actual != expected:
-        missing = expected - actual
-        unknown = actual - expected
-        details = []
-        if missing:
-            details.append("missing " + ", ".join(sorted(missing)))
-        if unknown:
-            details.append("unknown " + ", ".join(sorted(unknown)))
-        raise HudGlyphsError(f"{label} fields are invalid: {'; '.join(details)}")
+    se._require_keys(value, expected, label, error=HudGlyphsError)
+
+
+def _require_ink(image: se.Image, label: str) -> None:
+    # #24: the binarized crop is checked for ink, but the canvas placement and the nearest-neighbour downscale
+    # could still drop every inked pixel (a thin stroke between sampled rows), leaving an invisible costume.
+    if not any(pixel[3] for pixel in image.pixels):
+        raise HudGlyphsError(f"{label} has no ink after the downscale")
 
 
 def _sheet_record(value: object, label: str) -> dict:
@@ -548,6 +548,7 @@ def render_glyphs(manifest: dict) -> list[GlyphOutput]:
         crop = _binarize_glyph(sheet, rect, threshold, _INK_BY_RECOLOR[recolor])
         placed = se._place_on_canvas(crop, canvas, anchor)
         final = _downscale_nearest(placed, factor)
+        _require_ink(final, f"glyph {name}")
         png = se.encode_png(final)
         return GlyphOutput(name, f"{se._md5(png)}.png", png, final.width)
 
@@ -655,6 +656,7 @@ def render_sheet_text_costume(
                         pixels[(cy + gy) * base_width + (cx + gx)] = pixel
     base = se.Image(base_width, base_height, tuple(pixels))
     scaled = _downscale_nearest(base, downscale)
+    _require_ink(scaled, f"text costume {name}")
     png = se.encode_png(scaled)
     return CreditOutput(name, f"{se._md5(png)}.png", png, scaled.width, scaled.height)
 
@@ -1097,23 +1099,11 @@ def _overlay_sound_record(manifest: dict, filename: str) -> dict:
 
 
 def _read_json(path: Path) -> dict:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise HudGlyphsError(f"cannot read JSON {path}: {exc}") from exc
-    if not isinstance(value, dict):
-        raise HudGlyphsError(f"{path} must contain one JSON object")
-    return value
+    return se._read_json(path, HudGlyphsError)
 
 
 def _prior_output_records() -> dict[str, dict]:
-    if not DERIVATIVE_PROVENANCE_PATH.exists():
-        return {}
-    prior = _read_json(DERIVATIVE_PROVENANCE_PATH)
-    outputs = prior.get("outputs")
-    if not isinstance(outputs, dict):
-        raise HudGlyphsError(f"{DERIVATIVE_PROVENANCE_PATH} has no outputs object")
-    return outputs
+    return se._prior_output_records(DERIVATIVE_PROVENANCE_PATH, HudGlyphsError)
 
 
 def _derivative_provenance(

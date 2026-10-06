@@ -262,7 +262,11 @@ def _intersects(
 
 
 def _require_keys(
-    value: dict, expected: set[str], label: str, optional: set[str] = frozenset()
+    value: dict,
+    expected: set[str],
+    label: str,
+    optional: set[str] = frozenset(),
+    error: type[Exception] = SpriteExtractionError,
 ) -> None:
     actual = set(value)
     if not (expected <= actual and actual <= expected | optional):
@@ -273,7 +277,7 @@ def _require_keys(
             details.append("missing " + ", ".join(sorted(missing)))
         if unknown:
             details.append("unknown " + ", ".join(sorted(unknown)))
-        raise SpriteExtractionError(f"{label} fields are invalid: {'; '.join(details)}")
+        raise error(f"{label} fields are invalid: {'; '.join(details)}")
 
 
 def validate_manifest(manifest: object) -> dict:
@@ -916,32 +920,33 @@ def _overlay_record(manifest: dict, derivative: Derivative) -> dict:
     }
 
 
-def _read_json(path: Path) -> dict:
+# These three helpers are shared with tools/hud_glyphs.py, which passes its own error type and provenance path
+# (#24: it used to carry copies, and its `_prior_output_records` had lost the per-record type check).
+def _read_json(path: Path, error: type[Exception] = SpriteExtractionError) -> dict:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise SpriteExtractionError(f"cannot read JSON {path}: {exc}") from exc
+        raise error(f"cannot read JSON {path}: {exc}") from exc
     if not isinstance(value, dict):
-        raise SpriteExtractionError(f"{path} must contain one JSON object")
+        raise error(f"{path} must contain one JSON object")
     return value
 
 
-def _prior_output_records() -> dict[str, dict]:
-    if not DERIVATIVE_PROVENANCE_PATH.exists():
+def _prior_output_records(
+    path: Path | None = None, error: type[Exception] = SpriteExtractionError
+) -> dict[str, dict]:
+    path = DERIVATIVE_PROVENANCE_PATH if path is None else path
+    if not path.exists():
         return {}
-    prior = _read_json(DERIVATIVE_PROVENANCE_PATH)
+    prior = _read_json(path, error)
     outputs = prior.get("outputs")
     if not isinstance(outputs, dict):
-        raise SpriteExtractionError(
-            f"{DERIVATIVE_PROVENANCE_PATH} has no outputs object"
-        )
+        raise error(f"{path} has no outputs object")
     if any(
         not isinstance(filename, str) or not isinstance(record, dict)
         for filename, record in outputs.items()
     ):
-        raise SpriteExtractionError(
-            f"{DERIVATIVE_PROVENANCE_PATH} has invalid output records"
-        )
+        raise error(f"{path} has invalid output records")
     return outputs
 
 

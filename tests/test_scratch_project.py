@@ -16076,20 +16076,44 @@ class ScratchProjectTests(unittest.TestCase):
                             return True
             return False
 
+        # Both tests are checked where they are WIRED, not merely present on the Stage (#24): the check-bonus
+        # procedure's first block is an `if` on the enabled guard, and inside it the cap quirk's if/else, whose
+        # condition is the at-cap test and whose first arm is the grant.
+        def linked(spec):
+            ok = isinstance(spec, list) and len(spec) >= 2 and isinstance(spec[1], str)
+            return blocks.get(spec[1], {}) if ok else {}
+
+        prototype = next(
+            (bid for bid, b in blocks.items() if b["opcode"] == "procedures_prototype"
+             and b.get("mutation", {}).get("proccode") == director.CHECK_BONUS_PROCCODE),
+            None,
+        )
+        definition = next(
+            (b for b in vals if b["opcode"] == "procedures_definition"
+             and (b["inputs"].get("custom_block") or [None, None])[1] == prototype),
+            {},
+        )
+        enabled_if = blocks.get(definition.get("next") or "", {})
+        guard = linked(enabled_if.get("inputs", {}).get("CONDITION"))
         # the bonus check only runs when enabled (threshold sentinel non-zero).
-        if not any(
-            b["opcode"] == "operator_gt"
-            and refs(b["inputs"].get("OPERAND1"), director.NEXT_BONUS_ID)
-            and b["inputs"].get("OPERAND2") == [1, [4, director.BONUS_DISABLED]]
-            for b in vals
+        if not (
+            enabled_if.get("opcode") == "control_if"
+            and guard.get("opcode") == "operator_gt"
+            and refs(guard["inputs"].get("OPERAND1"), director.NEXT_BONUS_ID)
+            and guard["inputs"].get("OPERAND2") == [1, [4, director.BONUS_DISABLED]]
         ):
             failures.add("bonus-enabled-guard")
         # cap quirk: an at-cap test (score == 9,999,990) drives an every-award grant branch.
-        if not any(
-            b["opcode"] == "operator_equals"
-            and refs(b["inputs"].get("OPERAND1"), director.SCORE_ID)
-            and b["inputs"].get("OPERAND2") == [1, [4, director.SCORE_CAP]]
-            for b in vals
+        quirk = linked(enabled_if.get("inputs", {}).get("SUBSTACK"))
+        at_cap = linked(quirk.get("inputs", {}).get("CONDITION"))
+        quirk_grant = linked(quirk.get("inputs", {}).get("SUBSTACK"))
+        if not (
+            quirk.get("opcode") == "control_if_else"
+            and at_cap.get("opcode") == "operator_equals"
+            and refs(at_cap["inputs"].get("OPERAND1"), director.SCORE_ID)
+            and at_cap["inputs"].get("OPERAND2") == [1, [4, director.SCORE_CAP]]
+            and quirk_grant.get("opcode") == "data_changevariableby"
+            and quirk_grant["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
         ):
             failures.add("cap-quirk")
         # grant: +1 craft, the extend sound, and the craft-changed HUD signal.
@@ -16230,6 +16254,23 @@ class ScratchProjectTests(unittest.TestCase):
             )(p)
             b["inputs"]["OPERAND2"] = [1, [4, 0]]
 
+        def unwire(opcode, var_id, operand2):
+            # #24: the test stays on the Stage, intact, but its `if` no longer reads it (an empty condition is
+            # false in Scratch), so the checks must look at the wiring, not just the reporter.
+            def corrupt(p):
+                stage = next(t for t in p["targets"] if t["isStage"])
+                bid, b = next(
+                    (bid, b) for bid, b in stage["blocks"].items()
+                    if b["opcode"] == opcode and b["inputs"].get("OPERAND2") == [1, [4, operand2]]
+                    and (b["inputs"].get("OPERAND1") or [None, [None]])[1][2:3] == [var_id]
+                )
+                parent = stage["blocks"][b["parent"]]
+                assert parent["inputs"]["CONDITION"][1] == bid
+                del parent["inputs"]["CONDITION"]
+                b.update({"parent": None, "topLevel": True, "x": 0, "y": 0})
+
+            return corrupt
+
         def break_grant(p):
             # the grant is emitted at both branches (cap quirk + normal) — break every one.
             for b in each(
@@ -16311,7 +16352,9 @@ class ScratchProjectTests(unittest.TestCase):
 
         cases = [
             ("bonus-enabled-guard", break_guard),
+            ("bonus-enabled-guard", unwire("operator_gt", director.NEXT_BONUS_ID, director.BONUS_DISABLED)),
             ("cap-quirk", break_cap),
+            ("cap-quirk", unwire("operator_equals", director.SCORE_ID, director.SCORE_CAP)),
             ("bonus-craft-grant", break_grant),
             ("bonus-extend-sound", break_sound),
             ("bonus-craft-changed", break_signal),
