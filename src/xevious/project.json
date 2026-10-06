@@ -208979,7 +208979,7 @@
         },
         "gd-stage-8793": {
           "opcode": "data_setvariableto",
-          "next": "gd-stage-8794",
+          "next": "gd-stage-8809",
           "parent": "gd-stage-8788",
           "inputs": {
             "VALUE": [
@@ -209001,9 +209001,9 @@
           "topLevel": false
         },
         "gd-stage-8794": {
-          "opcode": "control_if_else",
+          "opcode": "control_if",
           "next": null,
-          "parent": "gd-stage-8793",
+          "parent": "gd-stage-8809",
           "inputs": {
             "CONDITION": [
               2,
@@ -209012,10 +209012,6 @@
             "SUBSTACK": [
               2,
               "gd-stage-8798"
-            ],
-            "SUBSTACK2": [
-              2,
-              "gd-stage-8809"
             ]
           },
           "fields": {},
@@ -209366,8 +209362,8 @@
         },
         "gd-stage-8809": {
           "opcode": "control_repeat_until",
-          "next": null,
-          "parent": "gd-stage-8794",
+          "next": "gd-stage-8794",
+          "parent": "gd-stage-8793",
           "inputs": {
             "CONDITION": [
               2,

@@ -10757,23 +10757,48 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     return [loop]
 
 
+def _check_completion_row_records(
+    rows: list[int] = SCHEDULE_ROWS,
+    starts: list[int] = AREA_SCHEDULE_START,
+    ends: list[int] = AREA_SCHEDULE_END,
+) -> None:
+    # The arcade consumes ONE schedule record per frame (`sub_fn_2__handle_objects` xevious_sub.68k 574-602
+    # executes the record at the pointer and returns), and on the frame the row reaches 0x0E the area
+    # advances right after it (`sub_fn_3__handle_next_area` 696-730, the next entry of the same function
+    # table, 109-119). So at most one record on row 0x0E can ever fire. The port's consume takes every
+    # record on the row in one tick, which matches only while no area holds two on the completion row:
+    # on the committed data only area 13's final formation reset sits there. Spans are 1-based and
+    # inclusive; each `end` is the area's sentinel (row 0x0D), so it is left out.
+    for area_index, (start, end) in enumerate(zip(starts, ends), start=1):
+        on_row = [i for i in range(start, end) if rows[i - 1] == AREA_COMPLETE_ROW]
+        if len(on_row) > 1:
+            raise SystemExit(
+                f"area {area_index} has {len(on_row)} schedule records on the completion row 0x0E; the arcade "
+                "fires only the first before the area advances, and the port's consume would fire them all"
+            )
+
+
 def install_advance_area(blocks: Blocks) -> None:
     # AREA-01/AREA-02 area clock + scheduler: one atomic (warp) pass per tick, called from the walk
-    # thread BEFORE `advance slots` — matching the reference frame order (handle_next_area ->
-    # handle_objects -> object updates) and fixing the PHASE order the enemy slices inherit while
-    # both dispatch bodies are still empty. (Spawning a Logram now draws ONE RNG value here for its
-    # masked-random initial fire delay, mirroring handle_logram_init — the arcade draws at init too; it
-    # runs before the walk phase's own draws, so a Logram-spawn tick shifts that tick's stream by one.)
-    # Advances the monotonic position and derives the row once; then a single `if/else` either completes
-    # the area OR consumes the schedule for this row — never both on one tick. Completion (row 0x0E with
-    # progress > 0, the arcade's two-phase wait) advances 16 -> 7, CARRIES the clock (progress drops by the
-    # counter wrap, so the row stays 0x0E and the scroll continues), and points the terrain column and the
-    # schedule at the new area. It does not re-top the clock or clear the wave registers: the arcade's
-    # `sub_fn_3__handle_next_area` (xevious_sub.68k 696-730) does neither.
+    # thread BEFORE `advance slots`, fixing the PHASE order the enemy slices inherit. (Spawning a Logram
+    # draws ONE RNG value here for its masked-random initial fire delay, mirroring handle_logram_init — the
+    # arcade draws at init too; it runs before the walk phase's own draws, so a Logram-spawn tick shifts
+    # that tick's stream by one.) Advances the monotonic position and derives the row once; then consumes
+    # the schedule for this row, THEN tests completion — the arcade's own order: the sub CPU runs its
+    # function table in index order each frame (table `sub_fn_jump_tbl_ROM` xevious_sub.68k 109-119, loop
+    # `xevious_sub_cpu` 80-106), `sub_fn_2__handle_objects` (574-602) before `sub_fn_3__handle_next_area`
+    # (696-730). So on the tick the row reaches 0x0E
+    # a record on that row still fires for the OUTGOING area before it advances (area 13's final formation
+    # reset, the only one on the committed data; slice 21 soak finding, record 056). Completion (row 0x0E
+    # with progress > 0, the arcade's two-phase wait) advances 16 -> 7, CARRIES the clock (progress drops by
+    # the counter wrap, so the row stays 0x0E and the scroll continues), and points the terrain column and
+    # the schedule at the new area. It does not re-top the clock or clear the wave registers:
+    # `sub_fn_3__handle_next_area` does neither.
+    _check_completion_row_records()
     definition = _install_warp_proc(blocks, ADVANCE_AREA_PROCCODE)
     step = blocks.change_var("area progress", AREA_PROGRESS_ID, AREA_PROGRESS_STEP)
     set_row = _set_scroll_row(blocks)
-    completion = blocks.add("control_if_else")
+    completion = blocks.add("control_if")
     complete = blocks.op_and(
         blocks.var_equals(None, "scroll row", SCROLL_ROW_ID, AREA_COMPLETE_ROW),
         blocks.greater(None, "area progress", AREA_PROGRESS_ID, 0),
@@ -10792,8 +10817,7 @@ def install_advance_area(blocks: Blocks) -> None:
             *_enter_next_area(blocks),
         ],
     )
-    blocks.substack(completion, _consume_schedule(blocks), name="SUBSTACK2")
-    blocks.chain(definition, [step, set_row, completion])
+    blocks.chain(definition, [step, set_row, *_consume_schedule(blocks), completion])
 
 
 def _terrain_strip(blocks: Blocks, parity: int) -> list[str]:

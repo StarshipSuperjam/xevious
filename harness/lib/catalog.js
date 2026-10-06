@@ -2256,6 +2256,77 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.changeVariableChangeBy(p, 'Stage', 'area progress', -65536, 0),
   },
   {
+    // AREA-02 (slice 21 soak finding, record 056 item 12): each frame the arcade's sub CPU runs the schedule step
+    // (sub_fn_2__handle_objects, xevious_sub.68k 574-602) before the area step (sub_fn_3__handle_next_area,
+    // 696-730) — its function table's index order (sub_fn_jump_tbl_ROM 109-119, xevious_sub_cpu 80-106). So on
+    // the frame the row reaches 0x0E, area 13's final record (a flying-formation reset on row 0x0E) still fires
+    // before the area advances. Live: seed area 13 two ticks short of completion with the schedule cursor on that
+    // record and a formation in play, trap the area-number write (it lands before `_enter_next_area` repoints the
+    // cursor), and read the cursor and the formation count at that instant.
+    // roadmap-evidence: AREA-02 success  (the completion-row record is consumed for the outgoing area before the
+    //   area advances: the cursor stands on area 13's sentinel and the formation is reset when the area changes)
+    key: 'completion-row-record-fires-before-advance',
+    behavior:
+      'On the tick an area completes, a schedule record on the completion row fires for the outgoing area before it '
+      + 'advances (area 13\'s final formation reset), as the arcade runs handle_objects before handle_next_area',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const rows = readVar(vm, 'area-schedule-trigger-row').map(Number);
+      const handlers = readVar(vm, 'area-schedule-handler');
+      const end = Number(readVar(vm, 'area-schedule-end')[12]); // area 13's sentinel (1-based)
+      const record = end - 1;
+      assert.equal(rows[record - 1], 14, 'precondition: area 13 ends with a record on the completion row 0x0E');
+      assert.equal(handlers[record - 1], 'reset_flying_formation', 'precondition: it is the formation reset');
+      writeVar(vm, 'area-number', 13);
+      writeVar(vm, 'area-progress', 64992); // two ticks short of the completion row
+      writeVar(vm, 'area-schedule-cursor', record);
+      writeVar(vm, 'formation-count', 4);
+      let atAdvance = null;
+      const release = trapStageVar(vm, 'area-number', (area) => {
+        if (atAdvance === null && Number(area) === 14) {
+          atAdvance = {
+            cursor: Number(readVar(vm, 'area-schedule-cursor')),
+            formation: Number(readVar(vm, 'formation-count')),
+          };
+        }
+      });
+      try {
+        for (let i = 0; i < 40 && atAdvance === null; i += 1) step(vm, 1);
+      } finally {
+        release();
+      }
+      return { atAdvance, end, area: readVar(vm, 'area-number'), state: readVar(vm, 'game-director-state') };
+    },
+    assert(obs) {
+      assert.equal(obs.state, 'playing', 'precondition: still playing');
+      assert.ok(obs.atAdvance, 'area 13 completed into area 14');
+      assert.equal(obs.atAdvance.cursor, obs.end, 'the completion-row record was consumed before the area advanced');
+      assert.equal(obs.atAdvance.formation, 0, 'its formation reset ran for the outgoing area');
+    },
+    // Move the completion test back in front of the consume (the old order): the area advances first, the cursor
+    // is repointed at area 14, and area 13's last record never fires.
+    negativeMutation: (p) => {
+      const b = p.targets.find((t) => t.isStage).blocks;
+      const proto = Object.keys(b).find(
+        (k) => b[k] && b[k].opcode === 'procedures_prototype' && b[k].mutation && b[k].mutation.proccode === 'advance area',
+      );
+      const chain = [];
+      for (let cur = b[b[proto].parent].next; cur; cur = b[cur].next) chain.push(cur);
+      const completion = chain[chain.length - 1];
+      const consume = chain.findIndex((id) => b[id].opcode === 'control_repeat_until');
+      if (b[completion].opcode !== 'control_if' || consume < 1) {
+        throw new Error('completion-row negative: advance area is not [.., consume, completion]');
+      }
+      const before = chain[consume - 1];
+      b[chain[chain.length - 2]].next = null;
+      b[before].next = completion;
+      b[completion].parent = before;
+      b[completion].next = chain[consume];
+      b[chain[consume]].parent = completion;
+    },
+  },
+  {
     // AREA-01 (slice 20): the terrain phase. tools/terrain_render.py derives from the reference renderer
     // that map row R's top edge sits 8R - C/32 + phase lines below the playfield top (xevious_sub.68k
     // 234-245, 272; amiga.68k 136, 1372) and a ground sprite's centre at slot x/32 - 24 (amiga.68k

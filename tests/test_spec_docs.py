@@ -494,9 +494,11 @@ class GeneratedAreaClock(unittest.TestCase):
         self.assertEqual(14, prev)
 
     def _completion(self, blocks):
-        # The walk's completion `if/else`: AND(scroll row == 14, area progress > 0).
+        # The walk's completion `if`: AND(scroll row == 14, area progress > 0). Since slice 21 it is a plain `if`
+        # after the schedule consume (record 056 item 12), no longer an `if/else` with the consume as its other arm.
+        found = []
         for block in blocks.values():
-            if block["opcode"] != "control_if_else":
+            if block["opcode"] not in ("control_if", "control_if_else"):
                 continue
             cond = blocks.get((block["inputs"].get("CONDITION") or [None, None])[1])
             if not cond or cond["opcode"] != "operator_and":
@@ -504,8 +506,9 @@ class GeneratedAreaClock(unittest.TestCase):
             parts = [blocks.get(cond["inputs"][s][1]) for s in ("OPERAND1", "OPERAND2")]
             if any(p and p["opcode"] == "operator_equals"
                    and p["inputs"]["OPERAND1"][1][1] == "scroll row" for p in parts):
-                return block
-        raise AssertionError("no area-completion if/else found in the emitted blocks")
+                found.append(block)
+        self.assertEqual(1, len(found), "exactly one area-completion test in the emitted blocks")
+        return found[0]
 
     def test_generated_completion_carries_the_clock(self):
         # roadmap-evidence: AREA-01 success  (the emitted completion fires once per area and carries
@@ -979,6 +982,74 @@ class AddObjectDispatch(unittest.TestCase):
             guard([rec(0x18, 0x3A, 68)])  # the Garu lives only at 0x3B
         with self.assertRaises(SystemExit):
             guard([rec(0x54, 0x00, 68), rec(0x0F, 0x3A, 68)])  # one pending register per tick
+
+
+class AreaCompletionOrder(unittest.TestCase):
+    """AREA-02 (slice 21 soak finding, record 056 item 12): each frame the arcade's sub CPU runs its function table
+    in index order (sub_fn_jump_tbl_ROM, xevious_sub.68k:109-119; xevious_sub_cpu 80-106), so the schedule step
+    (sub_fn_2__handle_objects, 574-602) runs before the area step (sub_fn_3__handle_next_area, 696-730). On the
+    frame the row reaches 0x0E a record on that row still fires for the outgoing area — area 13's final formation
+    reset. The built `advance area` must consume first and test completion after; the build guard must refuse a
+    schedule whose completion row holds two records (the arcade fires only the first before the area advances)."""
+
+    def _advance_area_statements(self):
+        blocks = _stage_blocks(json.loads(PROJECT_JSON.read_text()))
+        proto = next(
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "procedures_prototype" and b["mutation"]["proccode"] == "advance area"
+        )
+        cur = blocks[blocks[proto]["parent"]]["next"]
+        statements = []
+        while cur:
+            statements.append(blocks[cur])
+            cur = blocks[cur]["next"]
+        return blocks, statements
+
+    def test_consume_runs_before_the_completion_test(self):
+        # roadmap-evidence: AREA-02 success  (on the tick the row reaches 0x0E the schedule consume runs before the
+        #   completion test, so a record on the completion row fires for the outgoing area, as in the arcade)
+        blocks, statements = self._advance_area_statements()
+        opcodes = [s["opcode"] for s in statements]
+        self.assertIn("control_repeat_until", opcodes, "the schedule consume loop is a top-level statement")
+        self.assertNotIn("control_if_else", opcodes, "consume and completion are no longer two arms of one if/else")
+        last = statements[-1]
+        self.assertEqual("control_if", last["opcode"], "the completion test is the last statement")
+        condition = json.dumps({k: blocks[k] for k in self._subtree(blocks, last["inputs"]["CONDITION"][1])})
+        self.assertIn(str(director.AREA_COMPLETE_ROW), condition, "the last statement is the 0x0E completion test")
+        self.assertLess(opcodes.index("control_repeat_until"), len(opcodes) - 1, "the consume runs first")
+
+    def _subtree(self, blocks, root):
+        out, stack = [], [root]
+        while stack:
+            bid = stack.pop()
+            if not isinstance(bid, str) or bid not in blocks:
+                continue
+            out.append(bid)
+            for value in blocks[bid].get("inputs", {}).values():
+                if isinstance(value, list) and len(value) > 1:
+                    stack.append(value[1])
+        return out
+
+    def test_committed_schedule_has_one_completion_row_record(self):
+        rows = director.SCHEDULE_ROWS
+        on_row = [
+            area
+            for area, (start, end) in enumerate(zip(director.AREA_SCHEDULE_START, director.AREA_SCHEDULE_END), start=1)
+            for i in range(start, end)
+            if rows[i - 1] == director.AREA_COMPLETE_ROW
+        ]
+        self.assertEqual([13], on_row, "only area 13's final formation reset sits on the completion row")
+        director._check_completion_row_records()  # the committed data passes the build guard
+
+    def test_build_guard_refuses_two_completion_row_records(self):
+        # roadmap-evidence: AREA-02 failure  (a schedule with two records on an area's completion row stops the
+        #   build, since the arcade fires only the first before the area advances and the port would fire both)
+        complete = director.AREA_COMPLETE_ROW
+        # One area: records at indices 1..3, sentinel (row 0x0D) at 4.
+        director._check_completion_row_records([20, complete, 30, 0x0D], [1], [4])
+        with self.assertRaises(SystemExit):
+            director._check_completion_row_records([20, complete, complete, 0x0D], [1], [4])
 
 
 class AimingTables(unittest.TestCase):

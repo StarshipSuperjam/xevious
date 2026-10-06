@@ -18155,10 +18155,12 @@ class ScratchProjectTests(unittest.TestCase):
         if not derived_ok:
             failures.add("scroll-row-derived")
 
-        # 5. completion: an `if/else` on AND(scroll row == 14, area progress > 0) whose THEN body
+        # 5. completion: an `if` on AND(scroll row == 14, area progress > 0) whose THEN body
         # advances the area (a wrap), CARRIES the clock (changes area progress by -65536, never sets
         # it or the row), points the schedule at the new area, and clears no wave register — the
-        # arcade's sub_fn_3__handle_next_area does only the offset/pointer swap.
+        # arcade's sub_fn_3__handle_next_area does only the offset/pointer swap. Since slice 21 (record 056
+        # item 12) it is a plain `if` AFTER the schedule consume, the arcade's order (handle_objects runs
+        # before handle_next_area each frame), no longer an `if/else` with the consume as its other arm.
         def and_parts(cond_spec):
             if not (isinstance(cond_spec, list) and len(cond_spec) > 1):
                 return []
@@ -18180,7 +18182,7 @@ class ScratchProjectTests(unittest.TestCase):
             (
                 bid
                 for bid in body
-                if blocks[bid]["opcode"] == "control_if_else"
+                if blocks[bid]["opcode"] in ("control_if", "control_if_else")
                 and any(
                     eq_var_num(p, director.SCROLL_ROW_ID, director.AREA_COMPLETE_ROW)
                     for p in and_parts(blocks[bid]["inputs"].get("CONDITION"))
@@ -18188,6 +18190,20 @@ class ScratchProjectTests(unittest.TestCase):
             ),
             None,
         )
+        # The consume runs first: the proc's own statements end [..., consume loop, completion `if`].
+        top_level = []
+        cur = blocks[definition_id].get("next")
+        while cur:
+            top_level.append(cur)
+            cur = blocks[cur]["next"]
+        if not (
+            completion
+            and blocks[completion]["opcode"] == "control_if"
+            and len(top_level) >= 2
+            and top_level[-1] == completion
+            and blocks[top_level[-2]]["opcode"] == "control_repeat_until"
+        ):
+            failures.add("consume-before-completion")
         then_spec = blocks[completion]["inputs"].get("SUBSTACK") if completion else None
         then_body = (
             reachable(then_spec[1])
@@ -18477,8 +18493,26 @@ class ScratchProjectTests(unittest.TestCase):
                 bid = b["next"]
             raise AssertionError("no terrain column write after the carry")
 
+        def break_consume_order(p):
+            # Put the completion test back in front of the consume (the pre-slice-21 order).
+            s = stage_of(p)["blocks"]
+            proto = next(
+                k for k, b in s.items()
+                if b["opcode"] == "procedures_prototype" and b["mutation"]["proccode"] == director.ADVANCE_AREA_PROCCODE
+            )
+            chain = []
+            cur = s[s[proto]["parent"]]["next"]
+            while cur:
+                chain.append(cur)
+                cur = s[cur]["next"]
+            completion, consume = chain[-1], chain[-2]
+            s[chain[-3]]["next"] = completion
+            s[completion].update(parent=chain[-3], next=consume)
+            s[consume].update(parent=completion, next=None)
+
         cases = [
             ("advance-area-before-slots", break_phase_order),
+            ("consume-before-completion", break_consume_order),
             ("progress-steps-32", break_progress_step),
             ("scroll-row-derived", break_row_wrap_constant),
             ("completion-at-14", break_completion_row),
@@ -23570,7 +23604,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "c5eac1999013e8466cf5e3bd0e131aeac92671aa0d6d32109876fd8d5796e1a3",
+            "e17cb90a496c19f1186c61b4a16faae4e290a1345954e77e55943e6db4b6e3fa",
             build_hash,
         )
 
