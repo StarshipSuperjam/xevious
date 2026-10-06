@@ -205864,7 +205864,7 @@
         },
         "gd-blaster-007": {
           "opcode": "control_if",
-          "next": "gd-blaster-010",
+          "next": "gd-blaster-011",
           "parent": "gd-blaster-002",
           "inputs": {
             "CONDITION": [
@@ -205883,7 +205883,7 @@
         "gd-blaster-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-blaster-010",
+          "parent": "gd-blaster-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -205892,34 +205892,16 @@
         "gd-blaster-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-blaster-010",
+          "parent": "gd-blaster-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-blaster-010": {
-          "opcode": "control_if",
-          "next": "gd-blaster-008",
-          "parent": "gd-blaster-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-blaster-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-blaster-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-blaster-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-blaster-010",
+          "parent": "gd-blaster-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -205934,6 +205916,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-011": {
+          "opcode": "control_if",
+          "next": "gd-blaster-008",
+          "parent": "gd-blaster-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-blaster-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-blaster-009"
             ]
           },
           "fields": {},
@@ -206590,7 +206590,7 @@
         },
         "gd-blaster-041": {
           "opcode": "event_whenbroadcastreceived",
-          "next": "gd-blaster-045",
+          "next": "gd-blaster-046",
           "parent": null,
           "inputs": {},
           "fields": {
@@ -206607,7 +206607,7 @@
         "gd-blaster-042": {
           "opcode": "data_setvariableto",
           "next": "gd-blaster-043",
-          "parent": "gd-blaster-045",
+          "parent": "gd-blaster-046",
           "inputs": {
             "VALUE": [
               1,
@@ -206638,34 +206638,16 @@
         "gd-blaster-044": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-blaster-045",
+          "parent": "gd-blaster-046",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-blaster-045": {
-          "opcode": "control_if",
-          "next": "gd-blaster-042",
-          "parent": "gd-blaster-041",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-blaster-046"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-blaster-044"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-blaster-046": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-blaster-045",
+          "parent": "gd-blaster-046",
           "inputs": {
             "OPERAND1": [
               1,
@@ -206680,6 +206662,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-blaster-046": {
+          "opcode": "control_if",
+          "next": "gd-blaster-042",
+          "parent": "gd-blaster-041",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-blaster-045"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-blaster-044"
             ]
           },
           "fields": {},
@@ -210340,7 +210340,7 @@
         },
         "gd-start-screen-007": {
           "opcode": "control_if",
-          "next": "gd-start-screen-010",
+          "next": "gd-start-screen-011",
           "parent": "gd-start-screen-002",
           "inputs": {
             "CONDITION": [
@@ -210359,7 +210359,7 @@
         "gd-start-screen-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-start-screen-010",
+          "parent": "gd-start-screen-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -210368,34 +210368,16 @@
         "gd-start-screen-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-start-screen-010",
+          "parent": "gd-start-screen-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-start-screen-010": {
-          "opcode": "control_if",
-          "next": "gd-start-screen-008",
-          "parent": "gd-start-screen-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-start-screen-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-start-screen-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-start-screen-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-start-screen-010",
+          "parent": "gd-start-screen-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -210410,6 +210392,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-start-screen-011": {
+          "opcode": "control_if",
+          "next": "gd-start-screen-008",
+          "parent": "gd-start-screen-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-start-screen-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-start-screen-009"
             ]
           },
           "fields": {},
@@ -235677,7 +235677,7 @@
         },
         "gd-hud-007": {
           "opcode": "control_if",
-          "next": "gd-hud-010",
+          "next": "gd-hud-011",
           "parent": "gd-hud-002",
           "inputs": {
             "CONDITION": [
@@ -235696,7 +235696,7 @@
         "gd-hud-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-hud-010",
+          "parent": "gd-hud-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -235705,34 +235705,16 @@
         "gd-hud-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-hud-010",
+          "parent": "gd-hud-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-hud-010": {
-          "opcode": "control_if",
-          "next": "gd-hud-008",
-          "parent": "gd-hud-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-hud-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-hud-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-hud-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-hud-010",
+          "parent": "gd-hud-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -235747,6 +235729,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-hud-011": {
+          "opcode": "control_if",
+          "next": "gd-hud-008",
+          "parent": "gd-hud-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-hud-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-hud-009"
             ]
           },
           "fields": {},
@@ -244756,7 +244756,7 @@
         },
         "gd-toroid-007": {
           "opcode": "control_if",
-          "next": "gd-toroid-010",
+          "next": "gd-toroid-011",
           "parent": "gd-toroid-002",
           "inputs": {
             "CONDITION": [
@@ -244775,7 +244775,7 @@
         "gd-toroid-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-toroid-010",
+          "parent": "gd-toroid-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -244784,34 +244784,16 @@
         "gd-toroid-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-toroid-010",
+          "parent": "gd-toroid-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-toroid-010": {
-          "opcode": "control_if",
-          "next": "gd-toroid-008",
-          "parent": "gd-toroid-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-toroid-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-toroid-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-toroid-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-toroid-010",
+          "parent": "gd-toroid-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -244826,6 +244808,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-toroid-011": {
+          "opcode": "control_if",
+          "next": "gd-toroid-008",
+          "parent": "gd-toroid-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-toroid-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-toroid-009"
             ]
           },
           "fields": {},
@@ -246766,7 +246766,7 @@
         },
         "gd-enemy-bullet-007": {
           "opcode": "control_if",
-          "next": "gd-enemy-bullet-010",
+          "next": "gd-enemy-bullet-011",
           "parent": "gd-enemy-bullet-002",
           "inputs": {
             "CONDITION": [
@@ -246785,7 +246785,7 @@
         "gd-enemy-bullet-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-enemy-bullet-010",
+          "parent": "gd-enemy-bullet-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -246794,34 +246794,16 @@
         "gd-enemy-bullet-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-enemy-bullet-010",
+          "parent": "gd-enemy-bullet-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-enemy-bullet-010": {
-          "opcode": "control_if",
-          "next": "gd-enemy-bullet-008",
-          "parent": "gd-enemy-bullet-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-enemy-bullet-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-enemy-bullet-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-enemy-bullet-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-enemy-bullet-010",
+          "parent": "gd-enemy-bullet-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -246836,6 +246818,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-enemy-bullet-011": {
+          "opcode": "control_if",
+          "next": "gd-enemy-bullet-008",
+          "parent": "gd-enemy-bullet-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-enemy-bullet-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-enemy-bullet-009"
             ]
           },
           "fields": {},
@@ -248697,7 +248697,7 @@
         },
         "gd-terrazi-007": {
           "opcode": "control_if",
-          "next": "gd-terrazi-010",
+          "next": "gd-terrazi-011",
           "parent": "gd-terrazi-002",
           "inputs": {
             "CONDITION": [
@@ -248716,7 +248716,7 @@
         "gd-terrazi-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-terrazi-010",
+          "parent": "gd-terrazi-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -248725,34 +248725,16 @@
         "gd-terrazi-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-terrazi-010",
+          "parent": "gd-terrazi-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-terrazi-010": {
-          "opcode": "control_if",
-          "next": "gd-terrazi-008",
-          "parent": "gd-terrazi-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-terrazi-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-terrazi-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-terrazi-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-terrazi-010",
+          "parent": "gd-terrazi-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -248767,6 +248749,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-011": {
+          "opcode": "control_if",
+          "next": "gd-terrazi-008",
+          "parent": "gd-terrazi-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-terrazi-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-terrazi-009"
             ]
           },
           "fields": {},
@@ -250683,7 +250683,7 @@
         },
         "gd-kapi-007": {
           "opcode": "control_if",
-          "next": "gd-kapi-010",
+          "next": "gd-kapi-011",
           "parent": "gd-kapi-002",
           "inputs": {
             "CONDITION": [
@@ -250702,7 +250702,7 @@
         "gd-kapi-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-kapi-010",
+          "parent": "gd-kapi-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -250711,34 +250711,16 @@
         "gd-kapi-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-kapi-010",
+          "parent": "gd-kapi-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-kapi-010": {
-          "opcode": "control_if",
-          "next": "gd-kapi-008",
-          "parent": "gd-kapi-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-kapi-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-kapi-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-kapi-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-kapi-010",
+          "parent": "gd-kapi-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -250753,6 +250735,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-011": {
+          "opcode": "control_if",
+          "next": "gd-kapi-008",
+          "parent": "gd-kapi-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-kapi-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-kapi-009"
             ]
           },
           "fields": {},
@@ -252926,7 +252926,7 @@
         },
         "gd-torkan-007": {
           "opcode": "control_if",
-          "next": "gd-torkan-010",
+          "next": "gd-torkan-011",
           "parent": "gd-torkan-002",
           "inputs": {
             "CONDITION": [
@@ -252945,7 +252945,7 @@
         "gd-torkan-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-torkan-010",
+          "parent": "gd-torkan-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -252954,34 +252954,16 @@
         "gd-torkan-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-torkan-010",
+          "parent": "gd-torkan-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-torkan-010": {
-          "opcode": "control_if",
-          "next": "gd-torkan-008",
-          "parent": "gd-torkan-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-torkan-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-torkan-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-torkan-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-torkan-010",
+          "parent": "gd-torkan-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -252996,6 +252978,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-torkan-011": {
+          "opcode": "control_if",
+          "next": "gd-torkan-008",
+          "parent": "gd-torkan-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-torkan-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-torkan-009"
             ]
           },
           "fields": {},
@@ -255216,7 +255216,7 @@
         },
         "gd-zoshi-007": {
           "opcode": "control_if",
-          "next": "gd-zoshi-010",
+          "next": "gd-zoshi-011",
           "parent": "gd-zoshi-002",
           "inputs": {
             "CONDITION": [
@@ -255235,7 +255235,7 @@
         "gd-zoshi-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-zoshi-010",
+          "parent": "gd-zoshi-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -255244,34 +255244,16 @@
         "gd-zoshi-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-zoshi-010",
+          "parent": "gd-zoshi-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-zoshi-010": {
-          "opcode": "control_if",
-          "next": "gd-zoshi-008",
-          "parent": "gd-zoshi-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-zoshi-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-zoshi-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-zoshi-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-zoshi-010",
+          "parent": "gd-zoshi-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -255286,6 +255268,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-zoshi-011": {
+          "opcode": "control_if",
+          "next": "gd-zoshi-008",
+          "parent": "gd-zoshi-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-zoshi-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-zoshi-009"
             ]
           },
           "fields": {},
@@ -257267,7 +257267,7 @@
         },
         "gd-jara-007": {
           "opcode": "control_if",
-          "next": "gd-jara-010",
+          "next": "gd-jara-011",
           "parent": "gd-jara-002",
           "inputs": {
             "CONDITION": [
@@ -257286,7 +257286,7 @@
         "gd-jara-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-jara-010",
+          "parent": "gd-jara-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -257295,34 +257295,16 @@
         "gd-jara-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-jara-010",
+          "parent": "gd-jara-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-jara-010": {
-          "opcode": "control_if",
-          "next": "gd-jara-008",
-          "parent": "gd-jara-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-jara-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-jara-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-jara-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-jara-010",
+          "parent": "gd-jara-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -257337,6 +257319,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-jara-011": {
+          "opcode": "control_if",
+          "next": "gd-jara-008",
+          "parent": "gd-jara-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-jara-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-jara-009"
             ]
           },
           "fields": {},
@@ -259616,7 +259616,7 @@
         },
         "gd-zakato-007": {
           "opcode": "control_if",
-          "next": "gd-zakato-010",
+          "next": "gd-zakato-011",
           "parent": "gd-zakato-002",
           "inputs": {
             "CONDITION": [
@@ -259635,7 +259635,7 @@
         "gd-zakato-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-zakato-010",
+          "parent": "gd-zakato-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -259644,34 +259644,16 @@
         "gd-zakato-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-zakato-010",
+          "parent": "gd-zakato-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-zakato-010": {
-          "opcode": "control_if",
-          "next": "gd-zakato-008",
-          "parent": "gd-zakato-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-zakato-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-zakato-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-zakato-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-zakato-010",
+          "parent": "gd-zakato-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -259686,6 +259668,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-zakato-011": {
+          "opcode": "control_if",
+          "next": "gd-zakato-008",
+          "parent": "gd-zakato-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-zakato-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-zakato-009"
             ]
           },
           "fields": {},
@@ -263161,7 +263161,7 @@
         },
         "gd-giddo-spario-007": {
           "opcode": "control_if",
-          "next": "gd-giddo-spario-010",
+          "next": "gd-giddo-spario-011",
           "parent": "gd-giddo-spario-002",
           "inputs": {
             "CONDITION": [
@@ -263180,7 +263180,7 @@
         "gd-giddo-spario-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-giddo-spario-010",
+          "parent": "gd-giddo-spario-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -263189,34 +263189,16 @@
         "gd-giddo-spario-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-giddo-spario-010",
+          "parent": "gd-giddo-spario-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-giddo-spario-010": {
-          "opcode": "control_if",
-          "next": "gd-giddo-spario-008",
-          "parent": "gd-giddo-spario-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-giddo-spario-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-giddo-spario-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-giddo-spario-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-giddo-spario-010",
+          "parent": "gd-giddo-spario-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -263231,6 +263213,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-giddo-spario-011": {
+          "opcode": "control_if",
+          "next": "gd-giddo-spario-008",
+          "parent": "gd-giddo-spario-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-giddo-spario-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-giddo-spario-009"
             ]
           },
           "fields": {},
@@ -265030,7 +265030,7 @@
         },
         "gd-brag-spario-007": {
           "opcode": "control_if",
-          "next": "gd-brag-spario-010",
+          "next": "gd-brag-spario-011",
           "parent": "gd-brag-spario-002",
           "inputs": {
             "CONDITION": [
@@ -265049,7 +265049,7 @@
         "gd-brag-spario-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-brag-spario-010",
+          "parent": "gd-brag-spario-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -265058,34 +265058,16 @@
         "gd-brag-spario-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-brag-spario-010",
+          "parent": "gd-brag-spario-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-brag-spario-010": {
-          "opcode": "control_if",
-          "next": "gd-brag-spario-008",
-          "parent": "gd-brag-spario-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-brag-spario-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-brag-spario-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-brag-spario-010",
+          "parent": "gd-brag-spario-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -265100,6 +265082,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-brag-spario-011": {
+          "opcode": "control_if",
+          "next": "gd-brag-spario-008",
+          "parent": "gd-brag-spario-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-brag-spario-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-brag-spario-009"
             ]
           },
           "fields": {},
@@ -266520,7 +266520,7 @@
         },
         "gd-garu-zakato-007": {
           "opcode": "control_if",
-          "next": "gd-garu-zakato-010",
+          "next": "gd-garu-zakato-011",
           "parent": "gd-garu-zakato-002",
           "inputs": {
             "CONDITION": [
@@ -266539,7 +266539,7 @@
         "gd-garu-zakato-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-garu-zakato-010",
+          "parent": "gd-garu-zakato-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -266548,34 +266548,16 @@
         "gd-garu-zakato-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-garu-zakato-010",
+          "parent": "gd-garu-zakato-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-garu-zakato-010": {
-          "opcode": "control_if",
-          "next": "gd-garu-zakato-008",
-          "parent": "gd-garu-zakato-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-garu-zakato-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-garu-zakato-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-garu-zakato-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-garu-zakato-010",
+          "parent": "gd-garu-zakato-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -266590,6 +266572,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-garu-zakato-011": {
+          "opcode": "control_if",
+          "next": "gd-garu-zakato-008",
+          "parent": "gd-garu-zakato-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-garu-zakato-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-garu-zakato-009"
             ]
           },
           "fields": {},
@@ -268427,7 +268427,7 @@
         },
         "gd-bacura-007": {
           "opcode": "control_if",
-          "next": "gd-bacura-010",
+          "next": "gd-bacura-011",
           "parent": "gd-bacura-002",
           "inputs": {
             "CONDITION": [
@@ -268446,7 +268446,7 @@
         "gd-bacura-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-bacura-010",
+          "parent": "gd-bacura-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -268455,34 +268455,16 @@
         "gd-bacura-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-bacura-010",
+          "parent": "gd-bacura-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-bacura-010": {
-          "opcode": "control_if",
-          "next": "gd-bacura-008",
-          "parent": "gd-bacura-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-bacura-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-bacura-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-bacura-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-bacura-010",
+          "parent": "gd-bacura-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -268497,6 +268479,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-bacura-011": {
+          "opcode": "control_if",
+          "next": "gd-bacura-008",
+          "parent": "gd-bacura-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-bacura-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-bacura-009"
             ]
           },
           "fields": {},
@@ -270324,7 +270324,7 @@
         },
         "gd-sheonite-007": {
           "opcode": "control_if",
-          "next": "gd-sheonite-010",
+          "next": "gd-sheonite-011",
           "parent": "gd-sheonite-002",
           "inputs": {
             "CONDITION": [
@@ -270343,7 +270343,7 @@
         "gd-sheonite-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-sheonite-010",
+          "parent": "gd-sheonite-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -270352,34 +270352,16 @@
         "gd-sheonite-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-sheonite-010",
+          "parent": "gd-sheonite-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-sheonite-010": {
-          "opcode": "control_if",
-          "next": "gd-sheonite-008",
-          "parent": "gd-sheonite-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-sheonite-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-sheonite-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-sheonite-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-sheonite-010",
+          "parent": "gd-sheonite-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -270394,6 +270376,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-sheonite-011": {
+          "opcode": "control_if",
+          "next": "gd-sheonite-008",
+          "parent": "gd-sheonite-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-sheonite-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-sheonite-009"
             ]
           },
           "fields": {},
@@ -272200,7 +272200,7 @@
         },
         "gd-bonus-flag-007": {
           "opcode": "control_if",
-          "next": "gd-bonus-flag-010",
+          "next": "gd-bonus-flag-011",
           "parent": "gd-bonus-flag-002",
           "inputs": {
             "CONDITION": [
@@ -272219,7 +272219,7 @@
         "gd-bonus-flag-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-bonus-flag-010",
+          "parent": "gd-bonus-flag-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -272228,34 +272228,16 @@
         "gd-bonus-flag-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-bonus-flag-010",
+          "parent": "gd-bonus-flag-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-bonus-flag-010": {
-          "opcode": "control_if",
-          "next": "gd-bonus-flag-008",
-          "parent": "gd-bonus-flag-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-bonus-flag-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-bonus-flag-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-bonus-flag-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-bonus-flag-010",
+          "parent": "gd-bonus-flag-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -272270,6 +272252,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-bonus-flag-011": {
+          "opcode": "control_if",
+          "next": "gd-bonus-flag-008",
+          "parent": "gd-bonus-flag-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-bonus-flag-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-bonus-flag-009"
             ]
           },
           "fields": {},
@@ -273661,7 +273661,7 @@
         },
         "gd-ground-007": {
           "opcode": "control_if",
-          "next": "gd-ground-010",
+          "next": "gd-ground-011",
           "parent": "gd-ground-002",
           "inputs": {
             "CONDITION": [
@@ -273680,7 +273680,7 @@
         "gd-ground-008": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-ground-010",
+          "parent": "gd-ground-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -273689,34 +273689,16 @@
         "gd-ground-009": {
           "opcode": "control_delete_this_clone",
           "next": null,
-          "parent": "gd-ground-010",
+          "parent": "gd-ground-011",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
         "gd-ground-010": {
-          "opcode": "control_if",
-          "next": "gd-ground-008",
-          "parent": "gd-ground-007",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-ground-011"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-ground-009"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-ground-011": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-ground-010",
+          "parent": "gd-ground-011",
           "inputs": {
             "OPERAND1": [
               1,
@@ -273731,6 +273713,24 @@
                 4,
                 1
               ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-ground-011": {
+          "opcode": "control_if",
+          "next": "gd-ground-008",
+          "parent": "gd-ground-007",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-ground-010"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-ground-009"
             ]
           },
           "fields": {},

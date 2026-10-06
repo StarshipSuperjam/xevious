@@ -42,12 +42,18 @@ import script_layout  # noqa: E402
 
 FIXTURE = ROOT / "tests/fixtures/script_layout_editor_measurements.json"
 PAGE = ROOT / "tools/script_layout_measure.html"
-VM = ROOT / "harness/node_modules/scratch-vm/dist/web/scratch-vm.js"
+VM_PACKAGE = ROOT / "harness/node_modules/scratch-vm"
+VM = VM_PACKAGE / "dist/web/scratch-vm.js"
 SHIPPED = ROOT / "dist/Xevious.sb3"
 SAMPLES = "script-layout samples"
-RENDERER = "scratch-blocks 1.3.0 dist/web/vertical.js (the block renderer behind the Scratch 3 editor)"
+# The versions the model and the fixture were measured with. prepare refuses others, so the
+# fixture never names a renderer it was not measured in; measuring a newer one means changing
+# these, re-measuring, and fixing the model wherever the tests then disagree.
+RENDERER_VERSION = "1.3.0"
+VM_VERSION = "5.0.300"
+RENDERER = f"scratch-blocks {RENDERER_VERSION} dist/web/vertical.js (the block renderer behind the Scratch 3 editor)"
 LOADED_THROUGH = (
-    "scratch-vm 5.0.300: loadProject, setEditingTarget, then the workspaceUpdate XML into "
+    f"scratch-vm {VM_VERSION}: loadProject, setEditingTarget, then the workspaceUpdate XML into "
     "Blockly.Xml.clearWorkspaceAndLoadFromXml, as scratch-gui does"
 )
 METHOD = (
@@ -128,11 +134,25 @@ def _model_heights(sb3: bytes) -> dict[str, dict[str, int | None]]:
     return heights
 
 
+def _require_version(what: str, found: str, expected: str) -> None:
+    if found != expected:
+        raise SystemExit(
+            f"{what} is version {found}, but the model and fixture are for {expected}. Measure with "
+            f"{expected}, or change the versions at the top of tools/script_layout_measure.py on purpose."
+        )
+
+
 def prepare(out: Path, scratch_blocks: Path, sb3_path: Path | None) -> None:
     if not VM.exists():
         raise SystemExit(f"no scratch-vm at {VM}: run `npm ci` in harness/ first")
+    vm_version = json.loads((VM_PACKAGE / "package.json").read_text())["version"]
+    _require_version(f"the scratch-vm in {VM_PACKAGE}", vm_version, VM_VERSION)
     out.mkdir(parents=True, exist_ok=True)
     with tarfile.open(scratch_blocks) as package:
+        manifest = package.extractfile("package/package.json")
+        if manifest is None:
+            raise SystemExit(f"{scratch_blocks} has no package/package.json")
+        _require_version(str(scratch_blocks), json.loads(manifest.read())["version"], RENDERER_VERSION)
         renderer = package.extractfile("package/dist/web/vertical.js")
         if renderer is None:
             raise SystemExit(f"{scratch_blocks} has no package/dist/web/vertical.js")
@@ -166,7 +186,7 @@ def write_fixture(out: Path) -> None:
         "stack_heights": dict(sorted(measured["stacks"].items())),
     }
     FIXTURE.write_text(json.dumps(fixture, indent=1) + "\n")
-    print(f"wrote {FIXTURE.relative_to(ROOT)}")
+    print(f"wrote {FIXTURE}")
 
 
 def main(argv: list[str] | None = None) -> None:

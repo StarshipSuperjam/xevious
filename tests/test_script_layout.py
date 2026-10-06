@@ -10,15 +10,21 @@ block (which the editor refuses to load).
 from __future__ import annotations
 
 import copy
+import io
 import json
 from pathlib import Path
 import sys
+import tarfile
+import tempfile
 import unittest
+from unittest import mock
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import game_director  # noqa: E402
 import script_layout as sl  # noqa: E402
+import script_layout_measure as measure  # noqa: E402
 
 FIXTURE = json.loads((ROOT / "tests/fixtures/script_layout_editor_measurements.json").read_text())
 PROJECT = json.loads((ROOT / "src/xevious/project.json").read_text())
@@ -106,6 +112,62 @@ class EditorMeasurementTests(unittest.TestCase):
             if sl.is_cap(sl._last_in_stack(blocks, b["inputs"][name][1]))
         ]
         self.assertTrue(caps_in_mouths, "a mouth whose stack ends in a cap")
+
+
+def _sb3(blocks: dict) -> bytes:
+    project = {"targets": [
+        {"isStage": True, "name": "Stage", "blocks": {}},
+        {"isStage": False, "name": measure.SAMPLES, "blocks": blocks},
+    ]}
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as sb3:
+        sb3.writestr("project.json", json.dumps(project))
+    return out.getvalue()
+
+
+def _package_tgz(path: Path, version: str) -> None:
+    manifest = json.dumps({"version": version}).encode()
+    with tarfile.open(path, "w:gz") as package:
+        info = tarfile.TarInfo("package/package.json")
+        info.size = len(manifest)
+        package.addfile(info, io.BytesIO(manifest))
+
+
+class MeasuringToolTests(unittest.TestCase):
+    """tools/script_layout_measure.py, the steps that need no browser."""
+
+    def test_the_model_heights_it_compares_against_are_the_models(self) -> None:
+        heights = measure._model_heights(_sb3(FIXTURE["blocks"]))[measure.SAMPLES]
+        for block_id, height in FIXTURE["block_heights"].items():
+            self.assertEqual(heights[block_id], height, block_id)
+
+    def test_write_fixture_reproduces_the_committed_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder)
+            (out / "measure.sb3").write_bytes(_sb3(FIXTURE["blocks"]))
+            (out / "measured.json").write_text(json.dumps(
+                {"blocks": FIXTURE["block_heights"], "stacks": FIXTURE["stack_heights"]}))
+            with mock.patch.object(measure, "FIXTURE", out / "fixture.json"):
+                measure.write_fixture(out)
+            self.assertEqual(json.loads((out / "fixture.json").read_text()), FIXTURE)
+
+    def test_prepare_refuses_other_versions(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            vm = root / "scratch-vm"
+            (vm / "dist/web").mkdir(parents=True)
+            (vm / "dist/web/scratch-vm.js").write_text("")
+            renderer = root / "scratch-blocks.tgz"
+            _package_tgz(renderer, "1.2.0")
+            with mock.patch.object(measure, "VM_PACKAGE", vm), \
+                    mock.patch.object(measure, "VM", vm / "dist/web/scratch-vm.js"):
+                (vm / "package.json").write_text(json.dumps({"version": measure.VM_VERSION}))
+                with self.assertRaisesRegex(SystemExit, "1.2.0"):
+                    measure.prepare(root / "out", renderer, None)
+                (vm / "package.json").write_text(json.dumps({"version": "5.0.1"}))
+                _package_tgz(renderer, measure.RENDERER_VERSION)
+                with self.assertRaisesRegex(SystemExit, "5.0.1"):
+                    measure.prepare(root / "out", renderer, None)
 
 
 class ShapeRuleTests(unittest.TestCase):

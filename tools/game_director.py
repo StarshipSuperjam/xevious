@@ -11708,11 +11708,7 @@ def delete_clone_then(blocks: Blocks, original_only: list[str]) -> list[str]:
     delete = blocks.add("control_delete_this_clone")
     if not original_only:
         return [delete]
-    always = blocks.add("control_if")
-    condition = blocks.op_eq(number(1), number(1))
-    blocks.blocks[always]["inputs"]["CONDITION"] = [2, condition]
-    blocks.blocks[condition]["parent"] = always
-    blocks.substack(always, [delete])
+    always = blocks.if_reporter(blocks.op_eq(number(1), number(1)), [delete])
     return [always, *original_only]
 
 
