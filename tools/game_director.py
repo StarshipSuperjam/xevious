@@ -7705,7 +7705,15 @@ def install_update_brag_spario(blocks: Blocks) -> None:
     # sign of (player col - slot col), with NO change on an axis already aligned to the craft's cell (the
     # arcade's MSB compare: jcs -2 / jeq 0 / else +2, 3095-3109). Velocity is unbounded, exactly as the
     # arcade (no clamp). Then it moves by the accumulated velocity, advances its flip-animation clock, and
-    # culls off any edge. Shares the flying hit window and the shared ~20-frame burst on death.
+    # culls off any edge.
+    # A shot never destroys it (slice 21): the handler has no hit branch and writes _STATE=2 every frame (3092),
+    # while the shot test only hits an enemy whose _STATE is 2 (2566). A hit sets _STATE=3, consumes the shot
+    # and scores 500 with the flying-hit sound (2525-2538); the next frame's handler puts it back to 2 and it
+    # keeps flying. It leaves only off-screen. Both collision tests read the sprite positions the sub CPU
+    # snapshots at the start of the frame (main 274, sub 292-294), before the handler moves anything, and the
+    # craft test (main_fn_1) runs before the handler (main_fn_2) and skips a non-2 enemy (2207-2209). So each
+    # tick here: the craft test only while ACTIVE, then a HIT slot back to ACTIVE, then the shared shot test
+    # at the drawn position (its HIT lasts until the next tick), then the move, which runs on a hit tick too.
     definition = _install_warp_proc(blocks, UPDATE_BRAG_SPARIO_PROCCODE)
     state = lambda: _cur_item(blocks, "slot state", SLOT_STATE_ID)
     row_offset = lambda: blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))
@@ -7740,23 +7748,27 @@ def install_update_brag_spario(blocks: Blocks) -> None:
     offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), blocks.op_or(off_right, off_left))
     cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
     craft_hit = blocks.if_reporter(
-        _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
-    )
-    normal = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_ACTIVE)),
-        [craft_hit, accel_dx_plus, accel_dx_minus, accel_dy_plus, accel_dy_minus, *move, cull],
+        [blocks.if_reporter(_craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))])],
     )
-    top = blocks.add("control_if_else")
-    is_hit = blocks.op_eq(state(), number(SLOT_HIT))
-    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
-    blocks.blocks[is_hit]["parent"] = top
-    blocks.substack(top, [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)])
-    blocks.substack(
-        top,
-        [blocks.call_proc(CHECK_AIR_HIT_PROCCODE, warp=True), normal],
-        name="SUBSTACK2",
+    recover = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_HIT)),
+        [_set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE))],
     )
-    blocks.chain(definition, [top])
+    blocks.chain(
+        definition,
+        [
+            craft_hit,
+            recover,
+            blocks.call_proc(CHECK_AIR_HIT_PROCCODE, warp=True),
+            accel_dx_plus,
+            accel_dx_minus,
+            accel_dy_plus,
+            accel_dy_minus,
+            *move,
+            cull,
+        ],
+    )
 
 
 def _stamp_sheonite(blocks: Blocks, slot_number: int, type_number: int, flank_sign: int) -> list[str]:
@@ -15852,7 +15864,9 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
-def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_code: int, flipped: bool) -> dict[str, dict[str, Any]]:
+def _spario_blocks(
+    target: str, clone_var_name: str, clone_var_id: str, type_code: int, flipped: bool, hit_burst: bool = True
+) -> dict[str, dict[str, Any]]:
     # AIR-10 shared Spario renderer (game_director owns these blocks; the costumes are the Zakato body
     # stand-in + the shared air explosion mirrored on in expected_project). One persistent clone per
     # flying slot (59..64), the same pool pattern as the Jara/Zakato: shown and positioned when its slot
@@ -15861,6 +15875,8 @@ def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_cod
     # selects the kill: the Brag and Garu Zakato use the shared ~20-frame flying kill with its per-frame flips
     # (`flying_enemy_hit`); the Giddo's SHORT 8-frame own-burst (giddo_spario_hit xevious_main.68k 5241-5253, codes 4..7 with
     # no flip bits) plays the unflipped first phases — a small pop (its handler frees it at frame 8).
+    # `hit_burst=False` (the Brag, slice 21) always draws the body: a shot leaves it flying, and the arcade's
+    # hit never touches its _CODE (3082, 2525), so its HIT tick shows no explosion.
     blocks = Blocks(target)
     common_stop(blocks, hide=True, clones=True)
     slotvar = lambda: variable(clone_var_name, clone_var_id)
@@ -15893,29 +15909,30 @@ def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_cod
             number(RENDER_ROW_STAGE),
         ),
     )
-    # The air explosion on a hit: forward from the slot clock (the arcade `TIMER>>2`, fresh per read).
-    explode_ordinal = _air_burst_ordinal(
-        blocks, SPARIO_BURST_ORDINAL_BASE, lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), flipped
-    )
-    hit_body: list[str] = [
-        blocks.switch_costume_expr(explode_ordinal),
+    # The body stand-in is a fixed costume (the mirrored-in Zakato blob, ordinal 1), so switch by
+    # name — a constant costume needs no runtime reporter, exactly like the Zakato active body.
+    body = lambda: [
+        blocks.switch_costume("zakato/body/01"),
         blocks.add("looks_setsizeto", inputs={"SIZE": number(SPARIO_RENDER_SIZE)}),
     ]
-    state_render = blocks.add("control_if_else")
-    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
-    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
-    blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(state_render, hit_body)
-    blocks.substack(
-        state_render,
-        [
-            # The body stand-in is a fixed costume (the mirrored-in Zakato blob, ordinal 1), so switch by
-            # name — a constant costume needs no runtime reporter, exactly like the Zakato active body.
-            blocks.switch_costume("zakato/body/01"),
+    if hit_burst:
+        # The air explosion on a hit: forward from the slot clock (the arcade `TIMER>>2`, fresh per read).
+        explode_ordinal = _air_burst_ordinal(
+            blocks, SPARIO_BURST_ORDINAL_BASE, lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), flipped
+        )
+        hit_body: list[str] = [
+            blocks.switch_costume_expr(explode_ordinal),
             blocks.add("looks_setsizeto", inputs={"SIZE": number(SPARIO_RENDER_SIZE)}),
-        ],
-        name="SUBSTACK2",
-    )
+        ]
+        state_render = blocks.add("control_if_else")
+        is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
+        blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
+        blocks.blocks[is_hit]["parent"] = state_render
+        blocks.substack(state_render, hit_body)
+        blocks.substack(state_render, body(), name="SUBSTACK2")
+        drawn = [state_render]
+    else:
+        drawn = body()
     render = blocks.add("control_if_else")
     blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_family]
     blocks.blocks[is_family]["parent"] = render
@@ -15923,7 +15940,7 @@ def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_cod
         render,
         [
             blocks.go_expr(stage_x, stage_y),
-            state_render,
+            *drawn,
             blocks.show(),
         ],
     )
@@ -15941,9 +15958,14 @@ def giddo_spario_blocks() -> dict[str, dict[str, Any]]:
 
 
 def brag_spario_blocks() -> dict[str, dict[str, Any]]:
-    # AIR-10: the Brag Spario clone pool — its kill uses the shared ~20-frame flying explosion.
+    # AIR-10: the Brag Spario clone pool — a shot never destroys it, so it always draws the body (slice 21).
     return _spario_blocks(
-        BRAG_SPARIO_TARGET, "brag spario clone slot", BRAG_SPARIO_CLONE_SLOT_ID, BRAG_SPARIO_TYPE, flipped=True
+        BRAG_SPARIO_TARGET,
+        "brag spario clone slot",
+        BRAG_SPARIO_CLONE_SLOT_ID,
+        BRAG_SPARIO_TYPE,
+        flipped=True,
+        hit_burst=False,
     )
 
 
@@ -16349,12 +16371,14 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     # AIR-10: the Giddo and Brag Spario renderers both mirror the ZAKATO body frame as their body stand-in
     # (ordinal 1) — the CrazyCarl aerial rip carries no Spario sprite, so the Zakato blob stands in as a
     # DEFERRED cosmetic (reason recorded in the constants and the mechanics record) — then the air
-    # explosion (ordinals 2..21) their hit draws from. Idempotent; a no-op when any source is absent.
+    # explosion (ordinals 2..21) their hit draws from. The Brag Spario is never destroyed by a shot (slice 21),
+    # so like the Bacura it appends NO air explosion. Idempotent; a no-op when any source is absent.
     for spario_name in (GIDDO_SPARIO_TARGET, BRAG_SPARIO_TARGET, GARU_ZAKATO_TARGET):
         spario = next((t for t in result["targets"] if t.get("name") == spario_name), None)
         if proof is not None and spario is not None:
             spario["costumes"] = proof_by_family("zakato/")
-            spario["costumes"].extend(proof_by_family("air-explosion/"))
+            if spario_name != BRAG_SPARIO_TARGET:
+                spario["costumes"].extend(proof_by_family("air-explosion/"))
             spario["currentCostume"] = 0
     # AIR-11: the Bacura renderer mirrors its eight tumble frames (bacura/slab/01..08, ordinals 1..8) — and
     # NOTHING else. The Bacura is never destroyed, so unlike every flying family it appends NO air

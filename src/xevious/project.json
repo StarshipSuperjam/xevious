@@ -131143,7 +131143,7 @@
         },
         "gd-stage-5497": {
           "opcode": "procedures_definition",
-          "next": "gd-stage-5617",
+          "next": "gd-stage-5616",
           "parent": null,
           "inputs": {
             "custom_block": [
@@ -131371,7 +131371,7 @@
         "gd-stage-5507": {
           "opcode": "control_if",
           "next": "gd-stage-5516",
-          "parent": "gd-stage-5613",
+          "parent": "gd-stage-5621",
           "inputs": {
             "CONDITION": [
               2,
@@ -132815,9 +132815,57 @@
           "topLevel": false
         },
         "gd-stage-5571": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-stage-5572",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "slot index",
+                "slot-index"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot state",
+              "slot-state"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-5572": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-5611",
+          "parent": "gd-stage-5616",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-stage-5571"
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-5573": {
+          "opcode": "operator_equals",
+          "next": null,
+          "parent": "gd-stage-5613",
           "inputs": {
             "OPERAND1": [
               3,
@@ -132843,10 +132891,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5572": {
+        "gd-stage-5574": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-stage-5573",
+          "parent": "gd-stage-5575",
           "inputs": {
             "INDEX": [
               3,
@@ -132870,62 +132918,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5573": {
-          "opcode": "operator_divide",
-          "next": null,
-          "parent": "gd-stage-5574",
-          "inputs": {
-            "NUM1": [
-              2,
-              "gd-stage-5572"
-            ],
-            "NUM2": [
-              1,
-              [
-                4,
-                32
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-5574": {
-          "opcode": "operator_mathop",
-          "next": null,
-          "parent": "gd-stage-5577",
-          "inputs": {
-            "NUM": [
-              2,
-              "gd-stage-5573"
-            ]
-          },
-          "fields": {
-            "OPERATOR": [
-              "floor",
-              null
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
         "gd-stage-5575": {
           "opcode": "operator_divide",
           "next": null,
           "parent": "gd-stage-5576",
           "inputs": {
             "NUM1": [
-              3,
-              [
-                12,
-                "player slot y",
-                "player-slot-y"
-              ],
-              [
-                10,
-                ""
-              ]
+              2,
+              "gd-stage-5574"
             ],
             "NUM2": [
               1,
@@ -132942,7 +132942,7 @@
         "gd-stage-5576": {
           "opcode": "operator_mathop",
           "next": null,
-          "parent": "gd-stage-5577",
+          "parent": "gd-stage-5579",
           "inputs": {
             "NUM": [
               2,
@@ -132959,129 +132959,9 @@
           "topLevel": false
         },
         "gd-stage-5577": {
-          "opcode": "operator_subtract",
+          "opcode": "operator_divide",
           "next": null,
           "parent": "gd-stage-5578",
-          "inputs": {
-            "NUM1": [
-              2,
-              "gd-stage-5574"
-            ],
-            "NUM2": [
-              2,
-              "gd-stage-5576"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-5578": {
-          "opcode": "operator_lt",
-          "next": null,
-          "parent": "gd-stage-5579",
-          "inputs": {
-            "OPERAND1": [
-              2,
-              "gd-stage-5577"
-            ],
-            "OPERAND2": [
-              1,
-              [
-                4,
-                -8
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-5579": {
-          "opcode": "operator_not",
-          "next": null,
-          "parent": "gd-stage-5588",
-          "inputs": {
-            "OPERAND": [
-              2,
-              "gd-stage-5578"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-5580": {
-          "opcode": "data_itemoflist",
-          "next": null,
-          "parent": "gd-stage-5581",
-          "inputs": {
-            "INDEX": [
-              3,
-              [
-                12,
-                "slot index",
-                "slot-index"
-              ],
-              [
-                10,
-                ""
-              ]
-            ]
-          },
-          "fields": {
-            "LIST": [
-              "slot y",
-              "slot-y"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-5581": {
-          "opcode": "operator_divide",
-          "next": null,
-          "parent": "gd-stage-5582",
-          "inputs": {
-            "NUM1": [
-              2,
-              "gd-stage-5580"
-            ],
-            "NUM2": [
-              1,
-              [
-                4,
-                32
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-5582": {
-          "opcode": "operator_mathop",
-          "next": null,
-          "parent": "gd-stage-5585",
-          "inputs": {
-            "NUM": [
-              2,
-              "gd-stage-5581"
-            ]
-          },
-          "fields": {
-            "OPERATOR": [
-              "floor",
-              null
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-5583": {
-          "opcode": "operator_divide",
-          "next": null,
-          "parent": "gd-stage-5584",
           "inputs": {
             "NUM1": [
               3,
@@ -133107,10 +132987,130 @@
           "shadow": false,
           "topLevel": false
         },
+        "gd-stage-5578": {
+          "opcode": "operator_mathop",
+          "next": null,
+          "parent": "gd-stage-5579",
+          "inputs": {
+            "NUM": [
+              2,
+              "gd-stage-5577"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-5579": {
+          "opcode": "operator_subtract",
+          "next": null,
+          "parent": "gd-stage-5580",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-stage-5576"
+            ],
+            "NUM2": [
+              2,
+              "gd-stage-5578"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-5580": {
+          "opcode": "operator_lt",
+          "next": null,
+          "parent": "gd-stage-5581",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-stage-5579"
+            ],
+            "OPERAND2": [
+              1,
+              [
+                4,
+                -8
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-5581": {
+          "opcode": "operator_not",
+          "next": null,
+          "parent": "gd-stage-5590",
+          "inputs": {
+            "OPERAND": [
+              2,
+              "gd-stage-5580"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-5582": {
+          "opcode": "data_itemoflist",
+          "next": null,
+          "parent": "gd-stage-5583",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "slot index",
+                "slot-index"
+              ],
+              [
+                10,
+                ""
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot y",
+              "slot-y"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-5583": {
+          "opcode": "operator_divide",
+          "next": null,
+          "parent": "gd-stage-5584",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-stage-5582"
+            ],
+            "NUM2": [
+              1,
+              [
+                4,
+                32
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
         "gd-stage-5584": {
           "opcode": "operator_mathop",
           "next": null,
-          "parent": "gd-stage-5585",
+          "parent": "gd-stage-5587",
           "inputs": {
             "NUM": [
               2,
@@ -133127,17 +133127,28 @@
           "topLevel": false
         },
         "gd-stage-5585": {
-          "opcode": "operator_subtract",
+          "opcode": "operator_divide",
           "next": null,
           "parent": "gd-stage-5586",
           "inputs": {
             "NUM1": [
-              2,
-              "gd-stage-5582"
+              3,
+              [
+                12,
+                "player slot y",
+                "player-slot-y"
+              ],
+              [
+                10,
+                ""
+              ]
             ],
             "NUM2": [
-              2,
-              "gd-stage-5584"
+              1,
+              [
+                4,
+                32
+              ]
             ]
           },
           "fields": {},
@@ -133145,13 +133156,50 @@
           "topLevel": false
         },
         "gd-stage-5586": {
-          "opcode": "operator_gt",
+          "opcode": "operator_mathop",
           "next": null,
           "parent": "gd-stage-5587",
           "inputs": {
-            "OPERAND1": [
+            "NUM": [
               2,
               "gd-stage-5585"
+            ]
+          },
+          "fields": {
+            "OPERATOR": [
+              "floor",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-5587": {
+          "opcode": "operator_subtract",
+          "next": null,
+          "parent": "gd-stage-5588",
+          "inputs": {
+            "NUM1": [
+              2,
+              "gd-stage-5584"
+            ],
+            "NUM2": [
+              2,
+              "gd-stage-5586"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-5588": {
+          "opcode": "operator_gt",
+          "next": null,
+          "parent": "gd-stage-5589",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-stage-5587"
             ],
             "OPERAND2": [
               1,
@@ -133165,42 +133213,42 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5587": {
+        "gd-stage-5589": {
           "opcode": "operator_not",
           "next": null,
-          "parent": "gd-stage-5588",
+          "parent": "gd-stage-5590",
           "inputs": {
             "OPERAND": [
               2,
-              "gd-stage-5586"
+              "gd-stage-5588"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5588": {
+        "gd-stage-5590": {
           "opcode": "operator_and",
           "next": null,
-          "parent": "gd-stage-5610",
+          "parent": "gd-stage-5612",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-stage-5579"
+              "gd-stage-5581"
             ],
             "OPERAND2": [
               2,
-              "gd-stage-5587"
+              "gd-stage-5589"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5589": {
+        "gd-stage-5591": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-stage-5590",
+          "parent": "gd-stage-5592",
           "inputs": {
             "INDEX": [
               3,
@@ -133224,14 +133272,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5590": {
+        "gd-stage-5592": {
           "opcode": "operator_add",
           "next": null,
-          "parent": "gd-stage-5591",
+          "parent": "gd-stage-5593",
           "inputs": {
             "NUM1": [
               2,
-              "gd-stage-5589"
+              "gd-stage-5591"
             ],
             "NUM2": [
               1,
@@ -133245,14 +133293,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5591": {
+        "gd-stage-5593": {
           "opcode": "operator_divide",
           "next": null,
-          "parent": "gd-stage-5592",
+          "parent": "gd-stage-5594",
           "inputs": {
             "NUM1": [
               2,
-              "gd-stage-5590"
+              "gd-stage-5592"
             ],
             "NUM2": [
               1,
@@ -133266,14 +133314,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5592": {
+        "gd-stage-5594": {
           "opcode": "operator_mathop",
           "next": null,
-          "parent": "gd-stage-5596",
+          "parent": "gd-stage-5598",
           "inputs": {
             "NUM": [
               2,
-              "gd-stage-5591"
+              "gd-stage-5593"
             ]
           },
           "fields": {
@@ -133285,10 +133333,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5593": {
+        "gd-stage-5595": {
           "opcode": "operator_add",
           "next": null,
-          "parent": "gd-stage-5594",
+          "parent": "gd-stage-5596",
           "inputs": {
             "NUM1": [
               3,
@@ -133314,14 +133362,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5594": {
+        "gd-stage-5596": {
           "opcode": "operator_divide",
           "next": null,
-          "parent": "gd-stage-5595",
+          "parent": "gd-stage-5597",
           "inputs": {
             "NUM1": [
               2,
-              "gd-stage-5593"
+              "gd-stage-5595"
             ],
             "NUM2": [
               1,
@@ -133335,14 +133383,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5595": {
+        "gd-stage-5597": {
           "opcode": "operator_mathop",
           "next": null,
-          "parent": "gd-stage-5596",
+          "parent": "gd-stage-5598",
           "inputs": {
             "NUM": [
               2,
-              "gd-stage-5594"
+              "gd-stage-5596"
             ]
           },
           "fields": {
@@ -133354,32 +133402,32 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5596": {
+        "gd-stage-5598": {
           "opcode": "operator_subtract",
           "next": null,
-          "parent": "gd-stage-5597",
+          "parent": "gd-stage-5599",
           "inputs": {
             "NUM1": [
               2,
-              "gd-stage-5592"
+              "gd-stage-5594"
             ],
             "NUM2": [
               2,
-              "gd-stage-5595"
+              "gd-stage-5597"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5597": {
+        "gd-stage-5599": {
           "opcode": "operator_lt",
           "next": null,
-          "parent": "gd-stage-5598",
+          "parent": "gd-stage-5600",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-stage-5596"
+              "gd-stage-5598"
             ],
             "OPERAND2": [
               1,
@@ -133393,24 +133441,24 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5598": {
+        "gd-stage-5600": {
           "opcode": "operator_not",
           "next": null,
-          "parent": "gd-stage-5609",
+          "parent": "gd-stage-5611",
           "inputs": {
             "OPERAND": [
               2,
-              "gd-stage-5597"
+              "gd-stage-5599"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5599": {
+        "gd-stage-5601": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-stage-5600",
+          "parent": "gd-stage-5602",
           "inputs": {
             "INDEX": [
               3,
@@ -133434,14 +133482,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5600": {
+        "gd-stage-5602": {
           "opcode": "operator_add",
           "next": null,
-          "parent": "gd-stage-5601",
+          "parent": "gd-stage-5603",
           "inputs": {
             "NUM1": [
               2,
-              "gd-stage-5599"
+              "gd-stage-5601"
             ],
             "NUM2": [
               1,
@@ -133455,14 +133503,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5601": {
+        "gd-stage-5603": {
           "opcode": "operator_divide",
           "next": null,
-          "parent": "gd-stage-5602",
+          "parent": "gd-stage-5604",
           "inputs": {
             "NUM1": [
               2,
-              "gd-stage-5600"
+              "gd-stage-5602"
             ],
             "NUM2": [
               1,
@@ -133476,14 +133524,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5602": {
+        "gd-stage-5604": {
           "opcode": "operator_mathop",
           "next": null,
-          "parent": "gd-stage-5606",
+          "parent": "gd-stage-5608",
           "inputs": {
             "NUM": [
               2,
-              "gd-stage-5601"
+              "gd-stage-5603"
             ]
           },
           "fields": {
@@ -133495,10 +133543,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5603": {
+        "gd-stage-5605": {
           "opcode": "operator_add",
           "next": null,
-          "parent": "gd-stage-5604",
+          "parent": "gd-stage-5606",
           "inputs": {
             "NUM1": [
               3,
@@ -133524,14 +133572,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5604": {
+        "gd-stage-5606": {
           "opcode": "operator_divide",
           "next": null,
-          "parent": "gd-stage-5605",
+          "parent": "gd-stage-5607",
           "inputs": {
             "NUM1": [
               2,
-              "gd-stage-5603"
+              "gd-stage-5605"
             ],
             "NUM2": [
               1,
@@ -133545,14 +133593,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5605": {
+        "gd-stage-5607": {
           "opcode": "operator_mathop",
           "next": null,
-          "parent": "gd-stage-5606",
+          "parent": "gd-stage-5608",
           "inputs": {
             "NUM": [
               2,
-              "gd-stage-5604"
+              "gd-stage-5606"
             ]
           },
           "fields": {
@@ -133564,32 +133612,32 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5606": {
+        "gd-stage-5608": {
           "opcode": "operator_subtract",
           "next": null,
-          "parent": "gd-stage-5607",
+          "parent": "gd-stage-5609",
           "inputs": {
             "NUM1": [
               2,
-              "gd-stage-5602"
+              "gd-stage-5604"
             ],
             "NUM2": [
               2,
-              "gd-stage-5605"
+              "gd-stage-5607"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5607": {
+        "gd-stage-5609": {
           "opcode": "operator_gt",
           "next": null,
-          "parent": "gd-stage-5608",
+          "parent": "gd-stage-5610",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-stage-5606"
+              "gd-stage-5608"
             ],
             "OPERAND2": [
               1,
@@ -133603,48 +133651,12 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5608": {
-          "opcode": "operator_not",
-          "next": null,
-          "parent": "gd-stage-5609",
-          "inputs": {
-            "OPERAND": [
-              2,
-              "gd-stage-5607"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-5609": {
-          "opcode": "operator_and",
-          "next": null,
-          "parent": "gd-stage-5610",
-          "inputs": {
-            "OPERAND1": [
-              2,
-              "gd-stage-5598"
-            ],
-            "OPERAND2": [
-              2,
-              "gd-stage-5608"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
         "gd-stage-5610": {
-          "opcode": "operator_and",
+          "opcode": "operator_not",
           "next": null,
           "parent": "gd-stage-5611",
           "inputs": {
-            "OPERAND1": [
-              2,
-              "gd-stage-5588"
-            ],
-            "OPERAND2": [
+            "OPERAND": [
               2,
               "gd-stage-5609"
             ]
@@ -133656,11 +133668,11 @@
         "gd-stage-5611": {
           "opcode": "operator_and",
           "next": null,
-          "parent": "gd-stage-5613",
+          "parent": "gd-stage-5612",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-stage-5571"
+              "gd-stage-5600"
             ],
             "OPERAND2": [
               2,
@@ -133672,9 +133684,45 @@
           "topLevel": false
         },
         "gd-stage-5612": {
-          "opcode": "data_setvariableto",
+          "opcode": "operator_and",
           "next": null,
           "parent": "gd-stage-5613",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-stage-5590"
+            ],
+            "OPERAND2": [
+              2,
+              "gd-stage-5611"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-5613": {
+          "opcode": "operator_and",
+          "next": null,
+          "parent": "gd-stage-5615",
+          "inputs": {
+            "OPERAND1": [
+              2,
+              "gd-stage-5573"
+            ],
+            "OPERAND2": [
+              2,
+              "gd-stage-5612"
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-5614": {
+          "opcode": "data_setvariableto",
+          "next": null,
+          "parent": "gd-stage-5615",
           "inputs": {
             "VALUE": [
               1,
@@ -133693,66 +133741,18 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5613": {
+        "gd-stage-5615": {
           "opcode": "control_if",
-          "next": "gd-stage-5507",
+          "next": null,
           "parent": "gd-stage-5616",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-5611"
+              "gd-stage-5613"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-5612"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-5614": {
-          "opcode": "data_itemoflist",
-          "next": null,
-          "parent": "gd-stage-5615",
-          "inputs": {
-            "INDEX": [
-              3,
-              [
-                12,
-                "slot index",
-                "slot-index"
-              ],
-              [
-                10,
-                ""
-              ]
-            ]
-          },
-          "fields": {
-            "LIST": [
-              "slot state",
-              "slot-state"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-5615": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-stage-5616",
-          "inputs": {
-            "OPERAND1": [
-              2,
               "gd-stage-5614"
-            ],
-            "OPERAND2": [
-              1,
-              [
-                4,
-                1
-              ]
             ]
           },
           "fields": {},
@@ -133761,16 +133761,16 @@
         },
         "gd-stage-5616": {
           "opcode": "control_if",
-          "next": null,
-          "parent": "gd-stage-5621",
+          "next": "gd-stage-5620",
+          "parent": "gd-stage-5497",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-stage-5615"
+              "gd-stage-5572"
             ],
             "SUBSTACK": [
               2,
-              "gd-stage-5613"
+              "gd-stage-5615"
             ]
           },
           "fields": {},
@@ -133778,31 +133778,9 @@
           "topLevel": false
         },
         "gd-stage-5617": {
-          "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-stage-5497",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-stage-5619"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-stage-5620"
-            ],
-            "SUBSTACK2": [
-              2,
-              "gd-stage-5621"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-stage-5618": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-stage-5619",
+          "parent": "gd-stage-5618",
           "inputs": {
             "INDEX": [
               3,
@@ -133826,14 +133804,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5619": {
+        "gd-stage-5618": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-stage-5617",
+          "parent": "gd-stage-5620",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-stage-5618"
+              "gd-stage-5617"
             ],
             "OPERAND2": [
               1,
@@ -133847,26 +133825,62 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-stage-5620": {
-          "opcode": "procedures_call",
+        "gd-stage-5619": {
+          "opcode": "data_replaceitemoflist",
           "next": null,
-          "parent": "gd-stage-5617",
-          "inputs": {},
+          "parent": "gd-stage-5620",
+          "inputs": {
+            "INDEX": [
+              3,
+              [
+                12,
+                "slot index",
+                "slot-index"
+              ],
+              [
+                10,
+                ""
+              ]
+            ],
+            "ITEM": [
+              1,
+              [
+                4,
+                1
+              ]
+            ]
+          },
+          "fields": {
+            "LIST": [
+              "slot state",
+              "slot-state"
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-stage-5620": {
+          "opcode": "control_if",
+          "next": "gd-stage-5621",
+          "parent": "gd-stage-5616",
+          "inputs": {
+            "CONDITION": [
+              2,
+              "gd-stage-5618"
+            ],
+            "SUBSTACK": [
+              2,
+              "gd-stage-5619"
+            ]
+          },
           "fields": {},
           "shadow": false,
-          "topLevel": false,
-          "mutation": {
-            "tagName": "mutation",
-            "children": [],
-            "proccode": "explode toroid tick",
-            "argumentids": "[]",
-            "warp": "true"
-          }
+          "topLevel": false
         },
         "gd-stage-5621": {
           "opcode": "procedures_call",
-          "next": "gd-stage-5616",
-          "parent": "gd-stage-5617",
+          "next": "gd-stage-5507",
+          "parent": "gd-stage-5620",
           "inputs": {},
           "fields": {},
           "shadow": false,
@@ -304581,7 +304595,7 @@
         },
         "gd-brag-spario-031": {
           "opcode": "control_start_as_clone",
-          "next": "gd-brag-spario-081",
+          "next": "gd-brag-spario-060",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -304593,7 +304607,7 @@
         "gd-brag-spario-032": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-brag-spario-081",
+          "parent": "gd-brag-spario-060",
           "inputs": {
             "CONDITION": [
               2,
@@ -304601,7 +304615,7 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-brag-spario-079"
+              "gd-brag-spario-058"
             ]
           },
           "fields": {},
@@ -304681,7 +304695,7 @@
         "gd-brag-spario-036": {
           "opcode": "operator_equals",
           "next": null,
-          "parent": "gd-brag-spario-069",
+          "parent": "gd-brag-spario-048",
           "inputs": {
             "OPERAND1": [
               2,
@@ -304771,7 +304785,7 @@
         "gd-brag-spario-040": {
           "opcode": "operator_subtract",
           "next": null,
-          "parent": "gd-brag-spario-070",
+          "parent": "gd-brag-spario-049",
           "inputs": {
             "NUM1": [
               2,
@@ -304861,7 +304875,7 @@
         "gd-brag-spario-044": {
           "opcode": "operator_subtract",
           "next": null,
-          "parent": "gd-brag-spario-070",
+          "parent": "gd-brag-spario-049",
           "inputs": {
             "NUM1": [
               1,
@@ -304880,448 +304894,9 @@
           "topLevel": false
         },
         "gd-brag-spario-045": {
-          "opcode": "data_itemoflist",
+          "opcode": "looks_costume",
           "next": null,
           "parent": "gd-brag-spario-046",
-          "inputs": {
-            "INDEX": [
-              3,
-              [
-                12,
-                "brag spario clone slot",
-                "brag-spario-clone-slot"
-              ],
-              [
-                10,
-                ""
-              ]
-            ]
-          },
-          "fields": {
-            "LIST": [
-              "slot timer",
-              "slot-timer"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-046": {
-          "opcode": "operator_divide",
-          "next": null,
-          "parent": "gd-brag-spario-047",
-          "inputs": {
-            "NUM1": [
-              2,
-              "gd-brag-spario-045"
-            ],
-            "NUM2": [
-              1,
-              [
-                4,
-                4
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-047": {
-          "opcode": "operator_mathop",
-          "next": null,
-          "parent": "gd-brag-spario-048",
-          "inputs": {
-            "NUM": [
-              2,
-              "gd-brag-spario-046"
-            ]
-          },
-          "fields": {
-            "OPERATOR": [
-              "floor",
-              null
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-048": {
-          "opcode": "operator_multiply",
-          "next": null,
-          "parent": "gd-brag-spario-049",
-          "inputs": {
-            "NUM1": [
-              2,
-              "gd-brag-spario-047"
-            ],
-            "NUM2": [
-              1,
-              [
-                4,
-                4
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-049": {
-          "opcode": "operator_add",
-          "next": null,
-          "parent": "gd-brag-spario-059",
-          "inputs": {
-            "NUM1": [
-              1,
-              [
-                4,
-                2
-              ]
-            ],
-            "NUM2": [
-              2,
-              "gd-brag-spario-048"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-050": {
-          "opcode": "data_itemoflist",
-          "next": null,
-          "parent": "gd-brag-spario-051",
-          "inputs": {
-            "INDEX": [
-              3,
-              [
-                12,
-                "brag spario clone slot",
-                "brag-spario-clone-slot"
-              ],
-              [
-                10,
-                ""
-              ]
-            ]
-          },
-          "fields": {
-            "LIST": [
-              "slot timer",
-              "slot-timer"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-051": {
-          "opcode": "operator_mod",
-          "next": null,
-          "parent": "gd-brag-spario-052",
-          "inputs": {
-            "NUM1": [
-              2,
-              "gd-brag-spario-050"
-            ],
-            "NUM2": [
-              1,
-              [
-                4,
-                4
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-052": {
-          "opcode": "operator_divide",
-          "next": null,
-          "parent": "gd-brag-spario-053",
-          "inputs": {
-            "NUM1": [
-              2,
-              "gd-brag-spario-051"
-            ],
-            "NUM2": [
-              1,
-              [
-                4,
-                2
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-053": {
-          "opcode": "operator_mathop",
-          "next": null,
-          "parent": "gd-brag-spario-058",
-          "inputs": {
-            "NUM": [
-              2,
-              "gd-brag-spario-052"
-            ]
-          },
-          "fields": {
-            "OPERATOR": [
-              "floor",
-              null
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-054": {
-          "opcode": "data_itemoflist",
-          "next": null,
-          "parent": "gd-brag-spario-055",
-          "inputs": {
-            "INDEX": [
-              3,
-              [
-                12,
-                "brag spario clone slot",
-                "brag-spario-clone-slot"
-              ],
-              [
-                10,
-                ""
-              ]
-            ]
-          },
-          "fields": {
-            "LIST": [
-              "slot timer",
-              "slot-timer"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-055": {
-          "opcode": "operator_mod",
-          "next": null,
-          "parent": "gd-brag-spario-056",
-          "inputs": {
-            "NUM1": [
-              2,
-              "gd-brag-spario-054"
-            ],
-            "NUM2": [
-              1,
-              [
-                4,
-                4
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-056": {
-          "opcode": "operator_mod",
-          "next": null,
-          "parent": "gd-brag-spario-057",
-          "inputs": {
-            "NUM1": [
-              2,
-              "gd-brag-spario-055"
-            ],
-            "NUM2": [
-              1,
-              [
-                4,
-                2
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-057": {
-          "opcode": "operator_multiply",
-          "next": null,
-          "parent": "gd-brag-spario-058",
-          "inputs": {
-            "NUM1": [
-              2,
-              "gd-brag-spario-056"
-            ],
-            "NUM2": [
-              1,
-              [
-                4,
-                2
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-058": {
-          "opcode": "operator_add",
-          "next": null,
-          "parent": "gd-brag-spario-059",
-          "inputs": {
-            "NUM1": [
-              2,
-              "gd-brag-spario-053"
-            ],
-            "NUM2": [
-              2,
-              "gd-brag-spario-057"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-059": {
-          "opcode": "operator_add",
-          "next": null,
-          "parent": "gd-brag-spario-061",
-          "inputs": {
-            "NUM1": [
-              2,
-              "gd-brag-spario-049"
-            ],
-            "NUM2": [
-              2,
-              "gd-brag-spario-058"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-060": {
-          "opcode": "looks_costume",
-          "next": null,
-          "parent": "gd-brag-spario-061",
-          "inputs": {},
-          "fields": {
-            "COSTUME": [
-              "digit/0",
-              null
-            ]
-          },
-          "shadow": true,
-          "topLevel": false
-        },
-        "gd-brag-spario-061": {
-          "opcode": "looks_switchcostumeto",
-          "next": "gd-brag-spario-062",
-          "parent": "gd-brag-spario-063",
-          "inputs": {
-            "COSTUME": [
-              3,
-              "gd-brag-spario-059",
-              "gd-brag-spario-060"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-062": {
-          "opcode": "looks_setsizeto",
-          "next": null,
-          "parent": "gd-brag-spario-061",
-          "inputs": {
-            "SIZE": [
-              1,
-              [
-                4,
-                125.0
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-063": {
-          "opcode": "control_if_else",
-          "next": "gd-brag-spario-071",
-          "parent": "gd-brag-spario-070",
-          "inputs": {
-            "CONDITION": [
-              2,
-              "gd-brag-spario-065"
-            ],
-            "SUBSTACK": [
-              2,
-              "gd-brag-spario-061"
-            ],
-            "SUBSTACK2": [
-              2,
-              "gd-brag-spario-067"
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-064": {
-          "opcode": "data_itemoflist",
-          "next": null,
-          "parent": "gd-brag-spario-065",
-          "inputs": {
-            "INDEX": [
-              3,
-              [
-                12,
-                "brag spario clone slot",
-                "brag-spario-clone-slot"
-              ],
-              [
-                10,
-                ""
-              ]
-            ]
-          },
-          "fields": {
-            "LIST": [
-              "slot state",
-              "slot-state"
-            ]
-          },
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-065": {
-          "opcode": "operator_equals",
-          "next": null,
-          "parent": "gd-brag-spario-063",
-          "inputs": {
-            "OPERAND1": [
-              2,
-              "gd-brag-spario-064"
-            ],
-            "OPERAND2": [
-              1,
-              [
-                4,
-                2
-              ]
-            ]
-          },
-          "fields": {},
-          "shadow": false,
-          "topLevel": false
-        },
-        "gd-brag-spario-066": {
-          "opcode": "looks_costume",
-          "next": null,
-          "parent": "gd-brag-spario-067",
           "inputs": {},
           "fields": {
             "COSTUME": [
@@ -305332,24 +304907,24 @@
           "shadow": true,
           "topLevel": false
         },
-        "gd-brag-spario-067": {
+        "gd-brag-spario-046": {
           "opcode": "looks_switchcostumeto",
-          "next": "gd-brag-spario-068",
-          "parent": "gd-brag-spario-063",
+          "next": "gd-brag-spario-047",
+          "parent": "gd-brag-spario-049",
           "inputs": {
             "COSTUME": [
               1,
-              "gd-brag-spario-066"
+              "gd-brag-spario-045"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-068": {
+        "gd-brag-spario-047": {
           "opcode": "looks_setsizeto",
-          "next": null,
-          "parent": "gd-brag-spario-067",
+          "next": "gd-brag-spario-050",
+          "parent": "gd-brag-spario-046",
           "inputs": {
             "SIZE": [
               1,
@@ -305363,10 +304938,10 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-069": {
+        "gd-brag-spario-048": {
           "opcode": "control_if_else",
           "next": null,
-          "parent": "gd-brag-spario-079",
+          "parent": "gd-brag-spario-058",
           "inputs": {
             "CONDITION": [
               2,
@@ -305374,21 +304949,21 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-brag-spario-070"
+              "gd-brag-spario-049"
             ],
             "SUBSTACK2": [
               2,
-              "gd-brag-spario-072"
+              "gd-brag-spario-051"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-070": {
+        "gd-brag-spario-049": {
           "opcode": "motion_gotoxy",
-          "next": "gd-brag-spario-063",
-          "parent": "gd-brag-spario-069",
+          "next": "gd-brag-spario-046",
+          "parent": "gd-brag-spario-048",
           "inputs": {
             "X": [
               2,
@@ -305403,28 +304978,28 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-071": {
+        "gd-brag-spario-050": {
           "opcode": "looks_show",
           "next": null,
-          "parent": "gd-brag-spario-063",
+          "parent": "gd-brag-spario-047",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-072": {
+        "gd-brag-spario-051": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-brag-spario-069",
+          "parent": "gd-brag-spario-048",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-073": {
+        "gd-brag-spario-052": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-brag-spario-074",
+          "parent": "gd-brag-spario-053",
           "inputs": {
             "INDEX": [
               3,
@@ -305448,14 +305023,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-074": {
+        "gd-brag-spario-053": {
           "opcode": "operator_lt",
           "next": null,
-          "parent": "gd-brag-spario-075",
+          "parent": "gd-brag-spario-054",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-brag-spario-073"
+              "gd-brag-spario-052"
             ],
             "OPERAND2": [
               1,
@@ -305469,24 +305044,24 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-075": {
+        "gd-brag-spario-054": {
           "opcode": "operator_not",
           "next": null,
-          "parent": "gd-brag-spario-078",
+          "parent": "gd-brag-spario-057",
           "inputs": {
             "OPERAND": [
               2,
-              "gd-brag-spario-074"
+              "gd-brag-spario-053"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-076": {
+        "gd-brag-spario-055": {
           "opcode": "data_itemoflist",
           "next": null,
-          "parent": "gd-brag-spario-077",
+          "parent": "gd-brag-spario-056",
           "inputs": {
             "INDEX": [
               3,
@@ -305510,14 +305085,14 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-077": {
+        "gd-brag-spario-056": {
           "opcode": "operator_lt",
           "next": null,
-          "parent": "gd-brag-spario-078",
+          "parent": "gd-brag-spario-057",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-brag-spario-076"
+              "gd-brag-spario-055"
             ],
             "OPERAND2": [
               1,
@@ -305531,56 +305106,56 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-078": {
+        "gd-brag-spario-057": {
           "opcode": "operator_and",
           "next": null,
-          "parent": "gd-brag-spario-079",
+          "parent": "gd-brag-spario-058",
           "inputs": {
             "OPERAND1": [
               2,
-              "gd-brag-spario-075"
+              "gd-brag-spario-054"
             ],
             "OPERAND2": [
               2,
-              "gd-brag-spario-077"
+              "gd-brag-spario-056"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-079": {
+        "gd-brag-spario-058": {
           "opcode": "control_if_else",
           "next": null,
           "parent": "gd-brag-spario-032",
           "inputs": {
             "CONDITION": [
               2,
-              "gd-brag-spario-078"
+              "gd-brag-spario-057"
             ],
             "SUBSTACK": [
               2,
-              "gd-brag-spario-069"
+              "gd-brag-spario-048"
             ],
             "SUBSTACK2": [
               2,
-              "gd-brag-spario-080"
+              "gd-brag-spario-059"
             ]
           },
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-080": {
+        "gd-brag-spario-059": {
           "opcode": "looks_hide",
           "next": null,
-          "parent": "gd-brag-spario-079",
+          "parent": "gd-brag-spario-058",
           "inputs": {},
           "fields": {},
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-081": {
+        "gd-brag-spario-060": {
           "opcode": "looks_hide",
           "next": "gd-brag-spario-032",
           "parent": "gd-brag-spario-031",
@@ -305601,186 +305176,6 @@
           "md5ext": "ca999f5e6ffe2120e49ac03fa64a95e6.png",
           "rotationCenterX": 8,
           "rotationCenterY": 8
-        },
-        {
-          "name": "air-explosion/burst/01/none",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "7f7d19060743f38278761785cd1dbfb9",
-          "md5ext": "7f7d19060743f38278761785cd1dbfb9.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/01/x",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "4d3fe4219828731e928e0f241c70f9fc",
-          "md5ext": "4d3fe4219828731e928e0f241c70f9fc.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/01/y",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "4fe6ae547c8cee15643027b52f9bbe12",
-          "md5ext": "4fe6ae547c8cee15643027b52f9bbe12.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/01/xy",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "5717ff80f4245a4cb37ab660bf5effe8",
-          "md5ext": "5717ff80f4245a4cb37ab660bf5effe8.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/02/none",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "fc19ec175fa5c88e3047f017fb4b97c2",
-          "md5ext": "fc19ec175fa5c88e3047f017fb4b97c2.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/02/x",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "dcc21bf6d8060508ea21d85b34820af6",
-          "md5ext": "dcc21bf6d8060508ea21d85b34820af6.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/02/y",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "a4fd4ec35d83cdfa681b5ffd5e9de4ce",
-          "md5ext": "a4fd4ec35d83cdfa681b5ffd5e9de4ce.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/02/xy",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "09ab7b84a52ef43d26fd0115ec8d6982",
-          "md5ext": "09ab7b84a52ef43d26fd0115ec8d6982.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/03/none",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "789a43a5fcad01bbbdeef81e318059b3",
-          "md5ext": "789a43a5fcad01bbbdeef81e318059b3.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/03/x",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "3140c8d32bab30f4a21b49b06a6db070",
-          "md5ext": "3140c8d32bab30f4a21b49b06a6db070.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/03/y",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "dc1006d8eb0affd7dad22970f17d7d19",
-          "md5ext": "dc1006d8eb0affd7dad22970f17d7d19.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/03/xy",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "f453623ea189c3ab6df815fb0a675cbf",
-          "md5ext": "f453623ea189c3ab6df815fb0a675cbf.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/04/none",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "5bc9f8dad1454284bd2c108875c1fac8",
-          "md5ext": "5bc9f8dad1454284bd2c108875c1fac8.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/04/x",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "ff9c3fe3977ee43f9ba39e0dae54c7d8",
-          "md5ext": "ff9c3fe3977ee43f9ba39e0dae54c7d8.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/04/y",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "ffaece584d00080be0674de542218203",
-          "md5ext": "ffaece584d00080be0674de542218203.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/04/xy",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "b5531fcb2c757b9a465d8c98d3cc3c9b",
-          "md5ext": "b5531fcb2c757b9a465d8c98d3cc3c9b.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/05/none",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "bbddea519bff26d8a280b7ebe6dad1f2",
-          "md5ext": "bbddea519bff26d8a280b7ebe6dad1f2.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/05/x",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "dd74f118394285ed2098b75ecc39719a",
-          "md5ext": "dd74f118394285ed2098b75ecc39719a.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/05/y",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "2fb6d868a798811e64f11b60ba5da9c8",
-          "md5ext": "2fb6d868a798811e64f11b60ba5da9c8.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
-        },
-        {
-          "name": "air-explosion/burst/05/xy",
-          "bitmapResolution": 1,
-          "dataFormat": "png",
-          "assetId": "a2be3485bd113103ea2c16a54fea5200",
-          "md5ext": "a2be3485bd113103ea2c16a54fea5200.png",
-          "rotationCenterX": 16,
-          "rotationCenterY": 16
         }
       ],
       "sounds": [],

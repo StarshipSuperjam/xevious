@@ -7,8 +7,9 @@
   flies **dead straight** on that fixed velocity — it **never fires** and **never re-aims** — and on death plays
   its **own short ~8-frame burst** (the single documented exception to the shared ~20-frame flying explosion)
   before vanishing; it scores 10. The **Brag** is an **accelerating homer**: every tick it nudges its velocity
-  toward the craft by a fixed step on **each** axis — with **no clamp**, so it accelerates unbounded — and it
-  shares the standard ~20-frame burst; it scores 500 (the port has no super-xevious 2,000 tier). A Giddo appears
+  toward the craft by a fixed step on **each** axis — with **no clamp**, so it accelerates unbounded — and a
+  shot never destroys it: each hit scores 500 (the port has no super-xevious 2,000 tier) and uses up the shot
+  while it keeps flying, leaving only off-screen (corrected in slice 21, [record 056](056-release-fidelity.md) item 6). A Giddo appears
   as a solo formation flyby (and through the debug cycle); a **Brag arrives only 4-at-a-time from the Garu Zakato
   detonation** (AIR-08, [air.special-pairs]), never from a formation wave, so its spawner is built in that leaf
   and this record covers the projectile behavior. Both reuse the per-slot fields and aim/allocation machinery of
@@ -30,7 +31,9 @@
   `brag_spario_update_ddX`); the same on the lateral axis for `_Y` (`brag_spario_ddY_sub_2` /
   `brag_spario_update_dY`). It **adds** `ddX`/`ddY` into the running `_dX`/`_dY` — so the velocity ramps every
   frame with **no clamp** — animates a single body via ATTR flip bits (`countup_timer_1 & 0x0c`), and moves on
-  the accumulated velocity. On death it uses the **shared** explosion, not its own.
+  the accumulated velocity. It has **no hit branch** and writes `_STATE = 2` every frame, so a shot (which hits
+  only a `_STATE == 2` enemy and sets 3) scores 500 and is consumed but never stops it; it is removed only when
+  it leaves the screen. This record first said it died to the shared explosion; slice 21 corrected that.
 - Reference provenance: `jotd666/xevious@71473685a8c7856c8401c8519276cd97a38d4183`. Line citations are
   `src/xevious_main.68k` unless noted. Giddo: `handle_08_Giddo_Spario` 5219–5240 (`_STATE = 2`, the aim-once
   `sheonite` tier, `_PTS = 0`, the 4-frame flight animation, `move_object_dX_dY`), `giddo_spario_hit` 5241–5253
@@ -69,32 +72,38 @@
     scroll axis, `slot dx += BRAG_SPARIO_ACCEL` when `player row − slot row > 0` and `slot dx −= …` when `< 0`
     (the aligned `== 0` case is left untouched by both guards); the same on the lateral axis with
     `player col − slot col`. It then moves on the accumulated velocity (`4×`), advances its flip-animation clock,
-    and culls; on `SLOT_HIT` it uses the **shared** `explode toroid tick`.
+    and culls. Since slice 21 it never explodes: it tests the craft only while `SLOT_ACTIVE`, sets a `SLOT_HIT`
+    slot back to `SLOT_ACTIVE`, offers the shared air-shot test at its drawn position, and only then moves, so a
+    hit scores 500 and spends the shot while the Spario keeps flying (the arcade's collision tests read the
+    sprite positions snapshotted at the start of the frame, and its craft test skips an enemy in state 3).
 
   Both bodies render through a shared `_spario_blocks` helper (`giddo spario`/`brag spario` targets), one clone
-  per flying slot, drawing a static body stand-in while `SLOT_ACTIVE` and forwarding to the shared burst frames
-  while `SLOT_HIT` (Brag's helper adds the big-phase size branch). Because the aerial sprite rip carries **no
+  per flying slot, drawing a static body stand-in while `SLOT_ACTIVE`; Giddo's forwards to its burst frames while
+  `SLOT_HIT`, and Brag's always draws the body and carries no explosion costumes (slice 21). Because the aerial sprite rip carries **no
   Spario sprites** (see License status), both bodies reuse the Zakato body frame as a documented stand-in.
 - Scratch evidence: `install_init_giddo_spario`, `install_update_giddo_spario`, `install_explode_giddo_spario_tick`,
   `install_init_brag_spario` and `install_update_brag_spario` (the lifecycle procs, reusing `compute aim`, the
   new 64-tier `aim dx 64`/`aim dy 64` tables, the craft-independent `_draw_spawn_column` (`exclude_craft=False`, no `col_offset`), the shared
-  `explode toroid tick` for Brag and the family move/cull), the Giddo/Brag branches in `install_advance_slots`,
+  air-shot test that Brag offers before its move, and the family move/cull), the Giddo/Brag branches in `install_advance_slots`,
   the Giddo branch in `install_spawn_flying` (and the **absence** of a Brag one), `giddo_spario_blocks` /
   `brag_spario_blocks` for the render, the Giddo entry in `DEBUG_SPAWN_FAMILIES`, and the `GIDDO_SPARIO_*` /
   `BRAG_SPARIO_*` tuning constants in `tools/game_director.py`; the structural contract `_air10_failures` and its
   per-clause negatives (`test_spario_slice_authoring_present` / `test_spario_slice_negative_fixtures`) in
   `tests/test_scratch_project.py`, whose clauses pin the two lifecycles, the by-type dispatch, that Giddo aims
   once on the 64 tier and captures no fire mask, that Giddo **never** writes an acceleration (a corrupter that
-  adds one bites), that Giddo frees on its own short clock while Brag uses the shared burst, that Brag
+  adds one bites), that Giddo frees on its own short clock while a shot never destroys a Brag (the craft test only while active, then
+  back to active, the shot test and the move, and a renderer that draws only the body), that Brag
   accelerates by `±BRAG_SPARIO_ACCEL` on each axis under the sign guards (corrupters that flip a sign or drop a
   guard bite), and the per-family points; the live scenarios in `harness/lib/catalog.js`
   (`giddo-spario-flies-straight-and-self-bursts-short` asserting the constant once-aimed velocity, the `4×`
   displacement and the short self-burst free, and `brag-spario-accelerates-toward-craft` asserting the
-  `4,8,12,16` velocity ramp on both axes), each with a biting negative.
+  `4,8,12,16` velocity ramp on both axes, and, since slice 21, `brag-spario-survives-a-shot` asserting a hit
+  scores 500, spends the shot and leaves the Spario flying), each with a biting negative.
 - Acceptance criteria: A Giddo Spario spawns (debug cycle and the solo formation flyby), aims once at the craft,
   flies **dead straight** without ever firing or re-aiming, and — shot down — plays a **short** burst and
   vanishes noticeably faster than the shared explosion; a Brag Spario (spawned from the Garu detonation once
-  AIR-08 lands, or via the harness) **accelerates toward the craft** on both axes, homing in with rising speed;
+  AIR-08 lands, or via the harness) **accelerates toward the craft** on both axes, homing in with rising speed, and a
+  shot scores 500 without destroying it;
   a Giddo scores 10 and a Brag 500 through the shared flying-hit path (harness
   `giddo-spario-flies-straight-and-self-bursts-short`, `brag-spario-accelerates-toward-craft`, each with a biting
   negative); the operator playtest confirms the felt behavior — a Spario streaking straight past, and a Brag
@@ -108,7 +117,7 @@
   reproduced. **No Spario sprites exist in the credited Aerial Enemies rip** (`src/xevious/assets/provenance.json`,
   `https://www.spriters-resource.com/arcade/xevious/`, sheet author "CrazyCarl"), so both Spario bodies reuse
   the Zakato body frame as a **documented stand-in** — a small dark blob standing in for the payload a Zakato
-  releases — and the death burst reuses the shared explosion frames; no new sprite crop was added, so no crop
+  releases — and Giddo's death burst reuses the shared explosion frames (a Brag never explodes); no new sprite crop was added, so no crop
   rect required operator pixel-verification for this family.
 - Known deviations or uncertainty: (1) **Two arcade frames per tick (tick scaling).** The per-frame reference
   rates are doubled for the port's two-frame tick — Giddo's own burst clock advances `TICK_TIMER_STEP = 2` per
@@ -120,7 +129,7 @@
   on the family axis convention. (3) **Coroutine re-entry / overloaded `_STATE = 3` expressed as explicit phase
   states.** The arcade holds its phase in the coroutine resume address and reuses `_STATE = 3` as the shot-down
   hit flag; the port has no resume, so it splits the phases into explicit `slot state` sentinels — `SLOT_ACTIVE`
-  (flying), `SLOT_HIT` (shot down: Giddo → its own tick, Brag → the shared tick) — the same explicit-phase
+  (flying), `SLOT_HIT` (shot down: Giddo → its own tick, Brag → set back to `SLOT_ACTIVE` the next tick, since a shot never destroys it) — the same explicit-phase
   mapping recorded for Zakato ([record 034](034-zakato-teleporters.md)). (4) **Missing Spario sprites → Zakato
   body stand-in.** Because the rip has no Spario art, both bodies draw the Zakato body frame and defer their
   distinct 4-frame Giddo flight animation and Brag ATTR-flip mirror to a later art pass — a cosmetic deviation;

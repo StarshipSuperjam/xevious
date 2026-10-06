@@ -62,6 +62,31 @@ def _proc_body_blocks(stage: dict, proccode: str) -> list:
     return [blocks[bid] for bid in seen]
 
 
+def _proc_top_chain(stage: dict, proccode: str) -> list:
+    """The ids of a custom-procedure definition's top-level blocks, in `next` order (empty when absent)."""
+    blocks = stage["blocks"]
+    proto_ids = {
+        bid
+        for bid, b in blocks.items()
+        if b["opcode"] == "procedures_prototype" and b.get("mutation", {}).get("proccode") == proccode
+    }
+    definition = next(
+        (
+            b
+            for b in blocks.values()
+            if b["opcode"] == "procedures_definition"
+            and b.get("inputs", {}).get("custom_block", [None, None])[1] in proto_ids
+        ),
+        None,
+    )
+    chain: list = []
+    bid = definition.get("next") if definition else None
+    while bid and bid in blocks and bid not in chain:
+        chain.append(bid)
+        bid = blocks[bid].get("next")
+    return chain
+
+
 def _float_operand(inp):
     """The float value of a numeric-literal block input, else None (for fractional stage steps)."""
     try:
@@ -5692,8 +5717,10 @@ class ScratchProjectTests(unittest.TestCase):
         spawned from a formation wave (`spawn flying enemies` never inits it — the Garu Zakato detonation,
         air.special-pairs #82, is the only spawner); the ordered walk still drives its updater. Each active tick
         it nudges its velocity toward the craft by +/-BRAG_SPARIO_ACCEL on BOTH axes (scroll `slot dx`, lateral
-        `slot dy`), awards BRAG_SPARIO_PTS (500), plays the SHARED ~20-frame burst on a shot-kill, and offers the
-        shared detector on the non-HIT path.
+        `slot dy`), awards BRAG_SPARIO_PTS (500), and is never destroyed by a shot (slice 21): the craft test runs
+        only while ACTIVE, then a HIT slot goes back to ACTIVE, then the shared detector tests the drawn position,
+        then it moves, so a shot scores it and is consumed while it keeps flying; its renderer always draws the
+        body and carries no explosion.
 
         The families run whole ticks under the settling harness (which cannot see a single mid-flight frame), so
         these once-only structural facts are pinned here."""
@@ -5960,21 +5987,77 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             failures.add("brag-points")
 
-        # (17) Brag plays the SHARED ~20-frame burst on a shot-kill (gated by state == SLOT_HIT), NOT Giddo's
-        # own short burst.
-        shared_calls = [
-            id_of[id(b)]
-            for b in brag_update
-            if b["opcode"] == "procedures_call"
-            and b.get("mutation", {}).get("proccode") == director.EXPLODE_TICK_PROCCODE
-        ]
-        own_in_brag = any(
-            b["opcode"] == "procedures_call"
-            and b.get("mutation", {}).get("proccode") == director.EXPLODE_GIDDO_SPARIO_PROCCODE
+        # (17) A SHOT NEVER DESTROYS THE BRAG (slice 21). handle_09_Brag_Spario has no hit branch and writes
+        # _STATE=2 every frame (3092); the shot test only hits a _STATE 2 enemy (2566) and a hit sets 3 (2525).
+        # Both collision tests read the frame-start sprite snapshot (main 274, sub 292-294), and the craft test
+        # runs before the handler and skips a non-2 enemy (2207-2209). So: no burst call; a HIT slot set back to
+        # ACTIVE under a state == SLOT_HIT gate; in the top-level order the craft test (gated on SLOT_ACTIVE)
+        # before that recovery, and the shot test before the move.
+        explodes = calls_in(brag_update, director.EXPLODE_TICK_PROCCODE) or calls_in(
+            brag_update, director.EXPLODE_GIDDO_SPARIO_PROCCODE
+        )
+        recovers = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            and const_item(b) == director.SLOT_ACTIVE
+            and gated_by_state(id_of[id(b)], director.SLOT_HIT)
             for b in brag_update
         )
-        if not shared_calls or not any(gated_by_state(c, director.SLOT_HIT) for c in shared_calls) or own_in_brag:
-            failures.add("brag-shared-burst")
+        chain = _proc_top_chain(stage, director.UPDATE_BRAG_SPARIO_PROCCODE)
+
+        def top_of(bid):
+            while bid and bid not in chain:
+                bid = blocks.get(bid, {}).get("parent")
+            return chain.index(bid) if bid in chain else None
+
+        move_tops = {
+            top_of(id_of[id(b)])
+            for b in brag_update
+            if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_X_ID
+        }
+        detector_tops = {
+            top_of(id_of[id(b)])
+            for b in brag_update
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.CHECK_AIR_HIT_PROCCODE
+        }
+        recover_tops = {
+            top_of(id_of[id(b)])
+            for b in brag_update
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            and const_item(b) == director.SLOT_ACTIVE
+        }
+        craft_writes = [
+            b
+            for b in brag_update
+            if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.PLAYER_HIT_ID
+        ]
+        craft_tops = {top_of(id_of[id(b)]) for b in craft_writes}
+        tests_first = (
+            len(move_tops) == 1
+            and len(detector_tops) == 1
+            and None not in move_tops | detector_tops
+            and max(detector_tops) < min(move_tops)
+        )
+        craft_first = (
+            len(craft_tops) == 1
+            and len(recover_tops) == 1
+            and None not in craft_tops | recover_tops
+            and max(craft_tops) < min(recover_tops)
+            and all(gated_by_state(id_of[id(b)], director.SLOT_ACTIVE) for b in craft_writes)
+        )
+        if explodes or not recovers or not tests_first or not craft_first:
+            failures.add("brag-survives-hit")
+        # Its renderer always draws the body: no explosion costume and no read of the slot state.
+        brag_target = next((t for t in project["targets"] if t["name"] == director.BRAG_SPARIO_TARGET), None)
+        if brag_target is None or any(
+            c.get("name", "").startswith("air-explosion/") for c in brag_target["costumes"]
+        ) or any(
+            b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            for b in brag_target["blocks"].values()
+        ):
+            failures.add("brag-renders-body-only")
 
         # (18) Brag offers the shared detector on the non-HIT path (so a shot scores it).
         if not calls_in(brag_update, director.CHECK_AIR_HIT_PROCCODE):
@@ -5989,7 +6072,9 @@ class ScratchProjectTests(unittest.TestCase):
     # a formation wave (only from the Garu Zakato detonation, air.special-pairs). Both are dispatched by the
     # ordered walk and scored by the shared detector. The live proof is the harness `giddo-aims-once-64-tier`
     # / `giddo-own-short-burst` / `brag-homing-acceleration`.
-    # roadmap-evidence: AIR-10 success  (test_spario_slice_authoring_present — Giddo/Brag lifecycle procs warp, spawn-inits Giddo + dispatch-updates both, Giddo spawns ACTIVE aimed on the 64 tier scoring 10 with no fire mask and a craft-independent draw flying straight and dying to its own 8-frame burst, Brag never formation-spawned, accelerates both axes scoring 500 and dying to the shared burst, both offer the detector)
+    # roadmap-evidence: AIR-10 success  (test_spario_slice_authoring_present — Giddo/Brag lifecycle procs warp, spawn-inits Giddo + dispatch-updates both, Giddo spawns ACTIVE aimed on the 64 tier scoring 10 with no fire mask and a craft-independent draw flying straight and dying to its own 8-frame burst, Brag never formation-spawned, accelerates both axes scoring 500 and survives shots, both offer the detector)
+    # roadmap-evidence: AIR-10 success  (AIR-10.brag-spario-survives: test_spario_slice_authoring_present's brag-survives-hit and brag-renders-body-only; harness brag-spario-survives-a-shot scores 500, spends the shot, and the Spario keeps flying and scores again)
+    # roadmap-evidence: AIR-10 failure  (AIR-10.brag-spario-survives: brag_explodes / brag_stays_hit / brag_moves_before_testing / brag_craft_after_recover / brag_draws_burst negatives bite; brag-spario-survives-a-shot negative leaves the slot HIT)
     # roadmap-evidence: AIR-10 failure  (test_spario_slice_negative_fixtures — each contract clause corrupted bites)
     def test_spario_slice_authoring_present(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -6169,16 +6254,65 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["inputs"]["ITEM"] = [1, [4, str(director.BRAG_SPARIO_PTS + 1)]]
 
-        def brag_own_burst(p: dict) -> None:
-            # Flip the Brag HIT branch's shared tick to Giddo's own burst → the shared-burst clause bites.
+        def brag_explodes(p: dict) -> None:
+            # The pre-slice-21 port: the detector call becomes the shared burst, so the Brag explodes on a hit.
             stage, body = _body(p, director.UPDATE_BRAG_SPARIO_PROCCODE)
             for b in body:
                 if (
                     b["opcode"] == "procedures_call"
-                    and b.get("mutation", {}).get("proccode") == director.EXPLODE_TICK_PROCCODE
+                    and b.get("mutation", {}).get("proccode") == director.CHECK_AIR_HIT_PROCCODE
                 ):
-                    b["mutation"]["proccode"] = director.EXPLODE_GIDDO_SPARIO_PROCCODE
+                    b["mutation"]["proccode"] = director.EXPLODE_TICK_PROCCODE
                     return
+
+        def brag_stays_hit(p: dict) -> None:
+            # The HIT slot is never set back to ACTIVE, so it stops moving and can't be hit again.
+            stage, body = _body(p, director.UPDATE_BRAG_SPARIO_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and _num_operand(b["inputs"].get("ITEM")) == director.SLOT_ACTIVE
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, director.SLOT_HIT]]
+                    return
+
+        def brag_moves_before_testing(p: dict) -> None:
+            # Move the shot test to the end of the update, so it tests the position after the move.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            blocks_ = stage["blocks"]
+            chain = _proc_top_chain(stage, director.UPDATE_BRAG_SPARIO_PROCCODE)
+            test = next(
+                bid
+                for bid in chain
+                if blocks_[bid]["opcode"] == "procedures_call"
+                and blocks_[bid]["mutation"]["proccode"] == director.CHECK_AIR_HIT_PROCCODE
+            )
+            i = chain.index(test)
+            before, after, last = chain[i - 1], chain[i + 1], chain[-1]
+            blocks_[before]["next"], blocks_[after]["parent"] = after, before
+            blocks_[last]["next"] = test
+            blocks_[test]["parent"], blocks_[test]["next"] = last, None
+
+        def brag_craft_after_recover(p: dict) -> None:
+            # Swap the first two blocks, so the craft test runs after the recovery and a just-hit Spario can ram.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            blocks_ = stage["blocks"]
+            chain = _proc_top_chain(stage, director.UPDATE_BRAG_SPARIO_PROCCODE)
+            craft, recover, third = chain[0], chain[1], chain[2]
+            definition = blocks_[craft]["parent"]
+            blocks_[definition]["next"] = recover
+            blocks_[recover]["parent"], blocks_[recover]["next"] = definition, craft
+            blocks_[craft]["parent"], blocks_[craft]["next"] = recover, third
+            blocks_[third]["parent"] = craft
+
+        def brag_draws_burst(p: dict) -> None:
+            # The Brag renderer carries the air explosion again.
+            targets = {t["name"]: t for t in p["targets"]}
+            giddo = targets[director.GIDDO_SPARIO_TARGET]
+            targets[director.BRAG_SPARIO_TARGET]["costumes"].extend(
+                copy.deepcopy(c) for c in giddo["costumes"] if c.get("name", "").startswith("air-explosion/")
+            )
 
         cases = [
             ("giddo-lifecycle-procs-warp", unwarp(director.UPDATE_GIDDO_SPARIO_PROCCODE)),
@@ -6195,7 +6329,11 @@ class ScratchProjectTests(unittest.TestCase):
             ("brag-no-formation-spawn", brag_formation_spawn),
             ("brag-accelerates-both-axes", brag_flatten_accel),
             ("brag-points", brag_wrong_points),
-            ("brag-shared-burst", brag_own_burst),
+            ("brag-survives-hit", brag_explodes),
+            ("brag-survives-hit", brag_stays_hit),
+            ("brag-survives-hit", brag_moves_before_testing),
+            ("brag-survives-hit", brag_craft_after_recover),
+            ("brag-renders-body-only", brag_draws_burst),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -20261,7 +20399,6 @@ class ScratchProjectTests(unittest.TestCase):
         director.JARA_TARGET,
         director.ZAKATO_TARGET,
         director.GIDDO_SPARIO_TARGET,
-        director.BRAG_SPARIO_TARGET,
         director.GARU_ZAKATO_TARGET,
     )
 
@@ -22017,7 +22154,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "44c340453a4871c5e09ea8b906a499d05cf4a4f93158e42a181880fdec963b07",
+            "f9e23ab015ceb1bff7816b116693025c6c93fd9304e74fbf75ac139442bb29b3",
             build_hash,
         )
 

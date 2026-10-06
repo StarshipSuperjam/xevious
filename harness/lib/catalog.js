@@ -4016,6 +4016,97 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update brag spario'),
   },
   {
+    // AIR-10.spario (slice 21): a shot never destroys a Brag Spario. handle_09_Brag_Spario has no hit branch and
+    // writes _STATE=2 every frame (3092); the shot test hits only a _STATE 2 enemy (2566), sets 3, consumes the
+    // shot and scores 500 (2525-2538). The shot test reads the frame-start sprite snapshot, so the port goes
+    // back to ACTIVE, tests the shots at the drawn position, and then moves (on a hit tick too).
+    key: 'brag-spario-survives-a-shot',
+    behavior:
+      'AIR-10.spario: a shot that hits a Brag Spario scores 500 and is consumed, but the Spario keeps flying — '
+      + 'it is back to active on the next tick, still moving, and a second shot scores 500 again',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Warm the air detector live, then freeze the walk so one callProc is one tick of the Spario.
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'frozen');
+      step(vm, 1);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (const sl of FLYING_SLOT_INDICES) {
+        put('slot-type', sl, 0);
+        put('slot-state', sl, 0);
+      }
+      const slot = 63;
+      const shot = 36;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      put('slot-type', slot, 9); // BRAG_SPARIO_TYPE
+      put('slot-state', slot, 1); // SLOT_ACTIVE
+      put('slot-pts', slot, 12); // BRAG_SPARIO_PTS: value-table position 12 (500)
+      put('slot-x', slot, (pr - 6) * 256);
+      put('slot-y', slot, (pc - 6) * 256);
+      put('slot-dx', slot, 0);
+      put('slot-dy', slot, 0);
+      put('slot-timer', slot, 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      const aimShot = () => {
+        put('slot-type', shot, 1); // SHOT_TYPE
+        put('slot-state', shot, 1);
+        put('slot-x', shot, readVar(vm, 'slot-x')[slot]);
+        put('slot-y', shot, readVar(vm, 'slot-y')[slot]);
+      };
+      const tick = () => {
+        const score = Number(readVar(vm, 'eco-score'));
+        const x = Number(readVar(vm, 'slot-x')[slot]);
+        writeVar(vm, 'slot-index', slot + 1);
+        callProc(vm, 'Stage', 'update brag spario');
+        step(vm, 1);
+        return {
+          scored: Number(readVar(vm, 'eco-score')) - score,
+          moved: Number(readVar(vm, 'slot-x')[slot]) - x,
+          type: Number(readVar(vm, 'slot-type')[slot]),
+          state: Number(readVar(vm, 'slot-state')[slot]),
+          shotState: Number(readVar(vm, 'slot-state')[shot]),
+        };
+      };
+      aimShot();
+      const hit = tick();
+      const after = tick();
+      aimShot();
+      const again = tick();
+      return { hit, after, again, value: Number(readVar(vm, 'eco-value-table')[11]) };
+    },
+    assert(obs) {
+      assert.equal(obs.value, 500, 'precondition: value-table position 12 is 500');
+      assert.equal(obs.hit.scored, 500, 'the shot scores the Brag Spario 500');
+      assert.notEqual(obs.hit.shotState, 1, 'the shot that hit is consumed');
+      assert.equal(obs.hit.type, 9, 'the struck Spario keeps its slot');
+      assert.ok(obs.hit.moved !== 0, 'it moved on the tick it was hit (the move runs after the shot test)');
+      assert.equal(obs.after.type, 9, 'it is still a Brag Spario a tick later (no explosion)');
+      assert.equal(obs.after.state, 1, 'it is back to active on the next tick');
+      assert.ok(obs.after.moved !== 0, 'it keeps flying');
+      assert.equal(obs.after.scored, 0, 'no further score without a shot');
+      assert.equal(obs.again.scored, 500, 'a second shot scores 500 again');
+    },
+    // The struck Spario is never set back to ACTIVE (the recovery writes HIT), so it stops flying.
+    negativeMutation: (p) => {
+      const stage = p.targets.find((t) => t.isStage);
+      const b = stage.blocks;
+      const proto = Object.keys(b).find(
+        (k) => b[k] && b[k].opcode === 'procedures_prototype' && b[k].mutation && b[k].mutation.proccode === 'update brag spario',
+      );
+      // The update's second block is the recovery (the first is the craft test).
+      const recover = b[b[b[b[proto].parent].next].next];
+      const write = recover && recover.opcode === 'control_if' && b[recover.inputs.SUBSTACK[1]];
+      if (!write || write.opcode !== 'data_replaceitemoflist') {
+        throw new Error('brag-spario-survives-a-shot negative: the update has no recovery second');
+      }
+      write.inputs.ITEM = [1, [4, 2]];
+    },
+  },
+  {
     key: 'brag-zakato-fires-five-bullet-fan',
     behavior:
       'A fused Brag Zakato whose shot fuse has elapsed fires a TERMINAL 5-bullet aimed radiating FAN — five fresh enemy bullets at the 48-magnitude (3 px/f) tier, two radiating-steps apart around the craft-aim direction (brag_zakato_shoot 5054) — then flips ITSELF to the benign SLOT_SELF_EXPLODE with its velocity zeroed, awarding NOTHING (brag_zakato_explode 3920). The sharpest contrast with the base Zakato, which fires a SINGLE aimed bullet.',

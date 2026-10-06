@@ -192,8 +192,12 @@ and the left simply vanishes; the asymmetry is retreat-versus-vanish, not the dw
 **Giddo Spario and Brag Spario (AIR-10).** Giddo Spario is the fast flyby: aimed once at spawn at
 4 px/frame — the fastest tier — with no firing and its own short ~8-frame hit explosion (5219–5257).
 Brag Spario is the accelerating homer: it re-aims continuously, accelerating toward the craft's current
-position without bound (3080–3129); it arrives scheduled or four-at-a-time from a Garu Zakato
-detonation.
+position without bound (3080–3129). A shot never destroys it: its handler has no hit branch and sets
+it back to active every frame, so a hit scores 500 and uses up the shot while it keeps flying, and it
+leaves only off-screen (`handle_09_Brag_Spario` 3092, `check_flying_enemies_shot` 2516–2545,
+`check_scroll_offscreen` 4826–4839). It arrives only four at a time from a Garu Zakato detonation
+(`init_garu_zakato_explosion` 5075–5103); type 0x09 is in neither flying-type table and no schedule
+record.
 
 **Bacura (AIR-11).** The indestructible spinning slab: spawned one per second up to the area's scheduled
 quota (`main_fn_5__inc_num_bacura` 5201–5217; quota set per schedule record), drifting at 1 px/frame.
