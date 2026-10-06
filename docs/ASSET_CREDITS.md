@@ -205,7 +205,7 @@ and the title-screen sparkle (slice 21, `presentation.reference-art`) are decode
 from the same pinned reference graphics (`assets/amiga/xevious_gfx.c`: the bank-1
 sprite codes, their colour tables and the palette) by
 `tools/reference_art_render.py` into one 400×128 sheet,
-`src/xevious/assets/6092a276a7025f581ff091e182a011dd.png`, on the hidden
+`src/xevious/assets/4ad2478f0f60294ee6686cb817ba1fa4.png`, on the hidden
 `sprite_sheets` target; `--verify` re-derives it byte-for-byte at the pin. The
 `reference_art` entries in `assets/sprite-extraction/manifest.json` crop the
 frames from it, flip-expanding the Brag Spario, the shot, its rebound and the

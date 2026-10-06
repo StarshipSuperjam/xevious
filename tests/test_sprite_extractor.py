@@ -39,11 +39,12 @@ class SpriteExtractorTests(unittest.TestCase):
         # rendered from the pin (7 player-explosion and 5 air-explosion frames each flip-expanded x4, 7
         # ground-explosion frames, 2 crater, 4 crosshair colours, 1 bomb target, 3 bomb codes x 4 colours),
         # less the 2 retired rip crater crops (CAB-05: the crater now draws from the pinned render), plus the
-        # slice-21 reference art — 123 derivatives rendered from the pin by tools/reference_art_render.py
+        # slice-21 reference art — 118 derivatives rendered from the pin by tools/reference_art_render.py
         # (Giddo Spario 4 flight + 4 hit codes x 4 colours, 10 distinct pulsing bodies, 5 self-destruct codes x
-        # 5 colours, the Brag Spario x4 flips, the shot's 2 codes x 2 colours and 4 rebound codes x2 flips,
-        # 16 title-sparkle codes, and 5 teleport frames x4 flips).
-        self.assertEqual(305, count)
+        # 6 colours (the five pulsing ones and the teleport's 0x24), the Brag Spario x4 flips, the shot's 2
+        # codes x 2 colours and 4 rebound codes x2 flips, 16 title-sparkle codes, and 5 teleport frames x2
+        # flips — none and x, the only ones the build's even slot timer draws).
+        self.assertEqual(300, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -259,8 +260,10 @@ class SpriteExtractorTests(unittest.TestCase):
             # Slice 21 presentation.reference-art: the remaining enemy, shot and sparkle sprites, rendered from
             # the pin by tools/reference_art_render.py. The Giddo Spario and the self-destruct are code-major
             # over their colours; the Zakato body is one picture at every pulsing colour (and is the Brag
-            # Zakato's 0x14), so only the distinct bodies are cut. The Brag Spario and the teleport sparkle flip
-            # on bits 2-3, the shot and its rebound on bit 3 only.
+            # Zakato's 0x14), so only the distinct bodies are cut. The Brag Spario flips on bits 2-3, the shot
+            # and its rebound on bit 3 only, and the teleport sparkle on TIMER & 3 — of which the build's even
+            # slot timer draws only none and x. The self-destruct at the teleport colour 0x24 (a Zakato that
+            # fires on its first live frame) is cut last, after the sparkle.
             + [
                 f"giddo-spario/{animation}/{code:02d}/c{clut:02x}"
                 for animation in ("fly", "hit")
@@ -287,8 +290,9 @@ class SpriteExtractorTests(unittest.TestCase):
             + [
                 f"zakato-teleport/sparkle/{index:02d}/{token}"
                 for index in range(1, 6)
-                for token in ("none", "x", "y", "xy")
-            ],
+                for token in ("none", "x")
+            ]
+            + [f"zakato-self-destruct/burst/{code:02d}/c24" for code in range(1, 6)],
             [costume["name"] for costume in toroid["costumes"]],
         )
         self.assertFalse(toroid["visible"])

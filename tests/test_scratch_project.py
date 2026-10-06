@@ -179,7 +179,7 @@ SPRITE_SHEET_HASHES = {
     # the pulsing Zakato bodies, the self-destruct and teleport frames, the Brag Spario, the shot and its
     # rebound, the title sparkle — decoded from the pin by tools/reference_art_render.py.
     "Reference Art": (
-        "f08c83fd6d59775ce8533965dcb9d840eadecd7546f62b13dbed939c8a1ea455"
+        "77baf0699dc8bfbbded68b6fef7fe797c9414b752a38f5db31d247977ccdcca2"
     ),
 }
 
@@ -401,7 +401,10 @@ class ScratchProjectTests(unittest.TestCase):
         # + the slice-21 reference-art sheet (tools/reference_art_render.py) on the sprite_sheets library and
         # its 123 derivatives on the proof pen (Giddo Spario, the pulsing bodies, the self-destruct, the Brag
         # Spario, the shot and its rebound, the title sparkle, the teleport sparkle). 335 + 1 + 123 = 459.
-        self.assertEqual(459, len(assets))
+        # - the teleport sparkle's y and xy flips (10), which the build's even slot timer never draws, + the
+        # self-destruct at the teleport colour 0x24 (5) for a Zakato that fires on its first live frame. 459 - 10 + 5
+        # = 454.
+        self.assertEqual(454, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -6547,11 +6550,11 @@ class ScratchProjectTests(unittest.TestCase):
             blocks_[third]["parent"] = craft
 
         def brag_draws_burst(p: dict) -> None:
-            # The Brag renderer carries the air explosion again.
+            # The Brag renderer carries the air explosion again (copied from the Garu, which still draws it).
             targets = {t["name"]: t for t in p["targets"]}
-            giddo = targets[director.GIDDO_SPARIO_TARGET]
+            garu = targets[director.GARU_ZAKATO_TARGET]
             targets[director.BRAG_SPARIO_TARGET]["costumes"].extend(
-                copy.deepcopy(c) for c in giddo["costumes"] if c.get("name", "").startswith("air-explosion/")
+                copy.deepcopy(c) for c in garu["costumes"] if c.get("name", "").startswith("air-explosion/")
             )
 
         cases = [
@@ -6579,6 +6582,308 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._air10_failures(project), label)
+
+    @staticmethod
+    def _flag_writes(stage: dict, proccode: str, reads_tick: bool) -> list:
+        """The ids of a proc's `slot flag` writes, keeping those whose ITEM does (reads_tick) or does not read `tick`
+        (the compact variable primitive [12, name, id] anywhere in its reporter subtree)."""
+        blocks = stage["blocks"]
+        id_of = {id(b): bid for bid, b in blocks.items()}
+
+        def reads(bid) -> bool:
+            frontier, seen = [bid], set()
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                for value in blocks[cid].get("inputs", {}).values():
+                    if not isinstance(value, list):
+                        continue
+                    for part in value[1:]:
+                        if isinstance(part, list) and len(part) >= 3 and part[0] == 12 and part[2] == director.TICK_ID:
+                            return True
+                        if isinstance(part, str):
+                            frontier.append(part)
+            return False
+
+        return [
+            id_of[id(b)]
+            for b in _proc_body_blocks(stage, proccode)
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            and reads(id_of[id(b)]) == reads_tick
+        ]
+
+    @classmethod
+    def _reference_art_consumer_failures(cls, project: dict) -> set:
+        """presentation.reference-art consumers (slice 21) — violated labels. The update side keeps each body's
+        colour in `slot flag`; the renderers mirror the pinned frames in the ordinal layout game_director lists.
+
+        ZAKATO COLOUR. Every Zakato-family handler writes pulsing colour 2 AFTER its fire test (3757, 3798, 3828,
+        3857, 3887, 3916), so a Zakato that fires keeps the colour it had; init_teleport writes 0x24 (4002), which
+        one that fires on its first live frame keeps. So each update's tick-driven flag write sits only in the
+        not-firing branch (the SUBSTACK2 of the if-else whose SUBSTACK flips the slot to SLOT_SELF_EXPLODE), and
+        each init writes ZAKATO_TELEPORT_COLOUR_INDEX.
+        GARU COLOUR. handle_18 writes the pulsing colour each live frame (4027): the update writes it on the
+        not-detonating path; the init writes it too (port choice: the arcade's first frame shows a stale colour).
+        GIDDO COLOUR. The flight writes 0x26 + ((countup>>3)&3) (5233-5237) outside the HIT branch; the hit
+        (5241-5252) never rewrites it, so the burst proc writes no flag.
+        COSTUMES. Each renderer mirrors its own pinned frames at the ordinals its blocks compute."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def in_not_firing_branch(bid) -> bool:
+            # Walk up through the `next` chain to the enclosing C-block; it must be an if-else holding this
+            # write in SUBSTACK2 with a SLOT_SELF_EXPLODE state write in SUBSTACK.
+            cur = bid
+            while True:
+                parent_id = blocks[cur].get("parent")
+                if not parent_id or parent_id not in blocks:
+                    return False
+                parent = blocks[parent_id]
+                if parent.get("next") == cur:
+                    cur = parent_id
+                    continue
+                if parent["opcode"] != "control_if_else":
+                    return False
+                if (parent["inputs"].get("SUBSTACK2") or [None, None])[1] != cur:
+                    return False
+                first = (parent["inputs"].get("SUBSTACK") or [None, None])[1]
+                while first:
+                    b = blocks[first]
+                    if (
+                        b["opcode"] == "data_replaceitemoflist"
+                        and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                        and _const_item(b) == director.SLOT_SELF_EXPLODE
+                    ):
+                        return True
+                    first = b.get("next")
+                return False
+
+        for proccode in (director.UPDATE_ZAKATO_PROCCODE, director.UPDATE_BRAG_ZAKATO_PROCCODE):
+            writes = cls._flag_writes(stage, proccode, reads_tick=True)
+            if not writes or not all(in_not_firing_branch(w) for w in writes):
+                failures.add("zakato-colour-after-fire-test")
+        for proccode in (director.INIT_ZAKATO_PROCCODE, director.INIT_BRAG_ZAKATO_PROCCODE):
+            if not any(
+                _const_item(blocks[w]) == director.ZAKATO_TELEPORT_COLOUR_INDEX
+                for w in cls._flag_writes(stage, proccode, reads_tick=False)
+            ):
+                failures.add("zakato-init-teleport-colour")
+        if not cls._flag_writes(stage, director.UPDATE_GARU_ZAKATO_PROCCODE, reads_tick=True) or not cls._flag_writes(
+            stage, director.INIT_GARU_ZAKATO_PROCCODE, reads_tick=True
+        ):
+            failures.add("garu-pulses")
+        giddo_writes = cls._flag_writes(stage, director.UPDATE_GIDDO_SPARIO_PROCCODE, reads_tick=True)
+        if (
+            not giddo_writes
+            or not cls._flag_writes(stage, director.INIT_GIDDO_SPARIO_PROCCODE, reads_tick=True)
+            or any(
+                b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                for b in _proc_body_blocks(stage, director.EXPLODE_GIDDO_SPARIO_PROCCODE)
+            )
+        ):
+            failures.add("giddo-colour-cycles-hit-keeps-it")
+
+        targets = {t["name"]: t for t in project["targets"]}
+
+        def names(target):
+            return [c["name"] for c in targets[target]["costumes"]] if target in targets else []
+
+        zakato = names(director.ZAKATO_TARGET)
+        layout = {
+            director.ZAKATO_BODY_ORDINAL: director.ZAKATO_BODY_COSTUME,
+            director.BRAG_ZAKATO_BODY_ORDINAL_BASE: "brag-zakato-body/pulse/c10",
+            director.ZAKATO_BURST_ORDINAL_BASE: "air-explosion/burst/01/none",
+            director.ZAKATO_TELEPORT_ORDINAL_BASE: "zakato-teleport/sparkle/01/none",
+            director.ZAKATO_TELEPORT_ORDINAL_BASE + 1: "zakato-teleport/sparkle/01/x",
+            director.ZAKATO_SELF_DESTRUCT_ORDINAL_BASE: "zakato-self-destruct/burst/01/c10",
+            director.ZAKATO_SELF_DESTRUCT_ORDINAL_BASE + director.ZAKATO_TELEPORT_COLOUR_INDEX: (
+                "zakato-self-destruct/burst/01/c24"
+            ),
+        }
+        expected_count = director.ZAKATO_SELF_DESTRUCT_ORDINAL_BASE - 1 + director.ZAKATO_ANIM_PHASES * director.ZAKATO_COLOURS
+        if len(zakato) != expected_count or any(
+            zakato[ordinal - 1] != name for ordinal, name in layout.items() if ordinal - 1 < len(zakato)
+        ):
+            failures.add("zakato-renders-pinned-frames")
+        giddo = names(director.GIDDO_SPARIO_TARGET)
+        if (
+            len(giddo) != 2 * director.GIDDO_SPARIO_FLIGHT_FRAMES * director.GIDDO_SPARIO_COLOURS
+            or not all(n.startswith("giddo-spario/") for n in giddo)
+            or giddo[director.GIDDO_SPARIO_HIT_ORDINAL_BASE - 1] != "giddo-spario/hit/01/c26"
+        ):
+            failures.add("giddo-renders-pinned-frames")
+        if names(director.BRAG_SPARIO_TARGET) != [f"brag-spario/spin/01/{t}" for t in ("none", "x", "y", "xy")]:
+            failures.add("brag-spario-renders-pinned-frames")
+        # FLIP AXES. countup & 0x0C (3116-3119) sets _ATTR bits 2-3; on the upright screen bit 3 mirrors
+        # left-to-right (amiga.68k 2614; neogeo.68k 927-929 passes both bits on), so a value of 1 is the
+        # top-to-bottom flip: the spin's costume offset is floor(v/2) + (v mod 2)*2, not v itself.
+        spario_blocks = targets[director.BRAG_SPARIO_TARGET]["blocks"] if director.BRAG_SPARIO_TARGET in targets else {}
+
+        def child(b, key):
+            inp = b.get("inputs", {}).get(key)
+            return spario_blocks.get(inp[1]) if inp and isinstance(inp[1], str) else None
+
+        def literal(b, key):
+            inp = b.get("inputs", {}).get(key)
+            return str(inp[1][1]) if inp and isinstance(inp[1], list) else None
+
+        def upright_flip_offset(b):
+            floor, scaled = child(b, "NUM1"), child(b, "NUM2")
+            halved = child(floor, "NUM") if floor else None
+            low_bit = child(scaled, "NUM1") if scaled else None
+            return (
+                b["opcode"] == "operator_add"
+                and floor is not None
+                and floor["opcode"] == "operator_mathop"
+                and floor["fields"]["OPERATOR"][0] == "floor"
+                and halved is not None
+                and halved["opcode"] == "operator_divide"
+                and literal(halved, "NUM2") == "2"
+                and scaled["opcode"] == "operator_multiply"
+                and literal(scaled, "NUM2") == "2"
+                and low_bit is not None
+                and low_bit["opcode"] == "operator_mod"
+                and literal(low_bit, "NUM2") == "2"
+            )
+
+        if not any(upright_flip_offset(b) for b in spario_blocks.values() if isinstance(b, dict)):
+            failures.add("brag-spario-flip-axes")
+        garu = names(director.GARU_ZAKATO_TARGET)
+        if (
+            garu[: director.GARU_ZAKATO_BODY_COLOURS]
+            != [f"garu-zakato-body/pulse/c{0x10 + i:02x}" for i in range(director.GARU_ZAKATO_BODY_COLOURS)]
+            or len(garu) < director.GARU_ZAKATO_BURST_ORDINAL_BASE
+            or garu[director.GARU_ZAKATO_BURST_ORDINAL_BASE - 1] != "air-explosion/burst/01/none"
+        ):
+            failures.add("garu-renders-pinned-frames")
+        return failures
+
+    # roadmap-evidence: CAB-05 success  (presentation.reference-art consumers: test_reference_art_consumers_present — Zakato-family colour written after the fire test and 0x24 at init, Garu pulses, Giddo colour cycles and its hit keeps it, each renderer mirrors its pinned frames at its ordinals; harness reference-art-enemy-frames)
+    # roadmap-evidence: CAB-05 failure  (test_reference_art_consumer_negatives — colour written before the fire test, init colour 0, Garu/Giddo colour write dropped, a burst that rewrites the colour, reordered or foreign costumes, a Brag Spario spin with its flip axes swapped each bite)
+    def test_reference_art_consumers_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._reference_art_consumer_failures(project))
+
+    def test_reference_art_consumer_negatives(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+
+        def stage_of(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def colour_before_fire_test(proccode):
+            # Move the update's colour write from the not-firing branch to the head of the firing branch.
+            def corrupt(p):
+                blocks = stage_of(p)["blocks"]
+                write = self._flag_writes(stage_of(p), proccode, reads_tick=True)[0]
+                node = blocks[write]["parent"]
+                after = blocks[write].get("next")
+                blocks[node]["inputs"]["SUBSTACK2"] = [2, after]
+                blocks[after]["parent"] = node
+                first = blocks[node]["inputs"]["SUBSTACK"][1]
+                blocks[node]["inputs"]["SUBSTACK"] = [2, write]
+                blocks[write]["parent"], blocks[write]["next"] = node, first
+                blocks[first]["parent"] = write
+
+            return corrupt
+
+        def drop_colour_write(proccode):
+            # Unlink the proc's tick-driven colour write from its stack.
+            def corrupt(p):
+                blocks = stage_of(p)["blocks"]
+                write = self._flag_writes(stage_of(p), proccode, reads_tick=True)[0]
+                parent, after = blocks[write]["parent"], blocks[write].get("next")
+                for key, value in blocks[parent]["inputs"].items():
+                    if isinstance(value, list) and len(value) >= 2 and value[1] == write:
+                        blocks[parent]["inputs"][key] = [2, after]
+                if blocks[parent].get("next") == write:
+                    blocks[parent]["next"] = after
+                if after:
+                    blocks[after]["parent"] = parent
+                del blocks[write]
+
+            return corrupt
+
+        def init_colour_zero(proccode):
+            def corrupt(p):
+                blocks = stage_of(p)["blocks"]
+                for w in self._flag_writes(stage_of(p), proccode, reads_tick=False):
+                    if _const_item(blocks[w]) == director.ZAKATO_TELEPORT_COLOUR_INDEX:
+                        blocks[w]["inputs"]["ITEM"] = [1, [4, "0"]]
+
+            return corrupt
+
+        def giddo_burst_rewrites_colour(p):
+            # Retarget the burst proc's first slot write at `slot flag`.
+            for b in _proc_body_blocks(stage_of(p), director.EXPLODE_GIDDO_SPARIO_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist":
+                    b["fields"]["LIST"] = ["slot flag", director.SLOT_FLAG_ID]
+                    return
+
+        def reverse_costumes(target):
+            def corrupt(p):
+                t = next(t for t in p["targets"] if t["name"] == target)
+                t["costumes"].reverse()
+
+            return corrupt
+
+        def spario_flip_axes_swapped(p):
+            # Rewrite floor(v/2) + (v mod 2)*2 as (v mod 2) + floor(v/2)*2 = v: value 1 would draw the x flip.
+            blocks = next(t for t in p["targets"] if t["name"] == director.BRAG_SPARIO_TARGET)["blocks"]
+            for bid, b in blocks.items():
+                if not isinstance(b, dict) or b["opcode"] != "operator_add":
+                    continue
+                first = blocks.get((b["inputs"].get("NUM1") or [None, None])[1])
+                second = blocks.get((b["inputs"].get("NUM2") or [None, None])[1])
+                if not (isinstance(first, dict) and isinstance(second, dict)):
+                    continue
+                if first["opcode"] != "operator_mathop" or second["opcode"] != "operator_multiply":
+                    continue
+                floor_id, mod_id = b["inputs"]["NUM1"][1], second["inputs"]["NUM1"][1]
+                b["inputs"]["NUM1"] = [2, mod_id]
+                blocks[mod_id]["parent"] = bid
+                second["inputs"]["NUM1"] = [2, floor_id]
+                blocks[floor_id]["parent"] = b["inputs"]["NUM2"][1]
+                return
+            raise AssertionError("no flip offset on the brag spario target")
+
+        def garu_without_burst(p):
+            t = next(t for t in p["targets"] if t["name"] == director.GARU_ZAKATO_TARGET)
+            t["costumes"] = [c for c in t["costumes"] if not c["name"].startswith("air-explosion/")]
+
+        def giddo_with_burst(p):
+            targets = {t["name"]: t for t in p["targets"]}
+            targets[director.GIDDO_SPARIO_TARGET]["costumes"].extend(
+                copy.deepcopy(c)
+                for c in targets[director.GARU_ZAKATO_TARGET]["costumes"]
+                if c["name"].startswith("air-explosion/")
+            )
+
+        cases = [
+            ("zakato-colour-after-fire-test", colour_before_fire_test(director.UPDATE_ZAKATO_PROCCODE)),
+            ("zakato-colour-after-fire-test", colour_before_fire_test(director.UPDATE_BRAG_ZAKATO_PROCCODE)),
+            ("zakato-colour-after-fire-test", drop_colour_write(director.UPDATE_ZAKATO_PROCCODE)),
+            ("zakato-init-teleport-colour", init_colour_zero(director.INIT_ZAKATO_PROCCODE)),
+            ("zakato-init-teleport-colour", init_colour_zero(director.INIT_BRAG_ZAKATO_PROCCODE)),
+            ("garu-pulses", drop_colour_write(director.UPDATE_GARU_ZAKATO_PROCCODE)),
+            ("garu-pulses", drop_colour_write(director.INIT_GARU_ZAKATO_PROCCODE)),
+            ("giddo-colour-cycles-hit-keeps-it", drop_colour_write(director.UPDATE_GIDDO_SPARIO_PROCCODE)),
+            ("giddo-colour-cycles-hit-keeps-it", giddo_burst_rewrites_colour),
+            ("zakato-renders-pinned-frames", reverse_costumes(director.ZAKATO_TARGET)),
+            ("giddo-renders-pinned-frames", reverse_costumes(director.GIDDO_SPARIO_TARGET)),
+            ("giddo-renders-pinned-frames", giddo_with_burst),
+            ("brag-spario-renders-pinned-frames", reverse_costumes(director.BRAG_SPARIO_TARGET)),
+            ("brag-spario-flip-axes", spario_flip_axes_swapped),
+            ("garu-renders-pinned-frames", reverse_costumes(director.GARU_ZAKATO_TARGET)),
+            ("garu-renders-pinned-frames", garu_without_burst),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._reference_art_consumer_failures(project), label)
 
     @staticmethod
     def _air11_failures(project: dict) -> set:
@@ -20630,6 +20935,7 @@ class ScratchProjectTests(unittest.TestCase):
             failures = self._regression_contract_failures(project)
             self.assertIn(label, failures, f"corruption '{label}' was not caught")
 
+    # The Giddo Spario is not here: since slice 21 its hit draws its own burst (giddo_spario_hit 5241-5252).
     CAB05_AIR_EXPLOSION_TARGETS = (
         director.TOROID_TARGET,
         director.TERRAZI_TARGET,
@@ -20638,7 +20944,6 @@ class ScratchProjectTests(unittest.TestCase):
         director.ZOSHI_TARGET,
         director.JARA_TARGET,
         director.ZAKATO_TARGET,
-        director.GIDDO_SPARIO_TARGET,
         director.GARU_ZAKATO_TARGET,
     )
 
@@ -20660,7 +20965,9 @@ class ScratchProjectTests(unittest.TestCase):
         air = [f"air-explosion/burst/{phase:02d}/{flip}" for phase in range(1, 6) for flip in flips]
         for target in self.CAB05_AIR_EXPLOSION_TARGETS:
             listed = names(target)
-            if air[0] not in listed or listed[listed.index(air[0]):] != air:
+            # One contiguous run in phase-then-flip order (the Zakato lists its teleport and self-destruct after it).
+            start = listed.index(air[0]) if air[0] in listed else None
+            if start is None or listed[start:start + len(air)] != air:
                 fails.add(f"air-layout-{target}")
             sizes = {
                 num(b["inputs"].get("SIZE"))
@@ -22394,7 +22701,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "19919060447cebfbc55e11a5c35a673a8da068346ea0ac20e592e2337f109515",
+            "4880fe66f06dab0cf39146e39dc95102e58c057be4315553b5110452f1b32e1b",
             build_hash,
         )
 

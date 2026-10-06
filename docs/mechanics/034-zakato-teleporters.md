@@ -15,11 +15,13 @@
   craft aim of Kapi/Terrazi ([record 028](028-kapi-peel-away-dive.md)).
 - Derived behavior: Each Zakato is stamped **indestructible** at spawn (`_STATE = 3`) on a random row
   `(rng & 0x0F) + 5` (5–20) and column (`gen_random_Y_store_obj`, 3–27, then `+ 1`), and scrolls with the
-  terrain each frame while the teleport-in sparkle animates its 6-code table in reverse over ~20 frames,
+  terrain each frame while the teleport-in sparkle plays over ~20 frames — `zakato_teleport_sprite_tbl` in table
+  order, codes 0x10C and 0x108 as 2×2 sprites then 0x107, 0x106, 0x105 as 1×1, four frames each, at colour 0x24
+  and flipped by `TIMER & 3` —
   moving one cell (+1 row, −1 column) at timer 8 as the sprite shrinks from 2×2 to 1×1, which keeps the picture still
   (a 2×2 sprite draws 8 px right and down of a 1×1 at the same position); the object is unkillable in
   this phase. When the sparkle completes the handler falls through to its `zakato_NN_main` body, which stamps
-  the active body code `0x11`, sets `_STATE = 2` (active/hittable), and commits the variant's motion and shot
+  the active body code `0x11` (0x111), sets `_STATE = 2` (active/hittable), and commits the variant's motion and shot
   schedule: the **straight** variants (slow/close-Y) descend on the raw scroll-axis velocity `_dX = 16`,
   `_dY = 0`; the **aimed** variants (fast/continuous) aim at the craft's current cell on the 32-magnitude
   generic angle table. The **fused** variants seed a random shot countdown at commit — slow `(rng & 0xff) + 1`
@@ -27,10 +29,16 @@
   variants (close-Y/continuous) fire the instant the signed MSB gap `solvalou._Y − self._Y` lands in the close
   band (`− 4` then `+ 8`, carrying → the `[−4, +3]` cell band). Firing is terminal: `zakato_shoot` allocates
   **one** aimed bullet, re-inits the timer, sets `_STATE = 3` ("flag benign"), and falls into
-  `zakato_explode_and_remove`, which plays the forward 6-code burst, scrolling with the terrain and moving one
-  cell (−1 row, +1 column) at timer 0x10, and frees the slot **with no score**. The points are `_PTS` bytes
-  15 / 21 / 18 / 27 (100 / 200 / 150 / 300). The shared explosion, the aimed bullet and the fast angle table
-  are the derived data of the earlier records.
+  `zakato_explode_and_remove`, which plays the self-destruct burst from the firing frame itself (`_TIMER = 0xFF`
+  at 3762, incremented to 0 before the draw at 3932) — codes 0x104–0x108, four frames each, drawn
+  1×1 and unflipped because `zakato_explode` never stores the size and flip bits it builds, at whatever colour
+  the body last wrote — scrolling with the terrain and moving one
+  cell (−1 row, +1 column) at timer 0x10, and frees the slot **with no score**. Each frame it stays active, the
+  body writes `pulsing_colour_2` into its colour **after** the hit and fire tests (0x10–0x14; the Zakato body
+  uses none of the pens those colours change, so it looks the same throughout, but its burst keeps the colour),
+  and a Zakato that fires on its first active frame keeps `init_teleport`'s 0x24 for its burst. The
+  points are `_PTS` bytes 15 / 21 / 18 / 27 (100 / 200 / 150 / 300). The shared explosion, the aimed bullet and
+  the fast angle table are the derived data of the earlier records.
 - Reference provenance: `jotd666/xevious@71473685a8c7856c8401c8519276cd97a38d4183`. Line citations are
   `src/xevious_main.68k` unless noted. The four handlers are `handle_12_Zakato_slow` 3733–3742 (init_teleport,
   `_PTS = 15` = 100 pts, `_dY = 0`, `_dX = 16`), `handle_13_Zakato_closeY` 3775–3784 (`_PTS = 21` = 200 pts,
@@ -44,10 +52,14 @@
   fuse `(rng & 0x3f) + 1`, aim via `calc_dX_dY_for_vector_to_solvalou` 5119 on `angle_dX_dY_tbl` 6360) and
   `zakato_15_main` 3843–3859 (aimed, close-Y trigger). The `_STATE = 3` hit test jumps to `flying_enemy_hit`
   4865. The single shot and suicide are `zakato_shoot` 3761–3764 (`init_new_bullet` 5012 once, `_STATE = 3`
-  benign) falling into `zakato_explode_and_remove` 3766–3771 → `zakato_explode` 3931–3950 (the forward burst
-  `zakato_exploding_sprite_tbl` 3953–3959, `(TIMER>>2) & 7`, done at `≥ 5`) → `remove_zakato` 3926–3929
+  benign) falling into `zakato_explode_and_remove` 3766–3771 → `zakato_explode` 3931–3950 (the burst
+  `zakato_exploding_sprite_tbl` 3953–3959, `(TIMER>>2) & 7`, done at `≥ 5`, so codes 4–8 of bank 1; only
+  `_CODE` is stored, 3945) → `remove_zakato` 3926–3929
   (clears `_TYPE`/`_STATE`, **no score**). The sparkle animation is `zakato_teleport_sparkles` 3969–3983 over
-  the reversed table `zakato_teleport_sprite_tbl` 3986–3992. The behavior is a port mapping of that logic, not
+  `zakato_teleport_sprite_tbl` 3986–3992 in table order (its last entry, code 4, is never reached), storing the
+  flip bits `TIMER & 3` beside the size in `_ATTR` (`rol.b #2`, 3978–3981). `init_teleport` sets colour 0x24
+  (4002); each active body writes `pulsing_colour_2` after its hit and fire tests (3757, 3798, 3828, 3857).
+  The behavior is a port mapping of that logic, not
   copied text; the Zakato paragraph of [aerial enemies](../spec/aerial-enemies.md) is the settled description
   this slice implements.
 - Transfer class: Behavioral port (instruction-derived control flow and numeric constants; no source text,
@@ -63,7 +75,7 @@
   - `SLOT_TELEPORT` (4) — teleporting in: **indestructible**, because the shared `check air hit` gate scores
     only `== SLOT_ACTIVE` slots, so a teleporting Zakato is skipped (the arcade's `_STATE = 3` at
     `init_teleport`); it has no velocity of its own (`slot dx = slot dy = 0`) and drifts with the terrain,
-    `AREA_PROGRESS_STEP` a tick, while the ~20-frame reversed sparkle plays, moving one cell at timer 8; the
+    `AREA_PROGRESS_STEP` a tick, while the ~20-frame sparkle plays, moving one cell at timer 8; the
     renderer draws the sparkle one cell right and down until then, so the picture holds still through the move.
   - `SLOT_ACTIVE` (1) — hittable and moving: it fires **exactly one** aimed bullet — on the random fuse
     (slow/fast) or when the lateral offset `player col − self col` is within `[ZAKATO_CLOSEY_LOW,
@@ -71,7 +83,8 @@
     killed by a shot first, the detector flips it to `SLOT_HIT` and scores its value.
   - `SLOT_SELF_EXPLODE` (5) — fired and vanishing: benign (again skipped by the hit gate), drifting with the
     terrain while its own 20-frame burst plays (one cell at timer 0x10, a visible hop, since `zakato_explode` never
-    stores its size bits and the burst stays 1×1), then freed **awarding nothing**.
+    stores its size bits and the burst stays 1×1), then freed **awarding nothing**. The burst is drawn at the
+    colour the body last held.
   - `SLOT_HIT` (2) — shot down while active: the **shared** flying explosion (`explode toroid tick`), its value
     already scored by the detector, exactly like every other flying family.
 
@@ -96,13 +109,22 @@
   (`_zakato_self_explode`); it differs from a shot kill only in the sprite
   the renderer draws (self burst vs shared burst, keyed on the state) and in awarding nothing — the detector,
   not the tick, awards, and it never runs on a self-destructing slot.
+
+  The colour lives in `slot flag` as an index: 0–4 for the pulsing 0x10–0x14, 5 for 0x24. `init zakato` stamps
+  5; each active tick writes the Stage's pulsing index (`4 − |floor(tick / 4) mod 8 − 4|`, the arcade's 8-frame
+  step over the two-frame tick) **after** the fire test, so a Zakato that fires on its first active tick keeps 5.
+  `zakato_blocks` draws by phase: the shared air burst on `SLOT_HIT`; the teleport frame
+  `floor(clock / 4)` in table order with the flip from `clock mod 4` while `SLOT_TELEPORT`; the self-destruct
+  frame at the kept colour while `SLOT_SELF_EXPLODE`; and the pulsing 0x111 body (0x112 for a Brag Zakato,
+  [record 036](036-brag-and-garu-zakato.md)) while active.
 - Scratch evidence: `install_init_zakato` and `install_update_zakato` (the shared lifecycle procs, reusing
   `_fire_aimed_bullet`, `COMPUTE_AIM`, the 32-tier `aim dx 32`/`aim dy 32` tables, the craft-independent
   `_draw_spawn_column` (`exclude_craft=False`, `col_offset=1`), the shared `explode toroid tick`, the teleport
   helpers `_zakato_teleport_row` / `_zakato_scroll` / `_zakato_nudge` / `_zakato_self_explode`, and the
   inlined move/cull), the single Zakato branch
   in `install_advance_slots`, the four per-type spawn branches in `install_spawn_flying`, `zakato_blocks` for
-  the body/self-burst render, the four base-Zakato entries in `DEBUG_SPAWN_FAMILIES` with their
+  the render (pulsing body, teleport sparkle, self-destruct burst, shared air burst), the colour helpers
+  `_set_pulsing_colour` / `_pulsing_colour_index`, the four base-Zakato entries in `DEBUG_SPAWN_FAMILIES` with their
   `ZAKATO_*_FORMATION_OFFSET` constants, and the `ZAKATO_*` tuning constants in `tools/game_director.py`; the
   structural contract `_air07_failures` and its per-clause negatives (`test_zakato_slice_authoring_present` /
   `test_zakato_slice_negative_fixtures`) in `tests/test_scratch_project.py`, whose clauses pin the shared
@@ -120,6 +142,11 @@
   `zakato-fires-once-then-self-destructs` asserting the one-shot suicide that frees the slot without scoring,
   `zakato-teleports-mid-field-and-drifts` asserting the row/column ranges over 48 teleport-ins and the
   per-tick drift and one-cell moves, and the extended `debug-key-cycles-families`), each with a biting negative.
+  Slice 21 (`presentation.reference-art`) adds `_reference_art_consumer_failures` with
+  `test_reference_art_consumers_present` / `test_reference_art_consumer_negatives` (the colour written after the
+  fire test, the 0x24 init colour, the pinned-frame render) and the scenarios `reference-art-enemy-frames`
+  (each phase draws the frame the reference picks) and `reference-art-body-colours-follow-the-clock` (the body
+  pulses with the global tick).
 - Acceptance criteria: Four Zakato object types spawn by type from the debug cycle (and, for fast/continuous,
   the natural wave); each teleports in mid-field (row 5–20), **indestructible** and drifting with the terrain, then becomes
   hittable and moves —
@@ -135,9 +162,12 @@
   read at the pin). The behavior matches the reference within the recorded deviations below.
 - License status: The reference states no reusable license; only instruction-derived behavior and numeric
   constants are transferred (recorded in [the index](../spec/index.md) and the data files). No source text is
-  reproduced. The single Zakato body frame is the Aerial Enemies rip credited in
-  `src/xevious/assets/provenance.json` (`https://www.spriters-resource.com/arcade/xevious/`, sheet author
-  "CrazyCarl"); the teleport sparkle and self-destruct burst reuse the shared explosion frames.
+  reproduced. Since slice 21 the Zakato body at the pulsing colours, the teleport sparkle and the self-destruct
+  frames are decoded from the pinned reference's graphics data (`assets/amiga/xevious_gfx.c`) by
+  `tools/reference_art_render.py`, credited in `src/xevious/assets/provenance.json` and
+  [the asset credits](../ASSET_CREDITS.md) under the same rights caveat as the terrain; a shot-down Zakato
+  still draws the shared air explosion. The earlier Aerial Enemies rip (CrazyCarl,
+  `https://www.spriters-resource.com/arcade/xevious/`) is no longer drawn for the Zakato.
 - Known deviations or uncertainty: (1) **Two arcade frames per tick (tick scaling).** The per-frame reference
   rates are doubled for the port's two-frame tick — the sparkle/burst clock advances `TICK_TIMER_STEP = 2` per
   tick (completing at `ZAKATO_PHASE_FRAMES = 20`, the shared flying-explosion duration), the fuse decrements
@@ -172,6 +202,18 @@
   schedules); **slow** (`0x12`) and **close-Y** (`0x13`) are not scheduled in any built area, so the debug key
   (their `DEBUG_SPAWN_FAMILIES` entries at offsets 54 and 57) is the only way to see them until later areas are
   wired — recorded so a reviewer does not read their absence from normal play as a build gap.
+  (9) **Teleport flips on the two-frame tick (slice 21).** The sparkle clock steps by two, so it only ever holds
+  even values and `TIMER & 3` is 0 or 2: the port draws the unflipped and x-flipped frames, and the arcade's
+  odd-frame y and xy flips (each shown for one 60 Hz frame) are never drawn. The 2×2 frames flip as a whole,
+  as the Neo Geo renderer in the reference does; the reference's Amiga renderer drops 2×2 flips. (10) **Colour
+  as an index (slice 21).** Scratch costumes are pre-coloured, so the port keeps the colour as an index into
+  the rendered colour steps (0–4 pulsing, 5 = 0x24) and picks the costume by it, rather than a palette byte.
+  (11) **Self-destruct start — resolved in slice 21.** The port used to arm the burst clock at 0, so the
+  firing tick already drew timer 2 and the whole burst, its one-cell move and the free ran one tick early. It
+  now arms one step below zero (`ZAKATO_SELF_DESTRUCT_ARM`, mirroring the arcade's 0xFF-then-increment), so the
+  firing tick draws timer 0, the move lands at 0x10 and the slot frees at 20 frames, as in the arcade; the
+  Brag Zakato's `brag_zakato_explode` (3921) arms the same way. `zakato-fires-once-then-self-destructs` pins
+  timer 0 on the firing tick and nine further burst ticks.
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.

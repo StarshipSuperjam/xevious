@@ -3760,14 +3760,20 @@ export const SCENARIOS = [
         state: readVar(vm, 'slot-state')[slot],
         dx: readVar(vm, 'slot-dx')[slot],
         dy: readVar(vm, 'slot-dy')[slot],
+        timer: readVar(vm, 'slot-timer')[slot],
       };
-      // Play out the self-destruct burst; it frees on its own 20-frame clock (2/tick, ~10 ticks).
+      // Play out the self-destruct burst; it frees on its own 20-frame clock (2/tick). Count the ticks
+      // that still hold the slot after the firing tick.
+      let burstTicks = 0;
       for (let t = 0; t < 14; t += 1) {
         callProc(vm, 'Stage', 'update zakato');
         step(vm, 1);
+        if (readVar(vm, 'slot-type')[slot] !== 20) break;
+        burstTicks += 1;
       }
       return {
         ...afterFire,
+        burstTicks,
         freedType: readVar(vm, 'slot-type')[slot],
         freedState: readVar(vm, 'slot-state')[slot],
         score0,
@@ -3779,6 +3785,10 @@ export const SCENARIOS = [
       assert.equal(obs.state, 5, 'having fired, the Zakato flips ITSELF to the benign SLOT_SELF_EXPLODE');
       assert.equal(obs.dx, 0, 'the self-destructing Zakato zeroes its scroll-axis velocity');
       assert.equal(obs.dy, 0, 'the self-destructing Zakato zeroes its lateral velocity');
+      // zakato_shoot arms _TIMER=0xFF (3762) and zakato_explode increments first (3932): the firing frame
+      // draws timer 0, and frames 0-19 are drawn before the remove at 20 — the firing tick plus 9 more.
+      assert.equal(obs.timer, 0, 'the firing tick draws the first self-destruct frame (timer 0)');
+      assert.equal(obs.burstTicks, 9, 'the burst holds the slot 9 ticks after the firing tick, then frees at 20');
       assert.equal(obs.freedType, 0, 'the self-destruct burst frees the slot (type cleared) when its clock completes');
       assert.equal(obs.freedState, 0, 'the freed slot state is cleared so it can be reused');
       assert.equal(obs.score1, obs.score0, 'a Zakato that self-destructs after firing awards NOTHING');
@@ -10645,6 +10655,164 @@ export const SCENARIOS = [
     },
     // roadmap-evidence: CAB-05 failure  (with the flip bits collapsed the explosion never mirrors, so timer 2 mod 4 draws the unflipped frame)
     negativeMutation: (p) => collapseFlipMod(p, 'toroid'),
+  },
+  {
+    // Slice 21 presentation.reference-art: the Zakato family, Giddo, Brag Spario and Garu Zakato draw the sprites
+    // rendered from the pin. Bodies take the colour the update kept in `slot flag` (pulsing colour 2, xevious_sub.68k
+    // 208-232, as an index 0..4, or 5 for init_teleport's 0x24 at 4002); the teleport plays zakato_teleport_sprite_tbl
+    // (3969-3984) at TIMER>>2 with the TIMER&3 flip; the self-destruct plays 0x104-0x108 1x1 at the kept colour
+    // (zakato_explode 3931-3959); the Giddo flies on countup (5228-5237) and bursts on its own codes (5241-5252); the
+    // Brag Spario flips on countup & 0x0C (3116-3119). Driven like the air explosion, with the Stage halted, so the
+    // seeded slot, the slot clock and `tick` hold still and each step only lets the render clone draw.
+    key: 'reference-art-enemy-frames',
+    // roadmap-evidence: CAB-05 success  (presentation.reference-art: the Zakato, Brag Zakato, Garu Zakato, Giddo and Brag Spario render clones draw the pinned body, teleport, self-destruct and hit frames for their slot's state, clock and kept colour)
+    behavior:
+      "The Zakato family, Giddo Spario, Brag Spario and Garu Zakato draw the arcade's own sprites: pulsing bodies, the teleport sparkle, the five-frame self-destruct in the body's colour (or the teleport's, if it fired at once), the Giddo's colour-cycling flight and its own burst, and the Brag Spario's spin",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1); // director enter creates the render clones
+      vm.runtime.stopForTarget(vm.runtime.getTargetForStage()); // halt the walk: the seeded slot and tick hold still
+      const slot = 58; // JS index; Scratch flying slot 59
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-x', 20 * 256); // row 20, inside the window
+      put('slot-y', 15 * 256);
+      const SPRITE = { 18: 'zakato', 22: 'zakato', 8: 'giddo-spario', 9: 'brag-spario', 24: 'garu-zakato' };
+      const cases = [
+        // [type, state, timer, flag, tick, expected costume]
+        [18, 1, 0, 3, 0, 'zakato-body/pulse/c10'], // the Zakato body is one picture at every pulsing colour
+        [22, 1, 0, 2, 0, 'brag-zakato-body/pulse/c12'], // the Brag Zakato's own body at 0x12
+        [22, 1, 0, 4, 0, 'zakato-body/pulse/c10'], // ... whose 0x14 is the Zakato picture
+        [18, 4, 0, 5, 0, 'zakato-teleport/sparkle/01/none'],
+        [18, 4, 2, 5, 0, 'zakato-teleport/sparkle/01/x'], // TIMER&3 = 2: the x flip
+        [22, 4, 6, 5, 0, 'zakato-teleport/sparkle/02/x'],
+        [18, 4, 16, 5, 0, 'zakato-teleport/sparkle/05/none'],
+        [18, 5, 0, 0, 0, 'zakato-self-destruct/burst/01/c10'],
+        [18, 5, 8, 2, 0, 'zakato-self-destruct/burst/03/c12'], // phase TIMER>>2 at the kept colour
+        [22, 5, 18, 4, 0, 'zakato-self-destruct/burst/05/c14'],
+        [18, 5, 8, 5, 0, 'zakato-self-destruct/burst/03/c24'], // fired on its first live frame: 0x24
+        [18, 2, 6, 3, 0, 'air-explosion/burst/02/x'], // the shot kill keeps the shared flipped burst
+        [8, 1, 0, 1, 6, 'giddo-spario/fly/03/c27'], // code = tick mod 4, colour from the flag
+        [8, 1, 0, 3, 1, 'giddo-spario/fly/02/c29'],
+        [8, 2, 4, 3, 0, 'giddo-spario/hit/03/c29'], // its own burst, a code a tick, at the kept colour
+        [8, 2, 0, 0, 0, 'giddo-spario/hit/01/c26'],
+        [9, 1, 0, 0, 0, 'brag-spario/spin/01/none'], // flip bits floor(tick/2) mod 4
+        [9, 1, 0, 0, 2, 'brag-spario/spin/01/y'],
+        [9, 1, 0, 0, 4, 'brag-spario/spin/01/x'],
+        [9, 2, 0, 0, 7, 'brag-spario/spin/01/xy'], // a shot Brag Spario still draws its body
+        [24, 1, 0, 4, 0, 'garu-zakato-body/pulse/c14'],
+        [24, 1, 0, 1, 0, 'garu-zakato-body/pulse/c11'],
+        [24, 2, 4, 1, 0, 'air-explosion/burst/02/none'],
+      ];
+      const frames = [];
+      for (const [type, state, timer, flag, tick, want] of cases) {
+        put('slot-type', type);
+        put('slot-state', state);
+        put('slot-timer', timer);
+        put('slot-flag', flag);
+        writeVar(vm, 'tick', tick);
+        step(vm, 1);
+        const sprite = SPRITE[type];
+        frames.push({ type, state, timer, flag, tick, want, ...cloneRender(vm, sprite, `${sprite}-clone-slot`, slot + 1) });
+      }
+      return { frames };
+    },
+    assert(obs) {
+      for (const f of obs.frames) {
+        const label = `type ${f.type} state ${f.state} timer ${f.timer} flag ${f.flag} tick ${f.tick}`;
+        assert.equal(f.visible, true, `${label} is drawn`);
+        assert.equal(f.costume, f.want, `${label} draws ${f.want}`);
+      }
+    },
+    // roadmap-evidence: CAB-05 failure  (with the self-destruct's colour stride collapsed from 6 to 1, a self-destruct no longer draws its phase at the kept colour)
+    negativeMutation: (p) => {
+      const t = p.targets.find((x) => x.name === 'zakato');
+      let patched = 0;
+      for (const b of Object.values(t.blocks)) {
+        const rhs = b.opcode === 'operator_multiply' && b.inputs.NUM2 && b.inputs.NUM2[1];
+        if (Array.isArray(rhs) && String(rhs[1]) === '6') {
+          b.inputs.NUM2 = [1, [4, '1']];
+          patched += 1;
+        }
+      }
+      if (patched !== 1) throw new Error(`mutate: expected one 'x 6' on zakato, found ${patched}`);
+    },
+  },
+  {
+    // Slice 21 presentation.reference-art: the bodies' colours, kept in `slot flag` by the updates. Every live
+    // Zakato-family frame copies pulsing colour 2 (colour_lut_pulsing_2, xevious_sub.68k 208-232: 0x10 0x11 0x12
+    // 0x13 0x14 0x13 0x12 0x11 by (countup>>3)&7) — the Zakato at 3757, the Garu at 4027 — and the Giddo writes
+    // 0x26 + ((countup>>3)&3) (5233-5237). One tick is two arcade frames, so the step is floor(tick/4). The walk
+    // is frozen and ticked by hand (`advance slots` advances `tick` first, then updates every slot) so each
+    // tick's colour is observed.
+    key: 'reference-art-body-colours-follow-the-clock',
+    // roadmap-evidence: CAB-05 success  (presentation.reference-art: a live Zakato and Garu Zakato keep pulsing colour 2's index and a Giddo its 4-colour cycle, tick by tick)
+    behavior:
+      'A flying Zakato and Garu Zakato pulse through the five body colours and back every 16 ticks, and a Giddo Spario steps through its four colours',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (let s = 58; s <= 63; s += 1) put('slot-type', s, 0); // clear the flying band
+      const seeds = { zakato: [58, 18], garu: [59, 24], giddo: [60, 8] }; // JS index, type
+      Object.values(seeds).forEach(([slot, type], i) => {
+        put('slot-type', slot, type);
+        put('slot-state', slot, 1); // SLOT_ACTIVE
+        put('slot-x', slot, 8 * 256); // row 8: in view, far ahead of the craft
+        put('slot-y', slot, (8 + 6 * i) * 256);
+        put('slot-dx', slot, 0);
+        put('slot-dy', slot, 0);
+        put('slot-timer', slot, 0);
+        put('slot-fire-timer', slot, 10000); // a fuse that cannot run out in the window
+        put('slot-flag', slot, 0);
+      });
+      const samples = [];
+      for (let t = 0; t < 36; t += 1) {
+        callProc(vm, 'Stage', 'advance slots');
+        step(vm, 2);
+        const flag = readVar(vm, 'slot-flag');
+        const type = readVar(vm, 'slot-type');
+        samples.push({
+          tick: Number(readVar(vm, 'tick')),
+          zakato: [Number(type[58]), Number(flag[58])],
+          garu: [Number(type[59]), Number(flag[59])],
+          giddo: [Number(type[60]), Number(flag[60])],
+        });
+      }
+      return { samples };
+    },
+    assert(obs) {
+      const pulsing = [0, 1, 2, 3, 4, 3, 2, 1]; // colour_lut_pulsing_2 as an index into 0x10..0x14
+      const seen = new Set();
+      for (const s of obs.samples) {
+        const step4 = Math.floor(s.tick / 4);
+        assert.deepEqual(s.zakato, [18, pulsing[step4 % 8]], `tick ${s.tick}: the Zakato pulses`);
+        assert.deepEqual(s.garu, [24, pulsing[step4 % 8]], `tick ${s.tick}: the Garu Zakato pulses`);
+        assert.deepEqual(s.giddo, [8, step4 % 4], `tick ${s.tick}: the Giddo cycles its colour`);
+        seen.add(s.zakato[1]);
+      }
+      assert.deepEqual([...seen].sort(), [0, 1, 2, 3, 4], 'the window covers every pulsing colour');
+    },
+    // roadmap-evidence: CAB-05 failure  (with the pulsing triangle's abs dropped, the colour leaves 0..4 past the peak)
+    negativeMutation: (p) => {
+      const stage = p.targets.find((x) => x.isStage);
+      let patched = 0;
+      for (const b of Object.values(stage.blocks)) {
+        if (b.opcode !== 'operator_subtract') continue;
+        const lit = b.inputs.NUM1 && b.inputs.NUM1[1];
+        const rhs = b.inputs.NUM2 && stage.blocks[b.inputs.NUM2[1]];
+        if (Array.isArray(lit) && String(lit[1]) === '4' && rhs && rhs.opcode === 'operator_mathop' && rhs.fields.OPERATOR[0] === 'abs') {
+          rhs.fields.OPERATOR = ['floor', null];
+          patched += 1;
+        }
+      }
+      if (!patched) throw new Error('mutate: no 4 - abs(...) on the Stage');
+    },
   },
   {
     // CAB-05: the ground explosion is the arcade's own (`handle_bomb_explosion`, xevious_main.68k 4904-4951): codes

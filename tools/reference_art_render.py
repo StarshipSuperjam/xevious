@@ -28,8 +28,11 @@ are ``src/xevious_main.68k`` unless named otherwise.
   costume must be a distinct picture).
 - Zakato self-destruct -- ``zakato_exploding_sprite_tbl`` 3953-3959, codes
   0x104-0x108. ``zakato_explode`` (3931-3950) builds the size and flip bits but
-  never stores them, so every frame is drawn 1x1 and unflipped, at the pulsing
-  colour the body had when it fired: all five colours, code-major.
+  never stores them, so every frame is drawn 1x1 and unflipped, at the colour
+  the body had when it fired: all five pulsing colours, code-major. A Zakato
+  that fires on its first live frame never wrote the pulsing colour (each
+  handler writes it after the fire test, e.g. 3757), so it keeps the teleport's
+  0x24: those five frames sit on the teleport row, after the sparkle.
 - the player's shot -- 2374-2388: code ``0x116 + ((countup >> 2) & 1)`` at
   colour ``0x23 + ((countup >> 1) & 1)``, code-major; and its rebound off a
   Bacura (``shot_destroyed`` 2400-2417), codes 0x118-0x11B at colour 0x23.
@@ -42,7 +45,9 @@ are ``src/xevious_main.68k`` unless named otherwise.
 3986-3992 at colour 0x24 (``init_teleport`` 3994-4002): 0x10C and 0x108 as
 2x2 sprites, then 0x107, 0x106, 0x105 as 1x1, flipped by ``TIMER & 3``
 (``zakato_teleport_sparkles`` 3969-3984 store the flip bits beside the size,
-3978-3981; left to the extractor). Every frame is centred in its cell: a 1x1
+3978-3981; left to the extractor, which cuts the unflipped and x-flipped
+frames: the build's slot clock steps 2 frames a tick, so it only draws the
+even timer values, whose flip bits are none and x). Every frame is centred in its cell: a 1x1
 frame sits at (8, 8) and a 2x2 frame fills the cell. A 2x2 sprite extends 16 px
 right and down from the same position (``sprite_draw_double_width_and_height``,
 ``src/amiga/amiga.68k`` 2529-2544), so its centre sits 8 px right and down of a
@@ -119,6 +124,8 @@ SPARKLE_CLUT = 0x0F
 TELEPORT = [(BANK_1 + 0x0C, True), (BANK_1 + 0x08, True), (BANK_1 + 0x07, False),
             (BANK_1 + 0x06, False), (BANK_1 + 0x05, False)]
 TELEPORT_CLUT = 0x24
+# init_teleport's colour, kept by a Zakato that fires before it ever writes the pulsing colour.
+SELF_DESTRUCT_TELEPORT_CLUT = TELEPORT_CLUT
 
 SMALL_CELL = 16
 TELEPORT_CELL = 32
@@ -131,7 +138,7 @@ BODY_ROW_Y = SMALL_CELL * 2         # Zakato, Brag Zakato x4, Garu Zakato x5
 SELF_DESTRUCT_ROW_Y = SMALL_CELL * 3
 SHOT_ROW_Y = SMALL_CELL * 4        # Brag Spario, the shot (2 codes x 2 colours), its rebound
 SPARKLE_ROW_Y = SMALL_CELL * 5
-TELEPORT_ROW_Y = SMALL_CELL * 6
+TELEPORT_ROW_Y = SMALL_CELL * 6   # the teleport sparkle, then the self-destruct at 0x24
 SHEET_HEIGHT = TELEPORT_ROW_Y + TELEPORT_CELL
 
 
@@ -154,6 +161,9 @@ SHOT_ORIGINS = small_cell_origins(len(SHOT_CODES) * len(SHOT_CLUTS), SHOT_ROW_Y,
 REBOUND_ORIGINS = small_cell_origins(len(REBOUND_CODES), SHOT_ROW_Y, first=1 + len(SHOT_ORIGINS))
 SPARKLE_ORIGINS = small_cell_origins(len(SPARKLE_CODES), SPARKLE_ROW_Y)
 TELEPORT_ORIGINS = [(TELEPORT_CELL * index, TELEPORT_ROW_Y) for index in range(len(TELEPORT))]
+SELF_DESTRUCT_TELEPORT_ORIGINS = small_cell_origins(
+    len(SELF_DESTRUCT_CODES), TELEPORT_ROW_Y, first=TELEPORT_CELL * len(TELEPORT) // SMALL_CELL
+)
 
 
 def code_major(codes: list[int], cluts: list[int]) -> list[tuple[int, int]]:
@@ -196,6 +206,7 @@ def render_sheet(checkout: Path) -> Image:
         for sub, (sx, sy) in enumerate(ARMOR_SUBTILE_ORIGINS):
             blit(_tile(gfx, base + sub, TELEPORT_CLUT),
                  cell_x + TWO_BY_TWO_ORIGIN + sx, cell_y + TWO_BY_TWO_ORIGIN + sy)
+    cells([(code, SELF_DESTRUCT_TELEPORT_CLUT) for code in SELF_DESTRUCT_CODES], SELF_DESTRUCT_TELEPORT_ORIGINS)
 
     return Image(SHEET_WIDTH, SHEET_HEIGHT, tuple(pixels))
 

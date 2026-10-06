@@ -194,7 +194,8 @@ class ReferenceArtRenderTests(unittest.TestCase):
 
     def test_layout(self) -> None:
         # Seven rows: Giddo flight, Giddo hit, bodies, self-destruct (the widest, 25 cells), Brag Spario + shot +
-        # rebound, sparkle, then the 32x32 teleport cells with every frame centred.
+        # rebound, sparkle, then the 32x32 teleport cells with every frame centred, followed on that row by the
+        # self-destruct at the teleport colour in 16x16 cells.
         self.assertEqual((art.SHEET_WIDTH, art.SHEET_HEIGHT), (16 * 25, 16 * 6 + 32))
         self.assertEqual(art.GIDDO_FLY_ORIGINS, [(16 * i, 0) for i in range(16)])
         self.assertEqual(art.GIDDO_HIT_ORIGINS, [(16 * i, 16) for i in range(16)])
@@ -205,6 +206,8 @@ class ReferenceArtRenderTests(unittest.TestCase):
         self.assertEqual(row5, [(16 * i, 64) for i in range(9)])
         self.assertEqual(art.SPARKLE_ORIGINS, [(16 * i, 80) for i in range(16)])
         self.assertEqual(art.TELEPORT_ORIGINS, [(32 * i, 96) for i in range(5)])
+        self.assertEqual(art.SELF_DESTRUCT_TELEPORT_ORIGINS, [(160 + 16 * i, 96) for i in range(5)])
+        self.assertEqual(art.SELF_DESTRUCT_TELEPORT_CLUT, art.TELEPORT_CLUT)
         self.assertEqual(fx.ONE_BY_ONE_ORIGIN + asr.TILE // 2, art.TELEPORT_CELL // 2)
         self.assertEqual(fx.TWO_BY_TWO_ORIGIN + asr.TILE, art.TELEPORT_CELL // 2)
 

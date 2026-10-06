@@ -98,9 +98,14 @@
     (`slot type`/`slot state` = 0) while restoring `slot index` to the Garu's own slot (both the free target and
     the advance-slots loop cursor).
 
-  All three bodies render through the shared Zakato renderer (a `garu zakato` costume-mirror target added beside
-  the Spario mirrors), one clone per flying slot, drawing the exclude-craft body while active and forwarding to
-  the shared burst frames while hit.
+  Both Brag variants render through the Zakato renderer and the Garu through its own `garu zakato` mirror target
+  (`garu_zakato_blocks`), one clone per flying slot. Since slice 21 (`presentation.reference-art`) they draw the
+  pinned frames. A Brag Zakato draws the teleport sparkle and the self-destruct frames like a base Zakato
+  ([record 034](034-zakato-teleporters.md)). While active it draws its own 0x112 body at the pulsing colour
+  index its update writes after the fire test (`init brag zakato` stamps the 0x24 index; 3887, 3916, 4002).
+  The Garu draws its 0x113 body at the pulsing colour (4027) and the shared air burst when shot down. The
+  arcade Garu's init writes no colour (4010–4021), so its first frame shows whatever colour the slot last held.
+  The port writes the pulsing colour at init instead, a port choice.
 - Scratch evidence: `install_init_brag_zakato`, `install_update_brag_zakato`, `install_brag_zakato_shoot`,
   `install_init_garu_zakato`, `install_update_garu_zakato` and `install_garu_zakato_detonate` (the lifecycle
   procs, reusing `compute aim`, the 32-tier aim tables, the shared `emit radiating bullet`, the shared
@@ -117,7 +122,10 @@
   scenarios in `harness/lib/catalog.js` (`brag-zakato-fires-five-bullet-fan` asserting the 5 aimed radiating
   bullets fanned two steps apart with the Brag flipping to self-explode, and
   `garu-zakato-detonates-into-ring-and-four-sparios` asserting the 16-bullet ring, the 4 cardinal-velocity Brag
-  Sparios in the adjacent slots, and the freed Garu), each with a biting negative.
+  Sparios in the adjacent slots, and the freed Garu), each with a biting negative. Slice 21 adds the
+  `garu-pulses`, `zakato-renders-pinned-frames` and `garu-renders-pinned-frames` clauses of
+  `_reference_art_consumer_failures` (biting negatives in `test_reference_art_consumer_negatives`) and the
+  scenarios `reference-art-enemy-frames` and `reference-art-body-colours-follow-the-clock`.
 - Acceptance criteria: A Brag Zakato teleports in indestructible, becomes hittable, and on its trigger (rnd: a
   random fuse; close-Y: the craft drawing level laterally) fires a **5-bullet aimed fan** then vanishes awarding
   nothing, while a Brag shot down while active scores 600 (rnd) / 1,500 (close-Y); a Garu Zakato enters active
@@ -132,10 +140,13 @@
   tables were read at the pin). The behavior matches the reference within the recorded deviations.
 - License status: The reference states no reusable license; only instruction-derived behavior and numeric
   constants are transferred (recorded in [the index](../spec/index.md) and the data files). No source text is
-  reproduced. The three bodies reuse the credited Aerial Enemies Zakato body frame
-  (`src/xevious/assets/provenance.json`, `https://www.spriters-resource.com/arcade/xevious/`, sheet author
-  "CrazyCarl"); the distinct Garu art is deferred to a later art pass, so no new sprite crop was added and no
-  crop rect required operator pixel-verification for this family.
+  reproduced. Until slice 21 the three bodies reused the Aerial Enemies Zakato body frame (CrazyCarl,
+  `https://www.spriters-resource.com/arcade/xevious/`). Since slice 21 the Brag Zakato body (0x112) and the Garu
+  body (0x113) at the pulsing colours are decoded from the pinned reference's graphics data
+  (`assets/amiga/xevious_gfx.c`) by `tools/reference_art_render.py`, credited in
+  `src/xevious/assets/provenance.json` and [the asset credits](../ASSET_CREDITS.md) under the same rights caveat
+  as the terrain. The Brag Zakato at 0x14 draws the same picture as the Zakato body, so the build reuses that
+  costume for it.
 - Known deviations or uncertainty: (1) **Two arcade frames per tick (tick scaling).** The per-frame reference
   rates are doubled for the port's two-frame tick — the teleport and fuse clocks step `TICK_TIMER_STEP = 2` per
   tick and bodies move by the shared `×4` position step — the same tick scaling every family uses. (2) **MSB byte
@@ -145,8 +156,8 @@
   re-entry / overloaded `_STATE = 3` expressed as explicit phase states.** The arcade holds its phase in the
   coroutine resume address and reuses `_STATE = 3` as both the shot-down flag and the post-fire benign flag; the
   port splits these into explicit `slot state` sentinels — `SLOT_TELEPORT` (Brag only, indestructible sparkle),
-  `SLOT_ACTIVE`, `SLOT_HIT` (shot down → shared burst), `SLOT_SELF_EXPLODE` (Brag post-fire, benign → shared
-  burst) — the same explicit-phase mapping recorded for Zakato. (4) **Fixed-adjacency detonation with a one-tick
+  `SLOT_ACTIVE`, `SLOT_HIT` (shot down → shared burst), `SLOT_SELF_EXPLODE` (Brag post-fire, benign → the Zakato
+  self-destruct frames, since slice 21) — the same explicit-phase mapping recorded for Zakato. (4) **Fixed-adjacency detonation with a one-tick
   Sparios head start.** The arcade writes the 4 Brag Sparios into the 4 objects **immediately after** the Garu
   (obj `0x3C`-`0x3F` after `0x3B`); the port reproduces that adjacency by writing into `gslot+1 … gslot+4` in the
   6-slot flying pool, and, as the arcade does, gives a Spario only to a free slot: a slot that already holds an
@@ -162,9 +173,10 @@
   drift with the terrain ([record 056](056-release-fidelity.md) (7)). (6) **Garu natural spawn — resolved in slice 21.** In the arcade the Garu Zakato is scheduled by the
   area `add_object` records (areas 9/10/14). That spawn source now exists ([record 056](056-release-fidelity.md)
   (1)): the Garu appears in natural play in those areas, in obj `0x3B`, and is dropped if that slot is busy. The
-  two Brag variants still arrive through the normal formation waves. (7) **Garu art deferred.** The
-  Garu draws the Zakato body frame as a documented stand-in (see License status); the motion, points, fuse and
-  detonation are unaffected.
+  two Brag variants still arrive through the normal formation waves. (7) **Garu art — resolved in slice 21.** The
+  Garu used to draw the Zakato body as a stand-in; it now draws its own pulsing 0x113 body, and the Brag Zakato
+  its own 0x112 body (see License status). The colour is kept as an index in `slot flag` (0–4 pulsing, 5 =
+  0x24), as for the base Zakato ([record 034](034-zakato-teleporters.md) (10)).
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.

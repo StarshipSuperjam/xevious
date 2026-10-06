@@ -1641,26 +1641,44 @@ ZAKATO_TELEPORT_ROW_MASK = 0x0F
 ZAKATO_TELEPORT_ROW_BASE = 5
 ZAKATO_TELEPORT_NUDGE_TIMER = 8
 ZAKATO_EXPLODE_NUDGE_TIMER = 0x10
+# Slice 21 (presentation.reference-art): the Zakato, Brag Zakato and Garu Zakato bodies pulse through
+# colour_lut_pulsing_2 (xevious_sub.68k 208-232): [0x10,0x11,0x12,0x13,0x14,0x13,0x12,0x11][(countup>>3)&7].
+# countup_timer_1 counts arcade frames, two a tick, so the step is (tick>>2)&7 and the colour
+# 0x10 + (4 - |step - 4|), the closed form the Andor colour uses. Every handler writes the colour AFTER its
+# hit and fire tests (3757, 3798, 3828, 3857, 3887, 3916, 4027), so a Zakato that fires keeps the colour it
+# last drew through its self-destruct, and one that fires on its first live frame keeps init_teleport's 0x24
+# (4002). The port keeps the drawn colour as an index in `slot flag`, which these families use for nothing
+# else: 0-4 the pulsing colours, ZAKATO_TELEPORT_COLOUR_INDEX for 0x24.
+PULSING_COLOUR_STEP_TICKS = 4  # (countup >> 3) at two arcade frames a tick
+PULSING_COLOUR_STEPS = 8  # colour_lut_pulsing_2's length
+PULSING_COLOUR_PEAK = 4  # the triangle's peak (0x14)
+ZAKATO_TELEPORT_COLOUR_INDEX = 5  # init_teleport's 0x24, after the five pulsing colours
+ZAKATO_COLOURS = 6  # the self-destruct colours: the five pulsing ones, then 0x24
 # AIR-10 Spario: two INDEPENDENT projectile-like flyers with distinct motion and distinct death.
 # Giddo Spario (handle_08_Giddo_Spario 5219-5240) is aimed ONCE at the craft at spawn on the fast
 # 64-magnitude tier (angle_dX_dY_sheonite_tbl, 4 px/frame — faster than any other family), then flies
 # straight and NEVER fires; killed, it plays its OWN short burst (giddo_spario_hit 5241-5253), the one
 # documented exception to the shared ~20-frame flying explosion. Brag Spario (handle_09_Brag_Spario
 # 3080-3129) is an accelerating homer: each frame it nudges its velocity by +/-2 raw toward the craft
-# on each axis (0 if aligned) and moves by the accumulated velocity, unbounded; it uses the shared
-# flying explosion. Brag Sparios also arrive four-at-a-time from the Garu Zakato detonation (AIR-08,
+# on each axis (0 if aligned) and moves by the accumulated velocity, unbounded; a shot scores it but never
+# destroys it (slice 21, 3092). Brag Sparios also arrive four-at-a-time from the Garu Zakato detonation (AIR-08,
 # air.special-pairs) — this handler exists first so that consumer can spawn them.
 GIDDO_SPARIO_TYPE = 8  # 0x08, handle_08_Giddo_Spario: aim-once 4 px/f flyby, no fire, own short burst
-BRAG_SPARIO_TYPE = 9  # 0x09, handle_09_Brag_Spario: accelerating homer, shared explosion
+BRAG_SPARIO_TYPE = 9  # 0x09, handle_09_Brag_Spario: accelerating homer, a shot never destroys it
 GIDDO_SPARIO_PTS = 1  # 10 points (handle_08 _PTS byte 0 -> value-table position 1)
 BRAG_SPARIO_PTS = 12  # 500 points (handle_09 _PTS byte 33 -> position 12; the port has no super-xevious)
-# Giddo flight animation: the arcade cycles CODE through 4 frames from its clock ((TIMER>>1)&3, 5229-5233);
-# the port derives the frame from `slot timer` in the renderer. Spawn on frame 0.
+# Giddo flight animation (handle_08_Giddo_Spario 5228-5237): CODE = (countup>>1)&3 and COLOUR =
+# 0x26 + ((countup>>3)&3), both from the GLOBAL frame counter countup_timer_1, not the slot's TIMER. At two
+# arcade frames a tick that is CODE = tick mod 4 and colour step floor(tick/4) mod 4. The renderer derives the
+# frame from `tick`; the colour is kept as an index in `slot flag`, because the hit (giddo_spario_hit
+# 5241-5252) stops rewriting it and its frames draw at the last flight colour. Spawn on frame 0.
 GIDDO_SPARIO_INIT_CODE = 0
 GIDDO_SPARIO_FLIGHT_FRAMES = 4  # flight sprites (arcade CODE 0..3)
+GIDDO_SPARIO_COLOURS = 4  # flight colours 0x26..0x29
+GIDDO_SPARIO_COLOUR_STEP_TICKS = 4  # (countup >> 3) at two arcade frames a tick
 # Giddo's OWN short burst (giddo_spario_hit 5241-5253): the arcade shows 4 burst sprites (CODE 4..7),
 # each for 2 arcade frames ((TIMER>>1), remove at ==4), so 8 arcade frames total — versus the shared
-# 20-frame flying burst. It keeps moving on its velocity while the burst plays, like the shared one.
+# 20-frame flying burst. The slot clock steps 2 a tick, so phase floor(timer/2) draws each sprite once. It keeps moving on its velocity while the burst plays, like the shared one.
 GIDDO_SPARIO_BURST_FRAMES = 4  # burst sprites (arcade CODE 4..7)
 GIDDO_SPARIO_HIT_DURATION_FRAMES = 8  # burst runs 8 arcade frames, then the slot frees
 # Brag homing acceleration: the arcade adds +/-2 raw to each velocity axis per arcade frame toward the
@@ -1974,11 +1992,10 @@ ANDOR_GENESIS_COLOUR_ID = "andor-genesis-colour"
 # 32 frames), yflip=(timer>>6)&1 (every 64) -> the sequence none->x->y->xy is exactly phase = (timer>>5)&3, and
 # the costume order [none,x,y,xy] gives the render ordinal 1 + phase. (An earlier note here read the bits in the
 # wrong order; the source has xflip at bit2, yflip at bit3.) The master proc (C3) sets it from `tick` each frame;
-# it inits 0 so the base (unflipped) core costume renders before the lifecycle runs. NOTE this animation is a
-# DELIBERATE, DOCUMENTED divergence: the jotd666 NeoGeo renderer only consumes flip bits on 2x2 sprites, so the
-# 1x1 core does not visibly flip in the reference — the port realizes the Namco arcade intent (see the C5
-# mechanics record and memory `andor-core-flip-noop-in-neogeo`). The colour cycle below is NOT a divergence
-# (colour is written on every sprite size in the reference).
+# it inits 0 so the base (unflipped) core costume renders before the lifecycle runs. The flip is faithful: the
+# reference's Neo Geo renderer writes the flip bits into the attribute word of every sprite size (neogeo.68k
+# 927-929, 965), the 1x1 core included (record 046 deviation 1, corrected in slice 21). The colour cycle below is
+# likewise written on every sprite size.
 ANDOR_GENESIS_FLIP_ID = "andor-genesis-flip"
 # --- BOSS-01 C3: lifecycle geometry + motion. The computed geometry (positions/offsets) depends on the slot-unit
 # and render-stage primitives defined further down (SLOT_UNITS_PER_CELL, FRAMES_PER_TICK, RENDER_COL/ROW_STAGE),
@@ -2322,6 +2339,10 @@ SLOT_UNITS_PER_PIXEL = SLOT_UNITS_PER_CELL // 8  # 32; a cell is 8 px. Ground sp
 # sprite_y byte (a lateral PIXEL position) to slot y with the reference's `lsl #5` (x32), sub_2_fn_1.
 TICK_VELOCITY_SCALE = 4  # 1 tick = 2 arcade frames; each applies 2*velocity => 4*velocity/tick
 TICK_TIMER_STEP = 2  # the animation clock advances 2 arcade frames per tick
+# zakato_shoot / brag_zakato_explode arm `_TIMER=0xff` (3762/3921) and zakato_explode increments before it
+# draws (3932), so the firing frame shows timer 0. The port arms one step below 0 for the same reason: the
+# SELF_EXPLODE phase runs on the firing tick and its shared tick advances the clock to 0 before the draw.
+ZAKATO_SELF_DESTRUCT_ARM = -TICK_TIMER_STEP
 TOROID_SWING_ACCEL = 2  # lateral velocity change per tick (1 unit/frame * 2 frames)
 CULL_ROW_MAX = 40  # >= 0x28 rows (past the bottom) -> offscreen
 CULL_ROW_MIN = -2  # <= -2 rows (past the top, the reference's byte-wrap) -> offscreen
@@ -2809,33 +2830,42 @@ JARA_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px spr
 
 # AIR-07 Zakato renderer constants. One persistent clone per flying slot, keyed on the slot's phase in
 # `slot state`, which the update machine sequences (SLOT_TELEPORT -> SLOT_ACTIVE -> SLOT_SELF_EXPLODE, or
-# SLOT_ACTIVE -> SLOT_HIT). Costume ordinals: 1 = the single active body (arcade code 0x11); 2.. = the
-# shared air explosion (five phases x four flip costumes). The shot kill IS that explosion
-# (`flying_enemy_hit`, CAB-05). The Zakato's own teleport/self-destruct sprites (bank-1 codes 4,5,6,7,8,0xC —
-# zakato_teleport_sprite_tbl / zakato_exploding_sprite_tbl) remain a DEFERRED cosmetic: the teleport-in
-# sparkle plays the air explosion's unflipped phases REVERSED (the arcade's sparkle runs its own set
-# backwards, 3986-3992) and the self-destruct plays them FORWARD, unflipped (zakato_explode never stores
-# its flip bits, 3949-3952).
+# SLOT_ACTIVE -> SLOT_HIT). Slice 21 draws the arcade's own frames, rendered from the pin
+# (tools/reference_art_render.py). Costume ordinals:
+#   1        the Zakato body 0x111 (the same picture at every pulsing colour);
+#   2..5     the Brag Zakato body 0x112 at pulsing colours 0x10..0x13 (its 0x14 is the Zakato picture, ordinal 1);
+#   6..25    the shared air explosion (five phases x four flip costumes), the shot kill (`flying_enemy_hit`);
+#   26..35   the teleport sparkle (zakato_teleport_sprite_tbl 3986-3992, table order) x flips none/x;
+#   36..65   the self-destruct 0x104-0x108 (zakato_exploding_sprite_tbl 3953-3959), five phases x the six
+#            ZAKATO_COLOURS.
+# The teleport's flip bits are TIMER & 3 (3978-3981): the slot clock steps 2 a tick, so only the even
+# values, none and x, are drawn. The self-destruct draws 1x1 and unflipped (zakato_explode never stores its
+# size and flip bits, 3946-3949).
 ZAKATO_TARGET = "zakato"
 ZAKATO_CLONE_SLOT_ID = "zakato-clone-slot"  # sprite-local: which flying slot this clone renders
 ZAKATO_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
-ZAKATO_BODY_ORDINAL = 1  # costume 1: the active body (arcade code 0x11)
-ZAKATO_BURST_ORDINAL_BASE = ZAKATO_BODY_ORDINAL + 1  # 2: first air-explosion costume
+ZAKATO_BODY_ORDINAL = 1  # costume 1: the Zakato body (arcade code 0x111)
+ZAKATO_BODY_COSTUME = "zakato-body/pulse/c10"
+BRAG_ZAKATO_BODY_ORDINAL_BASE = ZAKATO_BODY_ORDINAL + 1  # 2: the Brag Zakato body at 0x10
+BRAG_ZAKATO_BODY_COLOURS = 4  # 0x10..0x13; at 0x14 it draws the Zakato body
+ZAKATO_BURST_ORDINAL_BASE = BRAG_ZAKATO_BODY_ORDINAL_BASE + BRAG_ZAKATO_BODY_COLOURS  # 6: first air-explosion costume
+ZAKATO_TELEPORT_FLIPS = 2  # none, x
+ZAKATO_TELEPORT_ORDINAL_BASE = ZAKATO_BURST_ORDINAL_BASE + TOROID_EXPLOSION_PHASES * AIR_EXPLOSION_FLIP_COSTUMES  # 26
+ZAKATO_SELF_DESTRUCT_ORDINAL_BASE = ZAKATO_TELEPORT_ORDINAL_BASE + ZAKATO_ANIM_PHASES * ZAKATO_TELEPORT_FLIPS  # 36
 
-# AIR-10 Spario renderer constants (shared shape for Giddo and Brag). One persistent clone per flying slot,
-# drawn when its slot holds the family's type, hidden otherwise; the clone writes no state. IMPORTANT: the
-# CrazyCarl aerial-enemies rip carries NO Spario sprites (it labels Toroid/Torkan/Zoshi/Jara/Kapi/Terrazi/
-# Zakato/Brag-Zakato/Sheonite/Bacura/Shooting-Star only), so a distinct Spario costume cannot be sourced or
-# operator-pixel-verified. Both families therefore stand in the Zakato body frame (a small dark blob — and
-# the Sparios are the payload a Zakato releases, so the stand-in reads sensibly) as a DEFERRED cosmetic with
-# its reason recorded. The Giddo's 4-frame flight loop (arcade CODE 0..3, 5229-5233) and short 4-code
-# burst (codes 4..7, which the air explosion's unflipped phases stand in for), and the Brag's ATTR flip
-# mirror (3116-3119), are all deferred with it; the mechanically-meaningful distinctions (aim-once flyby vs
-# accelerating homer, and the Giddo's SHORT 8-frame burst duration) live in the handlers. Costume layout on
-# each target: ordinal 1 = the Zakato body stand-in, ordinals 2.. = the shared air explosion.
-SPARIO_BODY_ORDINAL = 1  # costume 1: the Zakato body stand-in
-SPARIO_BURST_ORDINAL_BASE = SPARIO_BODY_ORDINAL + 1  # 2: first air-explosion costume
+# AIR-10 Spario renderer constants (shared shape for Giddo, Brag and the Garu Zakato). One persistent clone
+# per flying slot, drawn when its slot holds the family's type, hidden otherwise; the clone writes no state.
+# Slice 21 draws the arcade's own frames, rendered from the pin (tools/reference_art_render.py); the
+# Spriters Resource rip carries no Spario. Costume layouts:
+#   Giddo  1..16 the flight 0x100-0x103 (handle_08_Giddo_Spario 5228-5237), code-major over colours
+#          0x26..0x29; 17..32 the hit 0x104-0x107 (giddo_spario_hit 5241-5252), the same way. No air explosion.
+#   Brag   1..4 the 0x115 body flipped none/x/y/xy by countup & 0x0C (handle_09_Brag_Spario 3116-3119).
+#   Garu   1..5 the 0x113 body at the five pulsing colours (4027); 6.. the shared air explosion (its shot kill).
 SPARIO_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
+GIDDO_SPARIO_HIT_ORDINAL_BASE = 1 + GIDDO_SPARIO_FLIGHT_FRAMES * GIDDO_SPARIO_COLOURS  # 17
+BRAG_SPARIO_FLIP_PERIOD_TICKS = 2  # countup & 0x0C: the flip bits step every 4 arcade frames, 2 ticks
+GARU_ZAKATO_BODY_COLOURS = PULSING_COLOUR_PEAK + 1  # 0x10..0x14
+GARU_ZAKATO_BURST_ORDINAL_BASE = 1 + GARU_ZAKATO_BODY_COLOURS  # 6: first air-explosion costume
 
 GIDDO_SPARIO_TARGET = "giddo-spario"
 GIDDO_SPARIO_CLONE_SLOT_ID = "giddo-spario-clone-slot"  # sprite-local: which flying slot this clone renders
@@ -2843,7 +2873,7 @@ GIDDO_SPARIO_CLONE_SLOT_ID = "giddo-spario-clone-slot"  # sprite-local: which fl
 BRAG_SPARIO_TARGET = "brag-spario"
 BRAG_SPARIO_CLONE_SLOT_ID = "brag-spario-clone-slot"  # sprite-local: which flying slot this clone renders
 
-# AIR-08: the Garu Zakato renderer reuses the shared Spario factory (ACTIVE body stand-in + HIT burst,
+# AIR-08: the Garu Zakato renderer reuses the shared Spario factory (ACTIVE pulsing body + HIT burst,
 # no teleport phase) — it has its OWN clone pool over the flying slots. The Brag Zakato needs NO new
 # target: it teleports and self-destructs exactly like the base Zakato, so it folds into the Zakato
 # renderer (its `is_zakato` gate is extended to the two Brag types).
@@ -7204,6 +7234,35 @@ def _zakato_nudge(blocks: Blocks, at_timer: int, row_step: int) -> str:
     )
 
 
+def _pulsing_colour_index(blocks: Blocks) -> str:
+    # colour_lut_pulsing_2 (xevious_sub.68k 208-232) as an index 0..4 into 0x10..0x14: the triangle
+    # 4 - |((tick>>2)&7) - 4| (see PULSING_COLOUR_STEP_TICKS). The sub CPU freezes it while scroll_disabled
+    # (209-210), which in play is set only once the player's death window has ended (2087).
+    step = blocks.op_mod(
+        blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(PULSING_COLOUR_STEP_TICKS))),
+        number(PULSING_COLOUR_STEPS),
+    )
+    return blocks.op_sub(number(PULSING_COLOUR_PEAK), blocks.op_abs(blocks.op_sub(step, number(PULSING_COLOUR_PEAK))))
+
+
+def _set_pulsing_colour(blocks: Blocks) -> str:
+    # Each Zakato-family handler's `move.b (pulsing_colour_2),(_COLOUR,a5)`, kept as an index in `slot flag`.
+    return _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, _pulsing_colour_index(blocks))
+
+
+def _set_giddo_colour(blocks: Blocks) -> str:
+    # handle_08_Giddo_Spario's colour (5233-5237): 0x26 + ((countup>>3)&3), kept as an index 0..3 in `slot flag`.
+    return _set_cur_item(
+        blocks,
+        "slot flag",
+        SLOT_FLAG_ID,
+        blocks.op_mod(
+            blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(GIDDO_SPARIO_COLOUR_STEP_TICKS))),
+            number(GIDDO_SPARIO_COLOURS),
+        ),
+    )
+
+
 def _zakato_self_explode(blocks: Blocks) -> list:
     # zakato_explode_and_remove (3766-3771): drift with the terrain while the burst plays out on the shared
     # clock, moving one cell up-left once at timer 0x10 (3934-3937; visible, the burst stays 1x1). The shared tick frees the slot at 20, after which the
@@ -7221,7 +7280,8 @@ def install_init_zakato(blocks: Blocks) -> None:
     # the points stamped here and in the movement / shot trigger the update commits once the teleport-in
     # completes. The Zakato TELEPORTS in: it is stamped SLOT_TELEPORT — indestructible, since the shared
     # `check air hit` gate skips any non-ACTIVE slot (the arcade's `_STATE=3` at init_teleport 3995) — and
-    # holds in place while the ~20-frame sparkle plays (rendered from `slot timer`, the reversed burst).
+    # holds in place while the ~20-frame sparkle plays (rendered from `slot timer`: 0x10C, 0x108, 0x107, 0x106, 0x105 at
+    # colour 0x24, zakato_teleport 3962-4002).
     # When the sparkle ends the update flips it to SLOT_ACTIVE and stamps its aimed/straight velocity and
     # shot fuse. It appears mid-field, on a random row 5-20 (init_teleport 3996-3999), not at the top row.
     # No fire mask is captured — a Zakato fires exactly one bullet, structurally, not under the periodic gate.
@@ -7255,6 +7315,8 @@ def install_init_zakato(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
             _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            # init_teleport's colour 0x24 (4002), kept until the first live frame writes the pulsing colour.
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(ZAKATO_TELEPORT_COLOUR_INDEX)),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(ZAKATO_MAIN_CODE)),
             *pts_stamps,
             # AUDIO: TELEPORT_SND on the teleport-in (src init_teleport xevious_main.68k:4004).
@@ -7271,7 +7333,7 @@ def install_update_zakato(blocks: Blocks) -> None:
     # the phase EXPLICITLY in `slot state`:
     #   SLOT_TELEPORT      teleporting in: indestructible (the shared `check air hit` gate ignores any
     #                      non-ACTIVE slot, so it is unkillable here — the arcade's `_STATE=3` at
-    #                      init_teleport 3995), drifting with the terrain while the ~20-frame reversed
+    #                      init_teleport 3995), drifting with the terrain while the ~20-frame teleport
     #                      sparkle plays (scroll_sprite_X, 3741).
     #   SLOT_ACTIVE        hittable and moving: it fires EXACTLY ONE aimed bullet — on a random countdown
     #                      (slow/fast) or when the craft is level in the lateral axis (closeY/cont) — then
@@ -7377,16 +7439,17 @@ def install_update_zakato(blocks: Blocks) -> None:
     fire_now = blocks.op_or(fired_fused, fired_prox)
     # Self-destruct: fire the one bullet, flip to SELF_EXPLODE, zero the velocity (the arcade stops calling
     # move_object_dX_dY and only scroll-drifts, which the SELF_EXPLODE phase below applies), and reset the
-    # burst clock.
+    # burst clock (armed so the firing tick draws timer 0).
     on_fire = [
         *_fire_aimed_bullet(blocks),
         _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_SELF_EXPLODE)),
         _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
         _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
-        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(ZAKATO_SELF_DESTRUCT_ARM)),
     ]
-    # Move by 4*velocity per tick, advance the body animation clock, then cull off any edge (the same
-    # explicit four-edge cull as the other flying families).
+    # Not firing: write the pulsing colour (after the fire test, 3757), move by 4*velocity per tick,
+    # advance the body animation clock, then cull off any edge (the same explicit four-edge cull as the
+    # other flying families).
     move = [
         _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
         _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
@@ -7402,7 +7465,7 @@ def install_update_zakato(blocks: Blocks) -> None:
     blocks.blocks[fire_now]["parent"] = fire_choice
     blocks.blocks[fire_choice]["inputs"]["CONDITION"] = [2, fire_now]
     blocks.substack(fire_choice, on_fire)
-    blocks.substack(fire_choice, [*move, cull], name="SUBSTACK2")
+    blocks.substack(fire_choice, [_set_pulsing_colour(blocks), *move, cull], name="SUBSTACK2")
     active = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_ACTIVE)),
         [craft_hit, dec_fuse, fire_choice],
@@ -7683,7 +7746,7 @@ def install_init_giddo_spario(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.list_item("aim dx 64", AIM_DX_64_ID, variable("aim index", AIM_INDEX_ID))),
             _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.list_item("aim dy 64", AIM_DY_64_ID, variable("aim index", AIM_INDEX_ID))),
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
-            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(0)),
+            _set_giddo_colour(blocks),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(GIDDO_SPARIO_INIT_CODE)),
             _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(GIDDO_SPARIO_PTS)),
         ],
@@ -7729,9 +7792,10 @@ def install_update_giddo_spario(blocks: Blocks) -> None:
     craft_hit = blocks.if_reporter(
         _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
     )
+    # The flight colour is written after the hit test (5228-5237), so a hit tick keeps the last one.
     normal = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_ACTIVE)),
-        [craft_hit, *move, cull],
+        [craft_hit, _set_giddo_colour(blocks), *move, cull],
     )
     top = blocks.add("control_if_else")
     is_hit = blocks.op_eq(state(), number(SLOT_HIT))
@@ -8029,6 +8093,8 @@ def install_init_brag_zakato(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
             _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            # init_teleport's colour 0x24 (4002), as the base Zakato.
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(ZAKATO_TELEPORT_COLOUR_INDEX)),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(BRAG_ZAKATO_MAIN_CODE)),
             *pts_stamps,
             # AUDIO: TELEPORT_SND on the teleport-in (src init_teleport xevious_main.68k:4004),
@@ -8108,13 +8174,14 @@ def install_update_brag_zakato(blocks: Blocks) -> None:
     fired_prox = blocks.op_and(is_proximity(), in_band)
     fire_now = blocks.op_or(fired_fused, fired_prox)
     # Self-destruct: fire the 5-bullet aimed fan, flip to SELF_EXPLODE, zero the velocity, reset the burst
-    # clock. brag_zakato_shoot reads `slot index` (still this Brag) for the firing cell, so it runs first.
+    # clock (armed so the firing tick draws timer 0). brag_zakato_shoot reads `slot index` (still this
+    # Brag) for the firing cell, so it runs first.
     on_fire = [
         blocks.call_proc(BRAG_ZAKATO_SHOOT_PROCCODE, warp=True),
         _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_SELF_EXPLODE)),
         _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
         _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
-        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(ZAKATO_SELF_DESTRUCT_ARM)),
     ]
     move = [
         _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
@@ -8131,7 +8198,8 @@ def install_update_brag_zakato(blocks: Blocks) -> None:
     blocks.blocks[fire_now]["parent"] = fire_choice
     blocks.blocks[fire_choice]["inputs"]["CONDITION"] = [2, fire_now]
     blocks.substack(fire_choice, on_fire)
-    blocks.substack(fire_choice, [*move, cull], name="SUBSTACK2")
+    # Not firing: the pulsing colour (after the fire test, 3887/3916), then move + cull.
+    blocks.substack(fire_choice, [_set_pulsing_colour(blocks), *move, cull], name="SUBSTACK2")
     active = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_ACTIVE)),
         [craft_hit, dec_fuse, fire_choice],
@@ -8211,6 +8279,9 @@ def install_init_garu_zakato(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(GARU_ZAKATO_MAIN_CODE)),
+            # handle_18 sets no colour at init (4010-4020), so its first frame draws whatever the slot last
+            # held; the port draws the pulsing colour from the start.
+            _set_pulsing_colour(blocks),
             _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(GARU_ZAKATO_PTS)),
             blocks.call_proc(RNG_PROCCODE, warp=True),
             _set_cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(GARU_ZAKATO_FUSE_SPAN)), number(GARU_ZAKATO_FUSE_OFFSET))),
@@ -8250,7 +8321,8 @@ def install_update_garu_zakato(blocks: Blocks) -> None:
     blocks.blocks[fuse_choice]["inputs"]["CONDITION"] = [2, fuse_done]
     blocks.blocks[fuse_done]["parent"] = fuse_choice
     blocks.substack(fuse_choice, [blocks.call_proc(GARU_ZAKATO_DETONATE_PROCCODE, warp=True)])
-    blocks.substack(fuse_choice, [*move, cull], name="SUBSTACK2")
+    # Not detonating: the pulsing colour (after the fuse test, 4027), then move + cull.
+    blocks.substack(fuse_choice, [_set_pulsing_colour(blocks), *move, cull], name="SUBSTACK2")
     active = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_ACTIVE)),
         [craft_hit, dec_fuse, fuse_choice],
@@ -14113,12 +14185,11 @@ def _flip_costume_offset(blocks: Blocks, flip_bits) -> str:
     )
 
 
-def _air_burst_ordinal(blocks: Blocks, base: int, timer, flipped: bool = True) -> str:
+def _air_burst_ordinal(blocks: Blocks, base: int, timer) -> str:
     # CAB-05: the air-explosion costume for a slot clock (`flying_enemy_hit` 4877-4887): phase = TIMER>>2 picks
     # the frame (four flip costumes each) and TIMER&3 the flip bits, which cycle every arcade frame. The slot
     # clock advances 2 frames a tick, so the port draws the even frames (flips none and x) — the arcade's own
-    # formula, sampled once a tick. `flipped=False` draws the unflipped costume of each phase (the Zakato
-    # self-destruct and teleport stand-ins, whose arcade routines store no flip bits).
+    # formula, sampled once a tick.
     ordinal = blocks.op_add(
         number(base),
         blocks.op_mul(
@@ -14126,8 +14197,6 @@ def _air_burst_ordinal(blocks: Blocks, base: int, timer, flipped: bool = True) -
             number(AIR_EXPLOSION_FLIP_COSTUMES),
         ),
     )
-    if not flipped:
-        return ordinal
     return blocks.op_add(
         ordinal, _flip_costume_offset(blocks, lambda: blocks.op_mod(timer(), number(TOROID_EXPLOSION_PHASE_FRAMES)))
     )
@@ -15798,15 +15867,15 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
     # persistent clone per flying slot (59..64), the same pool pattern as the Jara/Kapi: shown and
     # positioned when its slot holds ANY of the four base Zakato types, hidden otherwise. The clone writes
     # no state. It draws whichever of the four phases the slot's `slot state` names — the phase sequence the
-    # update machine drives:
-    #   SLOT_ACTIVE       the single static body (ordinal 1, arcade code 0x11).
-    #   SLOT_TELEPORT     the teleport-in sparkle: the air explosion's unflipped phases played REVERSED (the
-    #                     arcade sparkle is the exploding six-frame set run backwards, 3986-3992), from the slot clock.
-    #   SLOT_SELF_EXPLODE the self-destruct: the air explosion's unflipped phases FORWARD.
+    # update machine drives (costume ordinals in the constants):
+    #   SLOT_ACTIVE       the body at the colour the update kept in `slot flag`: the Zakato's one picture, or
+    #                     the Brag Zakato's own at 0x10..0x13 (at 0x14 it draws the Zakato picture).
+    #   SLOT_TELEPORT     the teleport sparkle (zakato_teleport_sparkles 3969-3984), phase TIMER>>2 in table
+    #                     order, flipped by TIMER & 3 (none or x at the port's even timer values).
+    #   SLOT_SELF_EXPLODE the self-destruct 0x104-0x108, phase TIMER>>2, 1x1 and unflipped, at the colour kept
+    #                     in `slot flag` (the last one drawn, or 0x24 if it fired on its first live frame).
     #   SLOT_HIT          the shot kill: CAB-05's air explosion with its per-frame flips (`flying_enemy_hit`),
     #                     exactly like every other flying kill.
-    # The shot kill is the arcade's own; the teleport and self-destruct borrow the air explosion as a stand-in
-    # (record note in the constants) — the Zakato's own teleport/burst sprites are a deferred cosmetic.
     blocks = Blocks(ZAKATO_TARGET)
     common_stop(blocks, hide=True, clones=True)
     slotvar = lambda: variable("zakato clone slot", ZAKATO_CLONE_SLOT_ID)
@@ -15825,10 +15894,10 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
     loop_condition = blocks.not_state(loop, "playing")
     blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
     stype = lambda: blocks.list_item("slot type", SLOT_TYPE_ID, slotvar())
-    # AIR-07 base variants + AIR-08 Brag variants: all six teleport in, hold a static body while active,
-    # and play the shared burst for their self-destruct / shot-kill — the same four render phases — so the
-    # Brag rnd/closeY fold into this renderer (they need no target of their own). The Garu Zakato does NOT
-    # (no teleport) and has its own Spario-factory renderer instead.
+    # AIR-07 base variants + AIR-08 Brag variants: all six teleport in, pulse while active and share the
+    # self-destruct and shot-kill pictures — the same four render phases — so the Brag rnd/closeY fold into
+    # this renderer (only their active body differs). The Garu Zakato does NOT (no teleport) and has its own
+    # Spario-factory renderer instead.
     is_zakato = blocks.op_or(
         blocks.op_or(
             blocks.op_or(blocks.op_eq(stype(), number(ZAKATO_SLOW_TYPE)), blocks.op_eq(stype(), number(ZAKATO_CLOSEY_TYPE))),
@@ -15850,44 +15919,43 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
             number(RENDER_ROW_STAGE),
         ),
     )
-    # The slot clock (the arcade `TIMER`), fresh per read (a reporter attaches to only one parent). The
-    # teleport, self-destruct and shared-hit phases all step every 4 frames (ZAKATO_ANIM_PHASE_FRAMES ==
-    # TOROID_EXPLOSION_PHASE_FRAMES, asserted below), so they share _air_burst_ordinal's phase.
+    # The slot clock (the arcade `TIMER`) and the kept colour, fresh per read (a reporter attaches to only one
+    # parent). The teleport, self-destruct and shared-hit phases all step every 4 frames
+    # (ZAKATO_ANIM_PHASE_FRAMES == TOROID_EXPLOSION_PHASE_FRAMES, asserted below).
     timer = lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar())
+    colour = lambda: blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar())
     assert ZAKATO_ANIM_PHASE_FRAMES == TOROID_EXPLOSION_PHASE_FRAMES
     phase = lambda: blocks.op_floor(blocks.op_div(timer(), number(ZAKATO_ANIM_PHASE_FRAMES)))
-    # SLOT_SELF_EXPLODE vs SLOT_ACTIVE (the innermost pair): the self-destruct plays the air explosion's
-    # unflipped phases forward (the stand-in for zakato_explode's own codes); the active phase holds the body.
-    self_or_active = blocks.add("control_if_else")
-    is_self = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_SELF_EXPLODE))
-    blocks.blocks[self_or_active]["inputs"]["CONDITION"] = [2, is_self]
-    blocks.blocks[is_self]["parent"] = self_or_active
-    blocks.substack(
-        self_or_active,
-        [
-            blocks.switch_costume_expr(_air_burst_ordinal(blocks, ZAKATO_BURST_ORDINAL_BASE, timer, flipped=False)),
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)}),
-        ],
+    size = lambda: blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)})
+    # ACTIVE: the Brag Zakato draws its own body at 0x10..0x13 and the Zakato picture at 0x14; the base
+    # Zakato draws its one picture at every colour.
+    is_brag = blocks.op_or(
+        blocks.op_eq(stype(), number(BRAG_ZAKATO_RND_TYPE)), blocks.op_eq(stype(), number(BRAG_ZAKATO_CLOSEY_TYPE))
     )
-    blocks.substack(
-        self_or_active,
-        [
-            # ACTIVE holds the static body — a fixed costume, so switch by name (switch_costume_expr
-            # obscures a menu with a runtime reporter; for a constant the by-name switch is direct).
-            blocks.switch_costume("zakato/body/01"),
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)}),
-        ],
-        name="SUBSTACK2",
+    brag_own = blocks.op_and(is_brag, blocks.op_lt(colour(), number(BRAG_ZAKATO_BODY_COLOURS)))
+    active_body = _ground_if_else(
+        blocks,
+        brag_own,
+        [blocks.switch_costume_expr(blocks.op_add(number(BRAG_ZAKATO_BODY_ORDINAL_BASE), colour())), size()],
+        # A fixed costume, so switch by name (switch_costume_expr obscures a menu with a runtime reporter;
+        # for a constant the by-name switch is direct).
+        [blocks.switch_costume(ZAKATO_BODY_COSTUME), size()],
     )
-    # SLOT_TELEPORT vs the rest: the sparkle plays the unflipped phases REVERSED
-    # (ordinal base + 4 * (PHASES-1 - phase)).
-    tele_or_rest = blocks.add("control_if_else")
-    is_tele = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_TELEPORT))
-    blocks.blocks[tele_or_rest]["inputs"]["CONDITION"] = [2, is_tele]
-    blocks.blocks[is_tele]["parent"] = tele_or_rest
-    # The sparkle's first two cells are 2x2 sprites (3987-3988), drawn 8 px right and down of the position
-    # (sprite_draw_double_width_and_height): until the timer-8 move they are placed DOUBLE_TILE_STAGE_OFFSET
-    # right (+x) and down (-y), so the picture holds still through the one-cell move (see the constants).
+    # SLOT_SELF_EXPLODE vs SLOT_ACTIVE (the innermost pair).
+    self_ordinal = blocks.op_add(
+        number(ZAKATO_SELF_DESTRUCT_ORDINAL_BASE),
+        blocks.op_add(blocks.op_mul(phase(), number(ZAKATO_COLOURS)), colour()),
+    )
+    self_or_active = _ground_if_else(
+        blocks,
+        blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_SELF_EXPLODE)),
+        [blocks.switch_costume_expr(self_ordinal), size()],
+        [active_body],
+    )
+    # SLOT_TELEPORT vs the rest. The sparkle's first two cells are 2x2 sprites (3987-3988), drawn 8 px right
+    # and down of the position (sprite_draw_double_width_and_height): until the timer-8 move they are placed
+    # DOUBLE_TILE_STAGE_OFFSET right (+x) and down (-y), so the picture holds still through the one-cell move
+    # (see the constants).
     double_sparkle = blocks.if_reporter(
         blocks.op_lt(timer(), number(ZAKATO_TELEPORT_NUDGE_TIMER)),
         [
@@ -15895,32 +15963,29 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
             blocks.add("motion_changeyby", inputs={"DY": number(-DOUBLE_TILE_STAGE_OFFSET)}),
         ],
     )
-    blocks.substack(
-        tele_or_rest,
-        [
-            double_sparkle,
-            blocks.switch_costume_expr(
-                blocks.op_sub(
-                    number(ZAKATO_BURST_ORDINAL_BASE + AIR_EXPLOSION_FLIP_COSTUMES * (ZAKATO_ANIM_PHASES - 1)),
-                    blocks.op_mul(phase(), number(AIR_EXPLOSION_FLIP_COSTUMES)),
-                )
-            ),
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)}),
-        ],
+    # Flip bits TIMER & 3 (rol.b #2 / and #0x0c, 3979-3980): bit 1 is the x flip (see _flip_costume_offset),
+    # bit 0 the y flip, which the port's even timer never sets.
+    teleport_ordinal = blocks.op_add(
+        number(ZAKATO_TELEPORT_ORDINAL_BASE),
+        blocks.op_add(
+            blocks.op_mul(phase(), number(ZAKATO_TELEPORT_FLIPS)),
+            blocks.op_floor(blocks.op_div(blocks.op_mod(timer(), number(4)), number(2))),
+        ),
     )
-    blocks.substack(tele_or_rest, [self_or_active], name="SUBSTACK2")
+    tele_or_rest = _ground_if_else(
+        blocks,
+        blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_TELEPORT)),
+        [double_sparkle, blocks.switch_costume_expr(teleport_ordinal), size()],
+        [self_or_active],
+    )
     # SLOT_HIT (`flying_enemy_hit`, CAB-05): the air explosion with its per-frame flips — exactly the other
     # families' hit render.
-    explode_ordinal = _air_burst_ordinal(blocks, ZAKATO_BURST_ORDINAL_BASE, timer)
-    state_render = blocks.add("control_if_else")
-    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
-    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
-    blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(
-        state_render,
-        [blocks.switch_costume_expr(explode_ordinal), blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)})],
+    state_render = _ground_if_else(
+        blocks,
+        blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT)),
+        [blocks.switch_costume_expr(_air_burst_ordinal(blocks, ZAKATO_BURST_ORDINAL_BASE, timer)), size()],
+        [tele_or_rest],
     )
-    blocks.substack(state_render, [tele_or_rest], name="SUBSTACK2")
 
     render = blocks.add("control_if_else")
     blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_zakato]
@@ -15940,18 +16005,19 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
 
 
 def _spario_blocks(
-    target: str, clone_var_name: str, clone_var_id: str, type_code: int, flipped: bool, hit_burst: bool = True
+    target: str,
+    clone_var_name: str,
+    clone_var_id: str,
+    type_code: int,
+    body_ordinal,
+    hit_ordinal=None,
 ) -> dict[str, dict[str, Any]]:
-    # AIR-10 shared Spario renderer (game_director owns these blocks; the costumes are the Zakato body
-    # stand-in + the shared air explosion mirrored on in expected_project). One persistent clone per
-    # flying slot (59..64), the same pool pattern as the Jara/Zakato: shown and positioned when its slot
-    # holds `type_code`, hidden otherwise. The clone writes no state. While ACTIVE it holds the static body
-    # stand-in (ordinal 1); on a hit it plays the air explosion FORWARD from the slot clock. `flipped`
-    # selects the kill: the Brag and Garu Zakato use the shared ~20-frame flying kill with its per-frame flips
-    # (`flying_enemy_hit`); the Giddo's SHORT 8-frame own-burst (giddo_spario_hit xevious_main.68k 5241-5253, codes 4..7 with
-    # no flip bits) plays the unflipped first phases — a small pop (its handler frees it at frame 8).
-    # `hit_burst=False` (the Brag, slice 21) always draws the body: a shot leaves it flying, and the arcade's
-    # hit never touches its _CODE (3082, 2525), so its HIT tick shows no explosion.
+    # AIR-10 shared Spario renderer (game_director owns these blocks; the costumes are mirrored on in
+    # expected_project). One persistent clone per flying slot (59..64), the same pool pattern as the
+    # Jara/Zakato: shown and positioned when its slot holds `type_code`, hidden otherwise. The clone writes no
+    # state. `body_ordinal(blocks, slotvar)` builds the costume it draws while flying; `hit_ordinal`, when
+    # given, the one it draws while SLOT_HIT. Without one (the Brag Spario, slice 21) it always draws the body:
+    # a shot leaves it flying, and the arcade's hit never touches its _CODE (3082, 2525).
     blocks = Blocks(target)
     common_stop(blocks, hide=True, clones=True)
     slotvar = lambda: variable(clone_var_name, clone_var_id)
@@ -15984,27 +16050,15 @@ def _spario_blocks(
             number(RENDER_ROW_STAGE),
         ),
     )
-    # The body stand-in is a fixed costume (the mirrored-in Zakato blob, ordinal 1), so switch by
-    # name — a constant costume needs no runtime reporter, exactly like the Zakato active body.
-    body = lambda: [
-        blocks.switch_costume("zakato/body/01"),
-        blocks.add("looks_setsizeto", inputs={"SIZE": number(SPARIO_RENDER_SIZE)}),
-    ]
-    if hit_burst:
-        # The air explosion on a hit: forward from the slot clock (the arcade `TIMER>>2`, fresh per read).
-        explode_ordinal = _air_burst_ordinal(
-            blocks, SPARIO_BURST_ORDINAL_BASE, lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), flipped
+    size = lambda: blocks.add("looks_setsizeto", inputs={"SIZE": number(SPARIO_RENDER_SIZE)})
+    body = lambda: [blocks.switch_costume_expr(body_ordinal(blocks, slotvar)), size()]
+    if hit_ordinal is not None:
+        state_render = _ground_if_else(
+            blocks,
+            blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT)),
+            [blocks.switch_costume_expr(hit_ordinal(blocks, slotvar)), size()],
+            body(),
         )
-        hit_body: list[str] = [
-            blocks.switch_costume_expr(explode_ordinal),
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(SPARIO_RENDER_SIZE)}),
-        ]
-        state_render = blocks.add("control_if_else")
-        is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
-        blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
-        blocks.blocks[is_hit]["parent"] = state_render
-        blocks.substack(state_render, hit_body)
-        blocks.substack(state_render, body(), name="SUBSTACK2")
         drawn = [state_render]
     else:
         drawn = body()
@@ -16026,31 +16080,61 @@ def _spario_blocks(
 
 
 def giddo_spario_blocks() -> dict[str, dict[str, Any]]:
-    # AIR-10: the Giddo Spario clone pool — its SHORT own-burst plays the unflipped first phases.
+    # AIR-10: the Giddo Spario clone pool. Flying, it draws code tick mod 4 (the global countup, 5228-5232) at
+    # the colour its update kept in `slot flag`; hit, its own 4-code burst (giddo_spario_hit 5241-5252), one
+    # code per tick from the slot clock, at that same colour.
+    colour = lambda blocks, slotvar: blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar())
+
+    def flight(blocks: Blocks, slotvar) -> str:
+        code = blocks.op_mod(variable("tick", TICK_ID), number(GIDDO_SPARIO_FLIGHT_FRAMES))
+        return blocks.op_add(
+            number(1), blocks.op_add(blocks.op_mul(code, number(GIDDO_SPARIO_COLOURS)), colour(blocks, slotvar))
+        )
+
+    def hit(blocks: Blocks, slotvar) -> str:
+        code = blocks.op_floor(
+            blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TICK_TIMER_STEP))
+        )
+        return blocks.op_add(
+            number(GIDDO_SPARIO_HIT_ORDINAL_BASE),
+            blocks.op_add(blocks.op_mul(code, number(GIDDO_SPARIO_COLOURS)), colour(blocks, slotvar)),
+        )
+
     return _spario_blocks(
-        GIDDO_SPARIO_TARGET, "giddo spario clone slot", GIDDO_SPARIO_CLONE_SLOT_ID, GIDDO_SPARIO_TYPE, flipped=False
+        GIDDO_SPARIO_TARGET, "giddo spario clone slot", GIDDO_SPARIO_CLONE_SLOT_ID, GIDDO_SPARIO_TYPE, flight, hit
     )
 
 
 def brag_spario_blocks() -> dict[str, dict[str, Any]]:
-    # AIR-10: the Brag Spario clone pool — a shot never destroys it, so it always draws the body (slice 21).
+    # AIR-10: the Brag Spario clone pool — a shot never destroys it, so it always draws the body (slice 21),
+    # flipped by countup & 0x0C (3116-3119): flip bits floor(tick/2) mod 4 at two arcade frames a tick.
+    def spin(blocks: Blocks, slotvar) -> str:
+        bits = lambda: blocks.op_mod(
+            blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(BRAG_SPARIO_FLIP_PERIOD_TICKS))),
+            number(4),
+        )
+        return blocks.op_add(number(1), _flip_costume_offset(blocks, bits))
+
     return _spario_blocks(
-        BRAG_SPARIO_TARGET,
-        "brag spario clone slot",
-        BRAG_SPARIO_CLONE_SLOT_ID,
-        BRAG_SPARIO_TYPE,
-        flipped=True,
-        hit_burst=False,
+        BRAG_SPARIO_TARGET, "brag spario clone slot", BRAG_SPARIO_CLONE_SLOT_ID, BRAG_SPARIO_TYPE, spin
     )
 
 
 def garu_zakato_blocks() -> dict[str, dict[str, Any]]:
-    # AIR-08: the Garu Zakato clone pool — no teleport phase (ACTIVE body stand-in + the shared ~20-frame
+    # AIR-08: the Garu Zakato clone pool — no teleport phase (ACTIVE pulsing body + the shared ~20-frame
     # flying explosion), so it reuses the shared Spario renderer factory. When it DETONATES
     # (fuse elapsed) it frees its own slot with no burst, so the clone simply hides — the ring bullets and
     # the 4 Brag Sparios it spawns are drawn by their own pools.
+    def body(blocks: Blocks, slotvar) -> str:
+        return blocks.op_add(number(1), blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar()))
+
+    def hit(blocks: Blocks, slotvar) -> str:
+        return _air_burst_ordinal(
+            blocks, GARU_ZAKATO_BURST_ORDINAL_BASE, lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar())
+        )
+
     return _spario_blocks(
-        GARU_ZAKATO_TARGET, "garu zakato clone slot", GARU_ZAKATO_CLONE_SLOT_ID, GARU_ZAKATO_TYPE, flipped=True
+        GARU_ZAKATO_TARGET, "garu zakato clone slot", GARU_ZAKATO_CLONE_SLOT_ID, GARU_ZAKATO_TYPE, body, hit
     )
 
 
@@ -16434,25 +16518,55 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         jara["costumes"] = proof_by_family("jara/")
         jara["costumes"].extend(proof_by_family("air-explosion/"))
         jara["currentCostume"] = 0
-    # AIR-07: the Zakato renderer mirrors its single active body frame (ordinal 1, arcade code 0x11), then
-    # the air explosion (the same air-explosion costumes appended after it, ordinals 2..21) — which the
-    # teleport (reversed, unflipped), self-destruct (forward, unflipped) and shot-kill (forward, flipped)
-    # phases all draw from.
+    # AIR-07/08 + slice 21: the Zakato renderer (base and Brag Zakato) mirrors the pin-rendered frames in the
+    # ordinal layout the constants list: the Zakato body, the Brag Zakato bodies, the air explosion (its shot
+    # kill), the teleport sparkle and the self-destruct phase-major over ZAKATO_COLOURS. Picked by name, since
+    # the manifest's own order (the 0x24 self-destruct cut last) is not the renderer's.
+    proof_named = lambda names: (
+        [next(copy.deepcopy(c) for c in proof["costumes"] if c.get("name") == name) for name in names]
+        if proof is not None
+        else []
+    )
     zakato = next((t for t in result["targets"] if t.get("name") == ZAKATO_TARGET), None)
     if proof is not None and zakato is not None:
-        zakato["costumes"] = proof_by_family("zakato/")
-        zakato["costumes"].extend(proof_by_family("air-explosion/"))
+        self_destruct_colours = [f"c{0x10 + index:02x}" for index in range(PULSING_COLOUR_PEAK + 1)] + ["c24"]
+        zakato["costumes"] = (
+            proof_by_family("zakato-body/")
+            + proof_by_family("brag-zakato-body/")
+            + proof_by_family("air-explosion/")
+            + proof_by_family("zakato-teleport/")
+            + proof_named(
+                [
+                    f"zakato-self-destruct/burst/{phase + 1:02d}/{colour}"
+                    for phase in range(ZAKATO_ANIM_PHASES)
+                    for colour in self_destruct_colours
+                ]
+            )
+        )
         zakato["currentCostume"] = 0
-    # AIR-10: the Giddo and Brag Spario renderers both mirror the ZAKATO body frame as their body stand-in
-    # (ordinal 1) — the CrazyCarl aerial rip carries no Spario sprite, so the Zakato blob stands in as a
-    # DEFERRED cosmetic (reason recorded in the constants and the mechanics record) — then the air
-    # explosion (ordinals 2..21) their hit draws from. The Brag Spario is never destroyed by a shot (slice 21),
-    # so like the Bacura it appends NO air explosion. Idempotent; a no-op when any source is absent.
-    for spario_name in (GIDDO_SPARIO_TARGET, BRAG_SPARIO_TARGET, GARU_ZAKATO_TARGET):
+        ordinals = [c.get("name") for c in zakato["costumes"]]
+        for ordinal, name in (
+            (ZAKATO_BODY_ORDINAL, ZAKATO_BODY_COSTUME),
+            (BRAG_ZAKATO_BODY_ORDINAL_BASE, "brag-zakato-body/pulse/c10"),
+            (ZAKATO_BURST_ORDINAL_BASE, "air-explosion/burst/01/none"),
+            (ZAKATO_TELEPORT_ORDINAL_BASE, "zakato-teleport/sparkle/01/none"),
+            (ZAKATO_SELF_DESTRUCT_ORDINAL_BASE, "zakato-self-destruct/burst/01/c10"),
+        ):
+            if ordinals[ordinal - 1] != name:
+                raise AssertionError(f"zakato: costume {ordinal} must be {name}")
+    # AIR-10 + slice 21: the Giddo, Brag Spario and Garu Zakato renderers mirror their own pin-rendered frames
+    # (layouts in the Spario constants). Only the Garu appends the air explosion: the Giddo's hit is its own
+    # burst, and the Brag Spario is never destroyed by a shot, so like the Bacura it appends none.
+    # Idempotent; a no-op when any source is absent.
+    for spario_name, family, burst in (
+        (GIDDO_SPARIO_TARGET, "giddo-spario/", False),
+        (BRAG_SPARIO_TARGET, "brag-spario/", False),
+        (GARU_ZAKATO_TARGET, "garu-zakato-body/", True),
+    ):
         spario = next((t for t in result["targets"] if t.get("name") == spario_name), None)
         if proof is not None and spario is not None:
-            spario["costumes"] = proof_by_family("zakato/")
-            if spario_name != BRAG_SPARIO_TARGET:
+            spario["costumes"] = proof_by_family(family)
+            if burst:
                 spario["costumes"].extend(proof_by_family("air-explosion/"))
             spario["currentCostume"] = 0
     # AIR-11: the Bacura renderer mirrors its eight tumble frames (bacura/slab/01..08, ordinals 1..8) — and
