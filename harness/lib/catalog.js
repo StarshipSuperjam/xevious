@@ -103,6 +103,30 @@ function seedCraftHit(vm, enemySlot = 63) {
   put('slot-flag', enemySlot, 0);
 }
 
+// #158 (slice 21): call `onSet(value)` on every write to a Stage variable (set or change), synchronously inside
+// the writing block. One headless pump runs many walk ticks, so a whole 44-tick death window can pass inside one
+// step; trapping the walk's own counter observes every tick of it. Returns a release that restores the plain
+// variable with its current value.
+function trapStageVar(vm, id, onSet) {
+  const stage = vm.runtime.getTargetForStage();
+  const { name } = variable(id);
+  const v = Object.values(stage.variables).find((x) => x.name === name);
+  if (!v) throw new Error(`harness: no Stage variable '${name}' to trap`);
+  let val = v.value;
+  Object.defineProperty(v, 'value', {
+    configurable: true,
+    enumerable: true,
+    get: () => val,
+    set: (x) => {
+      val = x;
+      onSet(x);
+    },
+  });
+  return () => {
+    Object.defineProperty(v, 'value', { configurable: true, enumerable: true, writable: true, value: val });
+  };
+}
+
 // CAB-01 (slice 17): green-flag and step past the title hold to the first attract demo (playing with the
 // attract flag still raised). The arcade title stage runs 744 frames before it auto-advances to the demo;
 // at FRAMES_PER_TICK=2 that is 372 ticks, so a 500-tick budget clears it. The title ticks are cheap (the
@@ -281,6 +305,20 @@ function collapseFlipMod(p, spriteName) {
     }
   }
   if (!patched) throw new Error(`mutate: no 'mod 4' on ${spriteName}`);
+}
+
+/** Change an `operator_lt` literal right-hand bound on a sprite (moves a < gate). */
+function changeLessThanLiteral(p, spriteName, fromValue, toValue) {
+  const t = p.targets.find((x) => x.name === spriteName);
+  let patched = 0;
+  for (const b of Object.values(t.blocks)) {
+    const rhs = b.opcode === 'operator_lt' && b.inputs.OPERAND2 && b.inputs.OPERAND2[1];
+    if (Array.isArray(rhs) && String(rhs[1]) === String(fromValue)) {
+      b.inputs.OPERAND2 = [1, [4, String(toValue)]];
+      patched += 1;
+    }
+  }
+  if (!patched) throw new Error(`mutate: no 'operator_lt < ${fromValue}' on ${spriteName}`);
 }
 
 export const SCENARIOS = [
@@ -1854,15 +1892,14 @@ export const SCENARIOS = [
   {
     key: 'near-end-checkpoint',
     behavior:
-      'A new-life death advances the area when the row the arcade reads after its 44 ticks of post-death scrolling is in the near-end window [0x0E,0x43], else restarts it — and area 16 in-window wraps to 7',
+      'A new-life respawn advances the area when the live scroll row it reads (the walk has scrolled on through the 44-tick explosion window) is in the near-end window [0x0E,0x43], else restarts it — and area 16 in-window wraps to 7',
     playtestStep: 5,
     async drive(vm) {
-      // The live death->respawn sequence completes within a single headless pump, so it cannot be
-      // paused to inject a death position. Instead drive `area_reset` in isolation: green-flag to a
-      // settled state, inject the new-life scope + a chosen area number + a chosen frozen death-tick
-      // `area progress`, fire `director reset`, and read the resulting area number — exactly the
-      // checkpoint decision. The checkpoint projects 44 ticks (1408 progress) ahead, so the window's
-      // edges in death-tick progress are: projected row 67 first at 50080, row 15 at 63616.
+      // Drive `area_reset` in isolation: green-flag to a settled state, inject the new-life scope + a chosen
+      // area number + a chosen `area progress`, fire `director reset`, and read the resulting area number —
+      // exactly the checkpoint decision. #158 (slice 21): the walk scrolls on through the 44-tick explosion
+      // window, so the checkpoint reads the live row (no projection); the injected progress is the window-end
+      // position, 1408 past the death tick. Row 67 first at 51488, row 15 at 65024.
       const trial = (progress, area) => {
         vm.greenFlag();
         step(vm, 2);
@@ -1874,20 +1911,20 @@ export const SCENARIOS = [
         return readVar(vm, 'area-number');
       };
       return {
-        high: trial(50080, 5), // projected row 67 (0x43) — window high edge
-        mid: trial(57984, 5), // projected row 41
-        low: trial(63616, 5), // projected row 15 — the last tick before the projection completes the area
-        aboveWindow: trial(50048, 5), // projected row 68, just above 0x43
-        top: trial(0, 5), // projected row 7, below the window
-        wrap16: trial(57984, 16), // in-window death in area 16
+        high: trial(51488, 5), // row 67 (0x43) — window high edge
+        mid: trial(59392, 5), // row 37
+        low: trial(65024, 5), // row 15 — the last position before the area completes
+        aboveWindow: trial(51456, 5), // row 68, just above 0x43
+        top: trial(0, 5), // row 13, below the window
+        wrap16: trial(59392, 16), // in-window death in area 16
       };
     },
     assert(obs) {
-      assert.equal(obs.high, 6, 'a death projecting to row 67 (window high edge) advances the area');
-      assert.equal(obs.mid, 6, 'a death projecting to row 41 advances the area');
-      assert.equal(obs.low, 6, 'a death projecting to row 15 advances the area');
-      assert.equal(obs.aboveWindow, 5, 'a death projecting to row 68 restarts (holds the area)');
-      assert.equal(obs.top, 5, 'a death at the area top restarts (holds the area)');
+      assert.equal(obs.high, 6, 'a respawn reading row 67 (window high edge) advances the area');
+      assert.equal(obs.mid, 6, 'a respawn reading row 37 advances the area');
+      assert.equal(obs.low, 6, 'a respawn reading row 15 advances the area');
+      assert.equal(obs.aboveWindow, 5, 'a respawn reading row 68 restarts (holds the area)');
+      assert.equal(obs.top, 5, 'a respawn reading row 13 restarts (holds the area)');
       assert.equal(obs.wrap16, 7, 'an in-window death in area 16 wraps to area 7');
     },
     // Raise the window's lower bound (row > 13) out of reach, so no death is ever near-end and the
@@ -1895,48 +1932,63 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', 13, 999),
   },
   {
-    // AREA-01 (slice 20): the projection's area-change edge. The arcade keeps scrolling for 88 frames
-    // after a death with the area completion live (xevious_main.68k 507-521; xevious_sub.68k 696-730), so a
-    // death in the last 37-44 ticks of an area completes it during the explosion and THEN reads row 0x0E —
-    // skipping the next area too; a death in the 8-tick carry window at the start of an area (row 0x0E,
-    // progress -480..-256) reads row 9 after the scroll and restarts.
+    // AREA-01 (slice 20), live since #158 (slice 21): the area-change edge. The arcade keeps scrolling for 88
+    // frames after a death with the area completion live (xevious_main.68k 507-521, 2034-2090; xevious_sub.68k
+    // 696-730), so a death in the last 37-44 ticks of an area completes it during the explosion and THEN reads row
+    // 0x0E — skipping the next area too; a death in the 8-tick carry window at the start of an area (row 0x0E,
+    // progress -480..-256) reads row 9 after the scroll and restarts. The port now runs that window live, so each
+    // trial raises a real hit at a chosen death-tick progress and lets the walk scroll and complete through it.
     // roadmap-evidence: AREA-01 success  (a death 37-44 ticks before the end of an area skips the next area,
-    //   one 36 ticks before advances once, and a carry-window death restarts — live, through area_reset)
-    key: 'checkpoint-projected-area-change',
+    //   one 36 ticks before advances once, and a carry-window death restarts — live, through the walk's window)
+    key: 'checkpoint-after-live-window-area-change',
     behavior:
-      'A death in the last 37-44 ticks of an area completes it during the explosion and skips the next area too, while a death in the carry window at the start of an area restarts it',
+      'A death in the last 37-44 ticks of an area completes it during the explosion and skips the next area too, while a death in the carry window at the start of an area restarts it — the walk scrolling live through the window',
     playtestStep: 5,
     async drive(vm) {
-      const trial = (progress, area) => {
-        vm.greenFlag();
-        step(vm, 2);
-        writeVar(vm, 'game-director-reset-scope', 'new-life');
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      writeVar(vm, 'eco-craft', 9);
+      let ended = false;
+      const release = trapStageVar(vm, 'player-dying-tick', (k) => {
+        if (Number(readVar(vm, 'player-dying')) !== 1) return; // a director reset's clear, not a window tick
+        if (Number(k) === 0) writeVar(vm, 'invuln', 1); // the respawned craft must not die again mid-pump
+        if (Number(k) >= 44) ended = true;
+      });
+      // The hit is raised before the walk's next tick, which advances the clock (+32) and then opens the window:
+      // seed 32 short of the death-tick progress.
+      const trial = (deathTick, area) => {
+        ended = false;
+        writeVar(vm, 'invuln', 0);
         writeVar(vm, 'area-number', area);
-        writeVar(vm, 'area-progress', progress);
-        fireBroadcast(vm, 'director reset');
-        step(vm, 1);
-        return readVar(vm, 'area-number');
+        writeVar(vm, 'area-progress', deathTick - 32);
+        writeVar(vm, 'player-hit', 1);
+        const back = stepUntil(
+          vm,
+          () => ended && state(vm) === 'playing' && Number(readVar(vm, 'player-dying')) === 0,
+          300,
+        );
+        return back ? readVar(vm, 'area-number') : null;
       };
-      return {
-        skipFirst: trial(63648, 5), // projects to 65056: completes, carries to -480 (row 0x0E) -> advances again
-        skipLast: trial(63872, 5), // projects to 65280 -> -256, still row 0x0E
-        afterSkip: trial(63904, 5), // projects to 65312 -> -224, row 0x0D: completion only
-        skip16: trial(63648, 16), // completes 16 -> 7, then the band advances 7 -> 8
-        carryStart: trial(-480, 5), // carry window: projects to 928, row 9
-        carryEnd: trial(-256, 5),
-      };
+      try {
+        return {
+          skipFirst: trial(63648, 5), // completes at the window's end, carries to -480 (row 0x0E) -> advances again
+          afterSkip: trial(63904, 5), // ends at -224, row 0x0D: completion only
+          skip16: trial(63648, 16), // completes 16 -> 7, then the band advances 7 -> 8
+          carryStart: trial(-480, 5), // carry window: the window ends at 928, row 9
+        };
+      } finally {
+        release();
+      }
     },
     assert(obs) {
       assert.equal(obs.skipFirst, 7, 'a death 44 ticks before the end skips the next area');
-      assert.equal(obs.skipLast, 7, 'a death 37 ticks before the end skips the next area');
       assert.equal(obs.afterSkip, 6, 'a death 36 ticks before the end advances one area');
       assert.equal(obs.skip16, 8, 'the skip wraps 16 -> 7 and then advances to 8');
       assert.equal(obs.carryStart, 5, 'a death at the start of the carry window restarts the area');
-      assert.equal(obs.carryEnd, 5, 'a death at the end of the carry window restarts the area');
     },
-    // roadmap-evidence: AREA-01 failure  (a checkpoint that reads the frozen death-tick position — no
-    //   projection — misses the skip and advances on a carry-window death)
-    negativeMutation: (p) => mutate.changeAddLiteral(p, 'Stage', 1408, 0),
+    // roadmap-evidence: AREA-01 failure  (a window that ends a tick after the hit — the screen effectively frozen at
+    //   the death tick — misses the skip)
+    negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', 43, 0),
   },
   {
     // AREA-01 (slice 20): completing an area carries the scroll clock, as the arcade does (its
@@ -5115,7 +5167,7 @@ export const SCENARIOS = [
     // player-dead`; the life clones that spawned were created after `director stop` went out, survived it, and
     // then ran the HUD's own director-enter spawn, stacking 2-3 copies of every glyph.
     behavior:
-      'Through a real craft death the HUD is rebuilt exactly once: at player-dead and after the respawn, no two visible HUD glyph clones share a position (stacked duplicates made the HUD text look bold)',
+      'Through a real craft death the HUD is rebuilt exactly once: through the explosion window, player-dead and the respawn, no two visible HUD glyph clones share a position (stacked duplicates made the HUD text look bold)',
     playtestStep: 5,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -5134,17 +5186,24 @@ export const SCENARIOS = [
         }
         return { visible: [...seen.values()].reduce((a, n) => a + n, 0), stacked: [...seen.values()].filter((n) => n > 1).length };
       };
-      // A whole death (explosion -> player-dead -> respawn) can run inside ONE harness step, so player-dead is
-      // not reliably visible at a step boundary. Sample instead after every thread step the sequencer runs
-      // while the state is player-dead (the HUD's director-enter spawn is one of those threads), keeping the
-      // worst stacking seen. On the first player-dead sample, clear the attacker and restore invulnerability
-      // so the respawned craft is not killed again inside the same step.
+      // A whole death (explosion window -> player-dead -> respawning -> playing) can run inside ONE harness
+      // step, so no stage of it is reliably visible at a step boundary. Sample instead after every thread step
+      // the sequencer runs from the hit until the respawn (#158: the window is spent in `playing` with `dying`
+      // up, and player-dead itself now lasts only its epoch check, so the HUD's director-enter spawn lands in
+      // player-dead or respawning), keeping the worst stacking seen. On the first sample, clear the attacker
+      // and restore invulnerability so the respawned craft is not killed again inside the same step.
       const seq = vm.runtime.sequencer;
       const original = seq.stepThread;
       let atDead = null;
+      const inDeath = () => {
+        const st = readVar(vm, 'game-director-state');
+        return (
+          st === 'player-dead' || st === 'respawning' || (st === 'playing' && Number(readVar(vm, 'player-dying')) === 1)
+        );
+      };
       seq.stepThread = function hooked(thread) {
         original.call(this, thread);
-        if (readVar(vm, 'game-director-state') !== 'player-dead') return;
+        if (!inDeath()) return;
         if (atDead === null) {
           atDead = { visible: 0, stacked: 0 };
           put('slot-type', 63, 0);
@@ -5184,16 +5243,19 @@ export const SCENARIOS = [
       };
     },
     assert(obs) {
-      assert.ok(obs.atDead, 'precondition: the craft died and player-dead was observed');
+      assert.ok(obs.atDead, 'precondition: the craft died and the death route was observed');
       assert.equal(obs.craftLost, 1, 'precondition: exactly one craft was lost');
       assert.equal(obs.respawned, 'playing', 'precondition: the next craft respawned');
-      assert.ok(obs.atDead.visible > 0, 'the HUD is on screen at player-dead');
-      assert.equal(obs.atDead.stacked, 0, 'no HUD glyph is stacked on another at player-dead (no bold text)');
+      assert.ok(obs.atDead.visible > 0, 'the HUD is on screen through the death route');
+      assert.equal(obs.atDead.stacked, 0, 'no HUD glyph is stacked on another through the death route (no bold text)');
       assert.equal(obs.afterRespawn.stacked, 0, 'no HUD glyph is stacked on another after the respawn');
     },
-    // Restore the pre-fix ordering — `craft changed` broadcast just before `transition to player-dead` — so the
-    // racing life clones survive the stop and re-run the HUD spawn -> the no-stack assertion fails.
-    negativeMutation: (p) => mutate.insertBroadcastBeforeTransition(p, 'Stage', 'player-dead', 'craft changed'),
+    // Re-create the race — a `craft changed` broadcast just before a death-route transition — so the racing
+    // life clones survive the stop and re-run the HUD spawn -> the no-stack assertions fail. #158: the slice-20
+    // site (before `transition to player-dead`) no longer stacks in the VM, because player-dead now lasts only
+    // its epoch check and the respawning transition's stop clears the survivors at once; the same race before
+    // the respawn's `transition to playing` stacks every glyph and persists into the next life.
+    negativeMutation: (p) => mutate.insertBroadcastBeforeTransition(p, 'Stage', 'playing', 'craft changed'),
   },
   {
     key: 'bomb-crosshair-leads-craft',
@@ -9409,15 +9471,15 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'swap players'),
   },
   {
-    // AREA-01 (slice 20) / ARCH-5: the two-player handoff applies the projected near-end checkpoint to the
-    // OUTGOING player's area before the swap, then puts the clock at the area top so the INCOMING player's
+    // AREA-01 (slice 20) / ARCH-5: the two-player handoff applies the near-end checkpoint to the
+    // OUTGOING player's area before the swap (since #158 on the live row the explosion window left behind), then puts the clock at the area top so the INCOMING player's
     // new-life re-top (which runs the same checkpoint first) leaves their area alone. Same director-receiver
     // isolation as two-player-alternation.
     // roadmap-evidence: AREA-01 success  (a two-player death 44 ticks before the end skips the outgoing
     //   player's next area, and the incoming player resumes their own area unadvanced)
     key: 'two-player-checkpoint-outgoing-only',
     behavior:
-      "On a two-player handoff the projected near-end checkpoint advances only the outgoing player's area; the incoming player resumes their own area",
+      "On a two-player handoff the near-end checkpoint advances only the outgoing player's area; the incoming player resumes their own area",
     playtestStep: 5,
     async drive(vm) {
       vm.greenFlag();
@@ -9428,9 +9490,11 @@ export const SCENARIOS = [
       writeVar(vm, 'cabinet-attract', 0);
       writeVar(vm, 'eco-craft', 2);
       writeVar(vm, 'other-craft', 3);
-      writeVar(vm, 'area-number', 5);
+      // #158: the clock as the 44-tick window leaves it after a death at progress 63648 in area 5 — the window
+      // completed area 5 (65056, carried by -65536 to -480) and stopped on row 0x0E of area 6: skip 6 -> 7.
+      writeVar(vm, 'area-number', 6);
       writeVar(vm, 'other-area-number', 9);
-      writeVar(vm, 'area-progress', 63648); // projects to completion + row 0x0E: skip 5 -> 7
+      writeVar(vm, 'area-progress', -480);
       fireBroadcast(vm, 'death complete');
       step(vm, 3);
       return {
@@ -9446,8 +9510,8 @@ export const SCENARIOS = [
     },
     // Pin every `set area progress` to the death position: the handoff no longer puts the clock at the
     // area top, so the incoming player's re-top re-runs the checkpoint on the outgoing player's position
-    // and advances THEIR area (9 -> 11).
-    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'area progress', 63648),
+    // and advances THEIR area (9 -> 10).
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'area progress', -480),
   },
   {
     // CAB-03 (slice 18): solo continuation — when the OTHER player is already out, a craft death does NOT
@@ -10057,11 +10121,12 @@ export const SCENARIOS = [
     // CAB-05: the player explosion is the arcade's own (`explode_solvalou`, xevious_main.68k 2034-2075): codes C0 C1
     // C4 C8 C2 C3 CC a step every 8 frames (4 ticks), flipped by `countup & 0x0C` (a new flip every 4 frames = 2
     // ticks), then the 32-frame pause with the craft cleared (`finish_solvalou_exploding` 2079-2090), so nothing
-    // is drawn. Every sample is checked against the frame its own tick count selects.
+    // is drawn. Every sample is checked against the frame its own tick count selects. #158 (slice 21): the walk's
+    // `dying tick` is the clock, and the pause is still inside `playing`.
     key: 'player-explosion-frames-flips-then-hidden',
     // roadmap-evidence: CAB-05 success  (the dying craft draws the 7 player-explosion steps with their flips, then vanishes for the pause)
     behavior:
-      'When the craft dies the death sprite draws the arcade player explosion — step tick // 4 of the seven, its flip changing every 2 ticks through none, mirrored top-to-bottom, mirrored left-to-right and both — then is hidden for the pause before the respawn',
+      'When the craft dies the death sprite draws the arcade player explosion — step tick // 4 of the seven, its flip changing every 2 ticks through none, mirrored top-to-bottom, mirrored left-to-right and both — then is hidden for the pause (ticks 28-43 of the window) and on to the respawn',
     playtestStep: 5,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -10072,7 +10137,7 @@ export const SCENARIOS = [
       // tick it was drawn at and the director state.
       const death = vm.runtime.getSpriteTargetByName('solv_death');
       const log = [];
-      const tick = () => Number(readVar(vm, 'solv-death-explosion-tick'));
+      const tick = () => Number(readVar(vm, 'player-dying-tick'));
       const setCostume = death.setCostume.bind(death);
       death.setCostume = (i) => {
         setCostume(i);
@@ -10092,8 +10157,10 @@ export const SCENARIOS = [
       }
       writeVar(vm, 'invuln', 1);
       readVar(vm, 'slot-type')[63] = 0;
-      for (let i = 0; i < 300 && stateOf(vm) !== 'playing'; i += 1) step(vm, 1);
-      return { died, back: stateOf(vm) === 'playing', log };
+      const back = () =>
+        stateOf(vm) === 'playing' && Number(readVar(vm, 'player-dying')) === 0 && log.some((e) => e.state === 'player-dead');
+      for (let i = 0; i < 300 && !back(); i += 1) step(vm, 1);
+      return { died, back: back(), log };
     },
     assert(obs) {
       assert.ok(obs.died, 'precondition: the seeded hit kills the craft');
@@ -10109,15 +10176,175 @@ export const SCENARIOS = [
       });
       assert.ok(flips.has('x') && flips.has('y') && flips.has('xy'), `the explosion flips both ways (${[...flips]})`);
       const last = obs.log.lastIndexOf(frames[frames.length - 1]);
-      const after = obs.log.slice(last + 1).filter((e) => e.state === 'player-dead');
+      const lastDead = obs.log.map((e) => e.state).lastIndexOf('player-dead');
+      const after = obs.log.slice(last + 1, lastDead + 1);
       assert.ok(after.length > 0 && after[0].kind === 'visible' && !after[0].visible, 'the craft is hidden as the explosion ends');
       assert.ok(
         after.every((e) => e.kind === 'visible' && !e.visible),
-        'nothing of the craft is drawn for the rest of the death pause',
+        'nothing of the craft is drawn for the rest of the death pause or the death transition',
       );
+      const pause = new Set(after.filter((e) => e.state === 'playing').map((e) => e.tick));
+      for (let k = 28; k <= 43; k += 1) assert.ok(pause.has(k), `the pause tick ${k} hides the craft, still in play`);
     },
     // roadmap-evidence: CAB-05 failure  (with the flip bits collapsed the dying craft never mirrors)
     negativeMutation: (p) => collapseFlipMod(p, 'solv_death'),
+  },
+  {
+    // #158 (slice 21): the world keeps running through the player's explosion. On a hit the arcade's craft handler
+    // switches to the explosion, but the objects, the scroll, the spawners and the enemy bullets are gated only on
+    // `scroll_disabled` (xevious_main.68k 4764-4772), set at the window's end with the ship number (2079-2090). The
+    // exploding craft is never hit-tested (2005-2033), fires no new shot (2313-2318) and arms no new bomb (2432-2438),
+    // while what is already flying keeps scoring. The walk's `dying tick` write is trapped so every tick of the
+    // window is observed, though a whole window can pass inside one pump.
+    // roadmap-evidence: PLY-02 success  (the hit opens a 44-tick window in play: the clock scrolls every tick, no
+    //   re-hit, no new shot or bomb, a shot already flying scores, the craft is spent and the route runs at its end)
+    key: 'player-dying-window-world-runs',
+    behavior:
+      'When the craft is hit the game stays in play for the 44-tick explosion window: the area clock keeps scrolling every tick, the exploding craft cannot be hit again or fire a new shot or bomb, a shot already flying still scores, and the craft is spent and the death route runs only at the window end',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 3);
+      writeVar(vm, 'eco-craft', 9);
+      const craft0 = readVar(vm, 'eco-craft');
+      const samples = [];
+      let award = 0;
+      let clonesInWindow = 0;
+      let inWindow = false;
+      const blaster = vm.runtime.getSpriteTargetByName('blaster');
+      const makeClone = blaster.makeClone.bind(blaster);
+      blaster.makeClone = () => {
+        if (inWindow) clonesInWindow += 1;
+        return makeClone();
+      };
+      const release = trapStageVar(vm, 'player-dying-tick', (value) => {
+        if (Number(readVar(vm, 'player-dying')) !== 1) return; // a director reset's clear, not a window tick
+        const k = Number(value);
+        samples.push({
+          k,
+          state: stateOf(vm),
+          progress: readVar(vm, 'area-progress'),
+          hit: readVar(vm, 'player-hit'),
+          score: readVar(vm, 'eco-score'),
+          bomb: readVar(vm, 'weapon-bomb-in-flight'),
+          craft: readVar(vm, 'eco-craft'),
+        });
+        if (k === 0) {
+          inWindow = true;
+          keyDown(vm, ' ');
+          keyDown(vm, 'b');
+        }
+        if (k < 44) seedCraftHit(vm); // an attacker parked on the exploding craft every tick
+        if (k === 4) award = seedAirKill(vm, { enemySlot: 62, shotSlot: 36, cellX: 2000, cellY: 2000 });
+        if (k >= 44) {
+          inWindow = false;
+          keyUp(vm, ' ');
+          keyUp(vm, 'b');
+          writeVar(vm, 'invuln', 1);
+          readVar(vm, 'slot-type')[63] = 0;
+        }
+      });
+      try {
+        for (let i = 0; i < 160 && samples.length === 0; i += 1) {
+          writeVar(vm, 'invuln', 0);
+          seedCraftHit(vm);
+          step(vm, 1);
+        }
+        stepUntil(
+          vm,
+          () => samples.some((x) => x.k >= 44) && stateOf(vm) === 'playing' && Number(readVar(vm, 'player-dying')) === 0,
+          300,
+        );
+      } finally {
+        release();
+        blaster.makeClone = makeClone;
+        keyUp(vm, ' ');
+        keyUp(vm, 'b');
+      }
+      return {
+        samples,
+        award,
+        clonesInWindow,
+        craftLost: craft0 - readVar(vm, 'eco-craft'),
+        back: stateOf(vm),
+      };
+    },
+    assert(obs) {
+      const ks = obs.samples.map((x) => x.k);
+      assert.deepEqual(ks, Array.from({ length: 45 }, (_, k) => k), 'the window counts ticks 0..44, once each');
+      assert.ok(obs.samples.every((x) => x.state === 'playing'), 'the game stays in playing through the window');
+      for (let k = 1; k < obs.samples.length; k += 1) {
+        assert.equal(obs.samples[k].progress - obs.samples[k - 1].progress, 32, `the clock scrolls on window tick ${k}`);
+      }
+      assert.ok(obs.samples.every((x) => x.hit === 0), 'the exploding craft is never hit again');
+      assert.equal(obs.clonesInWindow, 0, 'no new shot is fired during the window (fire held)');
+      assert.ok(obs.samples.every((x) => x.bomb === 0), 'no new bomb is armed during the window (bomb held)');
+      assert.ok(obs.award > 0, 'precondition: a shot was seeded in flight onto an enemy');
+      assert.equal(obs.samples[44].score - obs.samples[4].score, obs.award, 'a shot already flying still scores');
+      assert.ok(obs.samples.every((x) => x.craft === obs.samples[0].craft), 'the craft is not spent during the window');
+      assert.equal(obs.craftLost, 1, 'the craft is spent once, at the window end');
+      assert.equal(obs.back, 'playing', 'the next craft respawns into play');
+    },
+    // roadmap-evidence: PLY-02 failure  (a window that ends a tick after the hit — the old death route straight away)
+    negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', 43, 0),
+  },
+  {
+    // #158 (slice 21): `check_flag_collected` (xevious_main.68k 3178-3188) reads the craft's shadow position with no
+    // exploding test, so the exploding craft collects a revealed flag; in the 32-frame pause the craft's STATE is
+    // cleared and its shadow parked (`finish_solvalou_exploding` 2079-2090), so it no longer can. Driven with the
+    // walk frozen through `update bonus flag`, the window's counters seeded directly.
+    // roadmap-evidence: PLY-02 success  (a revealed flag under the craft is collected while the explosion is drawn,
+    //   not in the pause after it)
+    key: 'flag-collected-only-while-explosion-drawn',
+    behavior:
+      'A revealed Bonus Flag under the exploding craft is collected while the explosion is still drawn, but not in the pause after it when the craft is no longer drawn',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      writeVar(vm, 'slot-index', 16);
+      writeVar(vm, 'eco-flag-awards-craft', 0); // observe collection through the 10,000-point arm
+      const trial = (dying, tick) => {
+        put('slot-type', 15, 84);
+        put('slot-state', 15, 2); // revealed flags are held HIT
+        put('slot-flag', 15, 1);
+        put('slot-x', 15, 2 * 256);
+        put('slot-y', 15, 3 * 256);
+        writeVar(vm, 'player-row', 2);
+        writeVar(vm, 'player-col', 3);
+        writeVar(vm, 'player-slot-x', 2 * 256);
+        writeVar(vm, 'player-slot-y', 3 * 256);
+        writeVar(vm, 'player-dying', dying);
+        writeVar(vm, 'player-dying-tick', tick);
+        const s0 = readVar(vm, 'eco-score');
+        callProc(vm, 'Stage', 'update bonus flag');
+        step(vm, 1);
+        return readVar(vm, 'eco-score') - s0;
+      };
+      return {
+        alive: trial(0, 0),
+        exploding: trial(1, 10),
+        lastFrame: trial(1, 27),
+        pause: trial(1, 28),
+        latePause: trial(1, 43),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.alive, 10000, 'precondition: the live craft collects the flag');
+      assert.equal(obs.exploding, 10000, 'the exploding craft collects the flag while its explosion is drawn');
+      assert.equal(obs.lastFrame, 10000, 'the last explosion tick still collects');
+      assert.equal(obs.pause, 0, 'the first pause tick does not collect');
+      assert.equal(obs.latePause, 0, 'the end of the pause does not collect');
+    },
+    // roadmap-evidence: PLY-02 failure  (with the drawn gate closed, the exploding craft no longer collects)
+    negativeMutation: (p) => changeLessThanLiteral(p, 'Stage', 28, 0),
   },
   {
     // CAB-05: the falling bomb is the arcade's own (bomb-active block, xevious_main.68k 2470-2499): code 1C → 1D →

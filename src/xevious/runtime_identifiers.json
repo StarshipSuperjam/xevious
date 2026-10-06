@@ -1022,11 +1022,6 @@
       "name": "andor part lateral",
       "scope": "Stage"
     },
-    "area-checkpoint-progress": {
-      "kind": "variable",
-      "name": "checkpoint progress",
-      "scope": "Stage"
-    },
     "area-map-column": {
       "kind": "list",
       "name": "area map column",
@@ -1777,6 +1772,16 @@
       "name": "player col",
       "scope": "Stage"
     },
+    "player-dying": {
+      "kind": "variable",
+      "name": "dying",
+      "scope": "Stage"
+    },
+    "player-dying-tick": {
+      "kind": "variable",
+      "name": "dying tick",
+      "scope": "Stage"
+    },
     "player-hit": {
       "kind": "variable",
       "name": "player hit",
@@ -1935,11 +1940,6 @@
     "solv-death-director-entry-epoch": {
       "kind": "variable",
       "name": "entry epoch",
-      "scope": "solv_death"
-    },
-    "solv-death-explosion-tick": {
-      "kind": "variable",
-      "name": "explosion tick",
       "scope": "solv_death"
     },
     "solvalou-director-entry-epoch": {

@@ -34,8 +34,8 @@ OUTCOME_ID = "game-director-death-outcome"
 ALLOWED_ID = "game-director-allowed-transitions"
 SOLVALOU_EPOCH_ID = "solvalou-director-entry-epoch"
 DEATH_EPOCH_ID = "solv-death-director-entry-epoch"
-# CAB-05: the death sprite's own count of ticks into the player explosion (it picks the frame and the flip).
-DEATH_EXPLOSION_TICK_ID = "solv-death-explosion-tick"
+# CAB-05's death-sprite explosion counter, retired by #158 (the walk's `dying tick` drives the frames now).
+RETIRED_DEATH_EXPLOSION_TICK_ID = "solv-death-explosion-tick"
 # Weapon state cleared by the reset scopes (never director `game state`). The bomb
 # guard is a Stage variable so the one-bomb poller and the in-flight bomb — which may
 # run on different threads — share it; the reload counter is blaster-local.
@@ -55,6 +55,10 @@ RELOAD_TICKS = 10  # arcade 20-frame blaster reload (player-craft WPN-01)
 EXPLOSION_STEPS = 7  # 7 costume cycles ...
 EXPLOSION_HOLD_TICKS = 4  # ... of 8 arcade frames each = 56 frames = 28 ticks (PLY-02)
 POST_DEATH_PAUSE_TICKS = 16  # arcade 32-frame post-explosion pause (PLY-02)
+# #158: the whole explosion-plus-pause window the walk runs through in `playing` (88 arcade frames).
+EXPLOSION_TICKS = EXPLOSION_STEPS * EXPLOSION_HOLD_TICKS  # 28: the craft is drawn (exploding) for these
+DYING_WINDOW_TICKS = EXPLOSION_TICKS + POST_DEATH_PAUSE_TICKS
+assert DYING_WINDOW_TICKS == 44, DYING_WINDOW_TICKS
 # CAB-05 player explosion (`explode_solvalou` xevious_main.68k 2034-2075): solv_death's costumes after its
 # historical explode_01..08 are player-explosion/burst/01..07, four flip costumes each (none, x, y, xy). The
 # flip is `countup & 0x0C`, which steps every 4 frames = every 2 ticks.
@@ -619,18 +623,11 @@ AREA_COMPLETE_PROGRESS = _first_completion_progress()
 assert AREA_COMPLETE_PROGRESS == 65056, AREA_COMPLETE_PROGRESS
 # The near-end checkpoint (docs/mechanics/003, 013). The arcade keeps scrolling through the craft's
 # explosion and the pause after it, then reads the row (`main_gameplay_loop` xevious_main.68k 507-521:
-# MSB - 14 < 54, i.e. row in [0x0E, 0x43], advances the area). The port freezes the screen at the death
-# tick instead, so the checkpoint PROJECTS: it adds the 88 frames (44 ticks) the arcade would have
-# scrolled, completes the area first if that projection passes AREA_COMPLETE_PROGRESS (carrying, exactly
-# as the walk does), and then applies the row band to the projected row. Every death therefore has the
-# arcade's area outcome; only the frozen picture during the explosion differs (recorded divergence).
+# MSB - 14 < 54, i.e. row in [0x0E, 0x43], advances the area). Since #158 (slice 21) the port's walk scrolls
+# through that same 44-tick window, so the checkpoint reads the live row; the slice-20 projection is gone.
 # Checked as `row > 13 AND row < 68` (Scratch has no <=).
-AREA_DEATH_SCROLL_TICKS = 44  # 88 arcade frames of scrolling between the death and the checkpoint read
-AREA_CHECKPOINT_PROJECTION = AREA_DEATH_SCROLL_TICKS * AREA_PROGRESS_STEP  # 1408
-AREA_CHECKPOINT_LOW_EXCL = 0x0D  # 13; the projected row must be strictly greater (>= 0x0E)
-AREA_CHECKPOINT_HIGH_EXCL = 0x44  # 68; the projected row must be strictly less (<= 0x43)
-# Stage-internal working register for the projection (custom blocks have no locals).
-CHECKPOINT_PROGRESS_ID = "area-checkpoint-progress"
+AREA_CHECKPOINT_LOW_EXCL = 0x0D  # 13; the row must be strictly greater (>= 0x0E)
+AREA_CHECKPOINT_HIGH_EXCL = 0x44  # 68; the row must be strictly less (<= 0x43)
 
 SPEC_DATA_DIR = ROOT / "docs" / "spec" / "data"
 
@@ -1084,6 +1081,13 @@ PLAYER_HIT_ID = "player-hit"
 # killed by homing enemies within one headless pump). Never set by game logic, so real play is
 # unaffected; it is the seam a future "invulnerability" easter-egg key could toggle.
 INVULN_ID = "invuln"
+# #158 (PLY-02): the player-explosion window. The arcade keeps the whole world running through the craft's
+# explosion and the pause after it (`explode_solvalou` .. `finish_solvalou_exploding`, xevious_main.68k
+# 2033-2090); only the craft's own inputs, its hit check, new shots and new bomb presses stop. The port stays
+# in `playing` and the walk owns the window: `dying` = 1 from the hit, `dying tick` counts the walk ticks into
+# it (held at 0 outside it), and at DYING_WINDOW_TICKS the old death route (demo ends / player-dead) runs.
+DYING_ID = "player-dying"
+DYING_TICK_ID = "player-dying-tick"
 BULLET_INIT_CODE = 0  # enemy-bullet sprite code at spawn (renderer stand-in ignores the pulse)
 
 # The spawner's own sweep cursor (like the bullet allocator's — never the shared `slot index`); the
@@ -1177,7 +1181,8 @@ COIN_EDGE_ID = "cabinet-coin-edge"  # 1 on the tick a coin was inserted (rising 
 # * `keep sounds` — set by the death-complete handler so the ONE transition it runs (respawn, initials entry or
 #   GAME OVER) skips every stop-all-sounds, letting the 1.81 s death cue finish (update_solvalou 2030; the arcade
 #   stops only the flight tune at 2026 and the cue then plays out through the forest wait, 511/535-536). The
-#   transition clears it after its stop phase, so it covers exactly one transition.
+#   transition clears it after its stop phase, so it covers exactly one transition. Since #158 the end of the
+#   explosion window sets it too, for the transition into `player-dead` (the cue started at the hit).
 # * `death cue playing` — 1 while the Stage's death-cue thread is inside its play-until-done, so every stop-all is
 #   also skipped until the cue has actually ended. The keep alone counts transitions, not time: the post-death pause
 #   and the READY hold are collapsing `hold_ticks`, so in a browser with nothing else redrawing the respawning ->
@@ -3293,12 +3298,14 @@ MESSAGES = {
     # The retired arrow-key target sprite's bounds broadcasts (target-bounds-*) are gone too.)
     # AUDIO: sprite-side cues relay to the Stage, which owns every game sound (CAB-05). The shot×Bacura bounce
     # runs on a blaster clone and broadcasts `sfx bacura` (BACURA_HIT_SND, src deactivate_shot
-    # xevious_main.68k:2559); a fired shot broadcasts `sfx shot` (SHOT_SND, main_fn_30_shot_fn 2366); the craft's
-    # death broadcasts `sfx death` (SOLVALOU_EXPLOSION_SND, update_solvalou 2030). All other arcade SFX play from
-    # Stage-thread procs directly.
+    # xevious_main.68k:2559); a fired shot broadcasts `sfx shot` (SHOT_SND, main_fn_30_shot_fn 2366); the walk's
+    # hit broadcasts `sfx death` (SOLVALOU_EXPLOSION_SND, update_solvalou 2030) so the cue runs in its own Stage
+    # thread. All other arcade SFX play from Stage-thread procs directly.
     "sfx bacura": "broadcastMsgId-sfx-bacura",
     "sfx shot": "broadcastMsgId-sfx-shot",
     "sfx death": "broadcastMsgId-sfx-death",
+    # #158: the walk has advanced the explosion window one tick; the death renderer draws `dying tick`'s frame.
+    "death draw": "broadcastMsgId-death-draw",
     # AREA-01 (slice 20): the Stage has just computed the terrain strips' state (`update terrain`) — at the
     # end of each walk tick and of each re-top; each strip draws itself from it, in the same frame.
     "terrain draw": "broadcastMsgId-terrain-draw",
@@ -4491,8 +4498,37 @@ def _shadow_hit(blocks: Blocks, d_lat: Any, d_dep: Any, window: tuple) -> str:
     return blocks.op_and(hit_lat, hit_dep)
 
 
+def _if_else(blocks: Blocks, condition_id: str, then: list[str], otherwise: list[str]) -> str:
+    """`if <condition> then … else …` — the control_if_else wiring the builders otherwise inline."""
+    block_id = blocks.add("control_if_else")
+    blocks.blocks[block_id]["inputs"]["CONDITION"] = [2, condition_id]
+    blocks.blocks[condition_id]["parent"] = block_id
+    blocks.substack(block_id, then)
+    blocks.substack(block_id, otherwise, name="SUBSTACK2")
+    return block_id
+
+
+def _craft_alive_reporter(blocks: Blocks) -> str:
+    """#158: boolean — the craft is not in its explosion window (`dying` = 0). The arcade runs the craft hit
+    check only on the live-craft path (`check_solvalou_hit` is skipped while `solvalou_exploding`,
+    xevious_main.68k 2005-2016), so nothing can raise `player hit` again until the next life."""
+    return blocks.op_eq(variable("dying", DYING_ID), number(0))
+
+
+def _craft_drawn_reporter(blocks: Blocks) -> str:
+    """#158 / SEC-02: boolean — the craft's sprite is still on screen: alive, or in the explosion half of the
+    window (`dying tick` < EXPLOSION_TICKS; `dying tick` is held at 0 outside the window). The flag collection
+    `check_flag_collected` (3178-3188) reads only the sprite shadows and never tests `solvalou_exploding`, so the
+    exploding craft can still fly over the flag; once `finish_solvalou_exploding` clears the craft's `_STATE`
+    (2081) its shadow is parked off-screen and the pause cannot collect it."""
+    return blocks.op_lt(variable("dying tick", DYING_TICK_ID), number(EXPLOSION_TICKS))
+
+
 def _craft_overlap_reporter(
-    blocks: Blocks, window: tuple = HIT_WINDOW_BULLET_FLYING, depth_craft_minus_obj: bool = False
+    blocks: Blocks,
+    window: tuple = HIT_WINDOW_BULLET_FLYING,
+    depth_craft_minus_obj: bool = False,
+    gate: str = "alive",
 ) -> str:
     """PLY-02: boolean — does the current slot (`slot index`) overlap the craft within `window` (default
     HIT_WINDOW_BULLET_FLYING, the shared flying/bullet box, `check_bullet_or_flying_hit_solvalou` 2207-2219)?
@@ -4503,7 +4539,10 @@ def _craft_overlap_reporter(
     Both routines compute byte 0 as `craft - obj` (so the lateral delta is obj - craft in px) and byte 1 as
     `obj - craft`. SEC-02 `check_flag_collected` (3178-3188) computes byte 1 the other way round,
     `solvalou spriteX - flag spriteX`, so the Bonus Flag passes `depth_craft_minus_obj=True`. Its box is
-    symmetric-but-one ([-5, 4]), so the sign decides which edge carries the extra unit."""
+    symmetric-but-one ([-5, 4]), so the sign decides which edge carries the extra unit.
+
+    #158: `gate` folds the craft's state into the test so no caller can forget it — "alive" (every kill
+    check: no hit during the explosion window) or "drawn" (the flag: the exploding craft still collects)."""
     d_lat = lambda: blocks.op_sub(
         _lateral_shadow(blocks, _cur_item(blocks, "slot y", SLOT_Y_ID)),
         _lateral_shadow(blocks, variable("player slot y", PLAYER_SLOT_Y_ID)),
@@ -4514,7 +4553,8 @@ def _craft_overlap_reporter(
         d_dep = lambda: blocks.op_sub(craft_dep(), obj_dep())
     else:
         d_dep = lambda: blocks.op_sub(obj_dep(), craft_dep())
-    return _shadow_hit(blocks, d_lat, d_dep, window)
+    gates = {"alive": _craft_alive_reporter, "drawn": _craft_drawn_reporter}
+    return blocks.op_and(gates[gate](blocks), _shadow_hit(blocks, d_lat, d_dep, window))
 
 
 def _bacura_fair_craft_reporter(blocks: Blocks) -> str:
@@ -4557,7 +4597,8 @@ def _bacura_fair_craft_reporter(blocks: Blocks) -> str:
         blocks.op_not(blocks.op_lt(d_dep(), dep_low())),
         blocks.op_not(blocks.op_gt(d_dep(), dep_high())),
     )
-    return blocks.op_and(hit_lat, hit_dep)
+    # #158: no craft hit during the explosion window (see `_craft_alive_reporter`).
+    return blocks.op_and(_craft_alive_reporter(blocks), blocks.op_and(hit_lat, hit_dep))
 
 
 def install_compute_aim_index(blocks: Blocks) -> None:
@@ -4975,9 +5016,13 @@ def install_advance_bomb(blocks: Blocks) -> None:
     pressed_and_idle = blocks.add("operator_and")
     b_pressed = blocks.key_pressed(pressed_and_idle, "b")
     idle = blocks.var_equals(pressed_and_idle, "bomb in flight", BOMB_INFLIGHT_ID, 0)
+    # #158: no new bomb while the craft explodes (`main_fn_31__handle_bombing` returns at 2436-2437); a bomb
+    # already in flight keeps falling through the else arm and can still score (2472-2511).
+    idle_and_alive = blocks.op_and(idle, _craft_alive_reporter(blocks))
+    blocks.blocks[idle_and_alive]["parent"] = pressed_and_idle
     blocks.blocks[pressed_and_idle]["inputs"] = {
         "OPERAND1": [2, b_pressed],
-        "OPERAND2": [2, idle],
+        "OPERAND2": [2, idle_and_alive],
     }
     blocks.blocks[arm_gate]["inputs"]["CONDITION"] = [2, pressed_and_idle]
     arm_body = [
@@ -5273,7 +5318,7 @@ def install_update_bonus_flag(blocks: Blocks) -> None:
     # `_craft_overlap_reporter`), against HIT_WINDOW_BOMB_GROUND (10,20,5,10) — the flag's own proximity box.
     collected_if = blocks.add("control_if_else")
     overlap = _craft_overlap_reporter(
-        blocks, HIT_WINDOW_BOMB_GROUND, depth_craft_minus_obj=True
+        blocks, HIT_WINDOW_BOMB_GROUND, depth_craft_minus_obj=True, gate="drawn"
     )
     blocks.blocks[collected_if]["inputs"]["CONDITION"] = [2, overlap]
     blocks.blocks[overlap]["parent"] = collected_if
@@ -9263,38 +9308,23 @@ def _row_of(blocks: Blocks, name: str, var_id: str) -> str:
 
 
 def _area_checkpoint(blocks: Blocks) -> list[str]:
-    # ARCH-5 (slice 18) / AREA-01 (slice 20): the near-end checkpoint, projected (see
-    # AREA_CHECKPOINT_PROJECTION). `checkpoint progress` = the frozen death-tick progress + the 44 ticks the
-    # arcade keeps scrolling; if that passes completion, the area advances and the projection carries
-    # (-AREA_COUNTER_WRAP), exactly as the walk's completion does; then a projected row in [0x0E, 0x43]
-    # advances the area (again). One source, used by the new-life area re-top (`area_reset`) AND the
-    # two-player alternation handoff (`death complete`), so the two sites can never drift. Returns statements.
-    project = blocks.set_var_expr(
-        "checkpoint progress",
-        CHECKPOINT_PROGRESS_ID,
-        blocks.op_add(variable("area progress", AREA_PROGRESS_ID), number(AREA_CHECKPOINT_PROJECTION)),
-    )
-    completes = blocks.if_reporter(
-        blocks.greater(
-            None, "checkpoint progress", CHECKPOINT_PROGRESS_ID, AREA_COMPLETE_PROGRESS - 1
-        ),
-        [
-            _advance_area_number(blocks),
-            blocks.change_var("checkpoint progress", CHECKPOINT_PROGRESS_ID, -AREA_COUNTER_WRAP),
-        ],
-    )
+    # ARCH-5 (slice 18) / AREA-01 (slice 20) / #158 (slice 21): the near-end checkpoint. The walk keeps
+    # scrolling through the explosion window, so by the time a new life re-tops, `area progress` is where the
+    # arcade reads it (`main_gameplay_loop` 507-521) — any completion inside the window has already been carried
+    # by the walk itself. A row in [0x0E, 0x43] advances the area. One source, used by the new-life area re-top
+    # (`area_reset`) AND the two-player alternation handoff (`death complete`), so the two sites can never
+    # drift. Returns statements.
     near_end = blocks.op_and(
         blocks.op_gt(
-            _row_of(blocks, "checkpoint progress", CHECKPOINT_PROGRESS_ID),
+            _row_of(blocks, "area progress", AREA_PROGRESS_ID),
             number(AREA_CHECKPOINT_LOW_EXCL),
         ),
         blocks.op_gt(
             number(AREA_CHECKPOINT_HIGH_EXCL),
-            _row_of(blocks, "checkpoint progress", CHECKPOINT_PROGRESS_ID),
+            _row_of(blocks, "area progress", AREA_PROGRESS_ID),
         ),
     )
-    band = blocks.if_reporter(near_end, [_advance_area_number(blocks)])
-    return [project, completes, band]
+    return [blocks.if_reporter(near_end, [_advance_area_number(blocks)])]
 
 
 def _set_scroll_row(blocks: Blocks) -> str:
@@ -11488,8 +11518,14 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     enter = blocks.receive("director enter")
     start_sound = blocks.play_sound_until_done("start")
     loop = blocks.add("control_repeat_until")
-    stop_condition = blocks.not_state(loop, "playing")
+    # #158: the flight tune also ends at the craft's hit (the walk's stop-all cuts the play in flight, and the
+    # loop must not restart it while `dying`); the next life's `director enter` starts the music again.
+    stop_condition = blocks.op_or(
+        blocks.not_state(loop, "playing"),
+        blocks.op_eq(variable("dying", DYING_ID), number(1)),
+    )
     blocks.blocks[loop]["inputs"]["CONDITION"] = [2, stop_condition]
+    blocks.blocks[stop_condition]["parent"] = loop
     blocks.substack(loop, [blocks.play_sound_until_done("bgm")])
     # CAB-05: on every entry to a real life's play, the main theme (MAIN_THEME_SND, main_gameplay_loop
     # xevious_main.68k:498), then the looping flight tune (SOLVALOU_SND, main_fn_1__handle_solvalou 2009) until play
@@ -11542,14 +11578,23 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # from the decremented `craft`. Broadcasting it first raced the stop — the life clones it spawned were
     # created after `director stop` went out, survived it, and then ran the HUD's own director-enter spawn
     # too, stacking two or three copies of every HUD glyph (the HUD looked bold through player-dead).
+    # #158: the death cue now starts at the hit, 44 ticks before this transition, so the transition into
+    # player-dead must skip its stop-all too (the arcade never stops the cue, 2030). The cue's own latch usually
+    # covers it; the keep makes it hold whatever the pacing, exactly as the death-complete handler's does.
     blocks.substack(
         real_or_demo,
         [
+            blocks.set_var("keep sounds", KEEP_SOUNDS_ID, number(1)),
             blocks.change_var("craft", LIVES_ID, -1),
             blocks.call_transition("player-dead", "none"),
         ],
         name="SUBSTACK2",
     )
+    # #158: the hit opens the explosion window instead of leaving `playing` (update_solvalou 2024-2033): the
+    # flight tune stops (Scratch can only stop every sound; the death cue's latch is not up yet), the explosion
+    # cue plays in a real game only (a demo death is silent, 2028-2029), and the death renderer draws frame 0.
+    # The walk keeps running every object, the scroll and the spawners through the window; the craft's own
+    # inputs, its hit test, new shots and new bombs are gated on `dying` where they live.
     death_check = blocks.if_reporter(
         blocks.op_and(
             blocks.op_eq(variable("player hit", PLAYER_HIT_ID), number(1)),
@@ -11557,7 +11602,30 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         ),
         [
             blocks.set_var("player hit", PLAYER_HIT_ID, number(0)),
-            real_or_demo,
+            blocks.set_var("dying", DYING_ID, number(1)),
+            blocks.set_var("dying tick", DYING_TICK_ID, number(0)),
+            blocks.stop_all_sounds_unless_kept(),
+            blocks.if_reporter(
+                blocks.op_eq(variable("attract", ATTRACT_ID), number(0)),
+                [blocks.send("sfx death")],
+            ),
+            blocks.send("death draw"),
+        ],
+    )
+    # #158: one walk tick further into the window. The explosion draws for EXPLOSION_TICKS ticks, the pause runs
+    # the rest, and at DYING_WINDOW_TICKS (88 frames: `finish_solvalou_exploding` sets scroll_disabled, 2087) the
+    # old death route runs — a demo ends, a real game spends the craft and enters player-dead. `dying` itself is
+    # cleared by that transition's reset (stage_reset), so no renderer sees a live craft before the state moves.
+    # Placed BEFORE death_check, so the hit tick itself is tick 0.
+    dying_step = blocks.if_reporter(
+        blocks.op_eq(variable("dying", DYING_ID), number(1)),
+        [
+            blocks.change_var("dying tick", DYING_TICK_ID, 1),
+            blocks.send("death draw"),
+            blocks.if_reporter(
+                blocks.op_gt(variable("dying tick", DYING_TICK_ID), number(DYING_WINDOW_TICKS - 1)),
+                [real_or_demo],
+            ),
         ],
     )
     # DEBUG (temporary, tracked for removal #119): while G is held, the Bacura pump is suppressed too, so no
@@ -11580,15 +11648,24 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # CAB-01: the auto-pilot runs FIRST, and only during a demo (attract==1), so its shared-stream draws sit
     # at a fixed head-of-walk position (reproducible) and it has set the virtual inputs before READ_PLAYER and
     # the object walk read the craft this tick. A real game (attract==0) skips it entirely.
+    # #158: the pilot also rests through the explosion window — the arcade's demo input draws live inside
+    # handle_solvalou_inputs / handle_shooting / handle_bombing, none of which run while the craft explodes
+    # (2012, 2315, 2436), so the shared stream sees no pilot draws then either.
     attract_pilot = blocks.if_reporter(
-        blocks.op_eq(variable("attract", ATTRACT_ID), number(1)),
+        blocks.op_and(
+            blocks.op_eq(variable("attract", ATTRACT_ID), number(1)),
+            _craft_alive_reporter(blocks),
+        ),
         [blocks.call_proc(ATTRACT_PILOT_PROCCODE, warp=True)],
     )
     tick_body = [
         attract_pilot,
         blocks.call_proc(READ_PLAYER_PROCCODE, warp=True),
-        # WPN-04: the bomb sight leads the craft (needs the just-cached player cell).
-        blocks.call_proc(TRACK_CROSSHAIR_PROCCODE, warp=True),
+        # WPN-04: the bomb sight leads the craft (needs the just-cached player cell). #158: it freezes where it
+        # is through the explosion window (handle_crosshairs is on the live-craft path only, 2014).
+        blocks.if_reporter(
+            _craft_alive_reporter(blocks), [blocks.call_proc(TRACK_CROSSHAIR_PROCCODE, warp=True)]
+        ),
         blocks.call_proc(ADVANCE_AREA_PROCCODE, warp=True),
         blocks.call_proc(ADVANCE_SLOTS_PROCCODE, warp=True),
         # AREA-01 (slice 20): the terrain strips' state for this tick's clock, once the clock and the ground
@@ -11614,6 +11691,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         blocks.call_proc(DEBUG_SPAWN_PROCCODE, warp=True),
         blocks.call_proc(SPAWN_FLYING_PROCCODE, warp=True),
         pump_bacura,
+        dying_step,
         death_check,
     ]
     run_when_unpaused = blocks.if_reporter(
@@ -11679,6 +11757,11 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             blocks.set_var("bomb dx", BOMB_DX_ID, number(0)),
             # AREA-02 (#166): drop any add_object record still pending (the field it targeted was just cleared).
             blocks.set_var("pending object type", PENDING_OBJECT_TYPE_ID, number(0)),
+            # #158: every scope ends any explosion window, and drops a hit nothing has acted on yet (a hit raised
+            # on a transition's last tick must not kill the next life on its first).
+            blocks.set_var("dying", DYING_ID, number(0)),
+            blocks.set_var("dying tick", DYING_TICK_ID, number(0)),
+            blocks.set_var("player hit", PLAYER_HIT_ID, number(0)),
             # CAB-05: the crosshair's on-target flash starts each scope unlit.
             blocks.set_var("crosshair lit", CROSSHAIR_LIT_ID, number(0)),
             # SEC-03 (secrets.hidden-credit #93): lower the credit overlay signal on every reset scope, so a
@@ -11734,12 +11817,11 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # pinned opcode chain (like the eight existing reset receivers, each branching on its own
     # scope for its own concern). It touches only the area vars, so the unordered same-target
     # hat execution is safe. A world reset (cold-start / new-game) returns to area 1 and re-tops;
-    # a new life runs the NEAR-END CHECKPOINT (projected from the death-tick progress, see
-    # AREA_CHECKPOINT_PROJECTION): a death that the arcade would read in rows [0x0E, 0x43] after
-    # its explosion advances to the next area instead of restarting (discharging docs/mechanics/003,
-    # 013), then re-tops. On a scope-`none` transition (e.g. the death itself) and on game-over this
-    # receiver does nothing, so `area progress`/`scroll row` stay frozen through the death
-    # sequence and the checkpoint projects from the real death-tick progress.
+    # a new life runs the NEAR-END CHECKPOINT (`_area_checkpoint`): a death whose explosion window
+    # ends in rows [0x0E, 0x43] advances to the next area instead of restarting (discharging
+    # docs/mechanics/003, 013), then re-tops. On a scope-`none` transition (e.g. the death itself) and on
+    # game-over this receiver does nothing, so `area progress`/`scroll row` hold where the walk left them at
+    # the end of the explosion window and the checkpoint reads that row.
     area_reset = blocks.receive("director reset")
     world_area = reset_if(
         blocks,
@@ -12184,7 +12266,10 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
                 [blocks.add(opcode, inputs={input_name: number(limit)})],
             )
         )
-    blocks.substack(movement, movement_body)
+    # #158: through the explosion window the craft is hidden where it was hit (the death renderer draws the
+    # explosion there) and takes no input — handle_solvalou_inputs is on the live-craft path only (2012).
+    alive_tick = _if_else(blocks, _craft_alive_reporter(blocks), movement_body, [blocks.hide()])
+    blocks.substack(movement, [alive_tick])
     playing = blocks.if_state("playing", [blocks.show(), movement])
     dead = blocks.if_either_state("player-dead", "game-over", [blocks.hide()])
     blocks.chain(enter, [snapshot, title, ready, playing, dead])
@@ -12772,19 +12857,17 @@ def death_blocks() -> dict[str, dict[str, Any]]:
         DEATH_EPOCH_ID,
         variable("state epoch", EPOCH_ID),
     )
-    # B5/B10: the ~56-frame (28-tick) explosion, then a 32-frame (16-tick) pause before
-    # the respawn transition. CAB-05: the arcade death cue (solvalou_explode, 1.81 s) is
-    # longer than that 1.467 s window; the death-complete handler sets `keep sounds` so
-    # the transition it runs does not cut it, and `death cue playing` holds off any later
-    # stop-all until the cue has ended (the holds below collapse in a browser). The
-    # explosion is one repeat of exactly its 28 ticks (a non-empty loop yields one walk pass
-    # per iteration, like an empty hold); the pause is a flat, empty repeat.
-    # Arcade frame counts cite PLY-02; only the tick roundings live here.
+    # #158: the ~56-frame (28-tick) explosion and the 32-frame (16-tick) pause now run inside `playing`, ticked by
+    # the walk (`dying tick`, see DYING_ID): on each `death draw` this sprite draws the walk's tick — the
+    # explosion frame for the first EXPLOSION_TICKS ticks, hidden for the pause (`finish_solvalou_exploding`
+    # clears the craft's STATE, 2079-2090). It owns no timing of its own. CAB-05: the arcade death cue
+    # (solvalou_explode, 1.81 s) is longer than the 1.467 s window; `death cue playing` holds off every stop-all
+    # until the cue has ended, and the death-complete handler's `keep sounds` covers the transition it runs.
     # CAB-05: each tick draws player-explosion/burst/<step>/<flip> — step = tick // 4 (the 7 codes C0 C1 C4 C8
     # C2 C3 CC, 8 frames each, table 2093-2100), flip from the tick every 2 ticks (`countup & 0x0C`, 2072-2073;
     # the port counts it from the death, the arcade from its free-running frame counter). The 2x2 steps'
     # position nudges (2055-2063) are absorbed by the concentric 32-px art.
-    tick = lambda: variable("explosion tick", DEATH_EXPLOSION_TICK_ID)
+    tick = lambda: variable("dying tick", DYING_TICK_ID)
     explosion_ordinal = blocks.op_add(
         blocks.op_add(
             number(PLAYER_EXPLOSION_BASE_ORDINAL),
@@ -12801,27 +12884,20 @@ def death_blocks() -> dict[str, dict[str, Any]]:
             ),
         ),
     )
-    explosion_loop = blocks.add("control_repeat", inputs={"TIMES": number(EXPLOSION_STEPS * EXPLOSION_HOLD_TICKS)})
-    blocks.substack(
-        explosion_loop,
-        [blocks.switch_costume_expr(explosion_ordinal), blocks.change_var("explosion tick", DEATH_EXPLOSION_TICK_ID, 1)],
-    )
-    explosion: list[str] = [blocks.set_var("explosion tick", DEATH_EXPLOSION_TICK_ID, number(0)), explosion_loop]
-    death_body = [
+    draw_frame = [
         blocks.go_to_sprite("solvalou"),
         blocks.to_front(),  # B9: the explosion renders above the terrain
         blocks.show(),
-        # CAB-05: SOLVALOU_EXPLOSION_SND, not in attract (update_solvalou xevious_main.68k:2028-2031), relayed to
-        # the Stage that owns it. The transition into player-dead has just stopped all sounds, which ends the
-        # flight tune exactly where the arcade stops SOLVALOU_SND (2026).
-        blocks.if_reporter(
-            blocks.op_eq(variable("attract", ATTRACT_ID), number(0)),
-            [blocks.send("sfx death")],
-        ),
-        *explosion,
-        # CAB-05: the craft is gone for the pause (`finish_solvalou_exploding` clears its STATE, 2079-2090).
+        blocks.switch_costume_expr(explosion_ordinal),
+    ]
+    blocks.chain(
+        blocks.receive("death draw"),
+        [_if_else(blocks, _craft_drawn_reporter(blocks), draw_frame, [blocks.hide()])],
+    )
+    # The window has already run in `playing`, so player-dead only hands straight on to the death-complete route
+    # (epoch-guarded, as before, against a superseding transition).
+    death_body = [
         blocks.hide(),
-        blocks.hold_ticks(POST_DEATH_PAUSE_TICKS),
         blocks.if_epoch_state(
             DEATH_EPOCH_ID, "player-dead", [blocks.send("death complete")]
         ),
@@ -13048,7 +13124,11 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
         release_gate,
         [blocks.set_var("blaster reload", RELOAD_ID, number(RELOAD_TICKS))],
     )
-    blocks.substack(loop, [advance, fire_gate, release_gate])
+    # #158: no new shot while the craft explodes — `handle_shooting` is skipped (main_fn_30 2315-2316) — but the
+    # shot clones already in flight keep their own loops and can still score (2318-2329).
+    blocks.substack(
+        loop, [blocks.if_reporter(_craft_alive_reporter(blocks), [advance, fire_gate, release_gate])]
+    )
     blocks.chain(
         enter,
         [
@@ -16294,7 +16374,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         TERRAIN_BAND_ID,
         TERRAIN_BAND_COLUMN_ID,
         TERRAIN_OVERLAP_ID,
-        CHECKPOINT_PROGRESS_ID,
+        # #158: the checkpoint projection's register is retired; owning it drops it from the Stage.
+        "area-checkpoint-progress",
         SCHEDULE_CURSOR_ID,
         SCHEDULE_FIRED_ID,
         AI_LEVEL_ID,
@@ -16354,6 +16435,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         WALK_TYPE_ID,
         PLAYER_HIT_ID,
         INVULN_ID,
+        DYING_ID,
+        DYING_TICK_ID,
         # DEBUG (tracked for removal, #119): the T-key family-cycle cursor.
         DEBUG_SPAWN_INDEX_ID,
         # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor and its rising-edge sample
@@ -16488,9 +16571,6 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         TERRAIN_BAND_ID: ["terrain band", 0],
         TERRAIN_BAND_COLUMN_ID: ["terrain band column", 0],
         TERRAIN_OVERLAP_ID: ["terrain overlap", 0],
-        # AREA-01 (slice 20): the near-end checkpoint's projected-progress working register (machinery,
-        # like `swap tmp`): written and read only inside `_area_checkpoint`.
-        CHECKPOINT_PROGRESS_ID: ["checkpoint progress", 0],
         # AREA-02 scheduler state (Stage-written, write-forbidden): the 1-based cursor into the
         # flattened schedule lists and the per-area count of records fired (the observable).
         SCHEDULE_CURSOR_ID: ["schedule cursor", 1],
@@ -16572,6 +16652,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         PLAYER_HIT_ID: ["player hit", 0],
         # Debug/test invulnerability seam (default 0; the harness sets it, never game logic).
         INVULN_ID: ["invuln", 0],
+        # #158: the player-explosion window (walk-owned; both 0 outside it, cleared on every reset scope).
+        DYING_ID: ["dying", 0],
+        DYING_TICK_ID: ["dying tick", 0],
         # DEBUG (tracked for removal, #119): the T-key family-cycle cursor (0-based into
         # DEBUG_SPAWN_FAMILIES); starts at the first family.
         DEBUG_SPAWN_INDEX_ID: ["debug spawn index", 0],
@@ -16857,10 +16940,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 SOLVALOU_EPOCH_ID: ["entry epoch", 0]
             }
         elif target["name"] == "solv_death":
-            target["variables"] = target["variables"] | {
-                DEATH_EPOCH_ID: ["entry epoch", 0],
-                DEATH_EXPLOSION_TICK_ID: ["explosion tick", 0],
-            }
+            # #158: the explosion now reads the walk's `dying tick`; the sprite's own counter is retired.
+            target["variables"] = {
+                var_id: value
+                for var_id, value in target["variables"].items()
+                if var_id != RETIRED_DEATH_EXPLOSION_TICK_ID
+            } | {DEATH_EPOCH_ID: ["entry epoch", 0]}
         elif target["name"] == "blaster":
             target["variables"] = target["variables"] | {
                 RELOAD_ID: ["blaster reload", RELOAD_TICKS],

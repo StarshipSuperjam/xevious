@@ -1272,6 +1272,9 @@ class ScratchProjectTests(unittest.TestCase):
             # by the test harness) that gates that death so the agency-less headless craft can survive.
             "player hit",
             "invuln",
+            # #158 (slice 21): the walk-owned player-explosion window (the flag and its tick count).
+            "dying",
+            "dying tick",
             # DEBUG (tracked for removal, #119): the T-key family-cycle cursor — a transient dev-tool
             # register, not Stage-write-protected state.
             "debug spawn index",
@@ -1391,9 +1394,6 @@ class ScratchProjectTests(unittest.TestCase):
             # `swap tmp`. A pure Stage-internal working register — NOT part of the entry category below (those
             # are sprite-READ and write-forbidden); nothing outside `rank in` touches it.
             "rank cursor",
-            # AREA-01 (slice 20): the near-end checkpoint's projected-progress working register, like
-            # `swap tmp` — written and read only inside the shared checkpoint statements, never durable.
-            "checkpoint progress",
             # AREA-01 (slice 20): `update terrain`'s working registers (the counter in lines, a strip's band top,
             # band, band column and overlap), written and read only inside that proc.
             "terrain line",
@@ -7599,9 +7599,17 @@ class ScratchProjectTests(unittest.TestCase):
             for s in sets(sb, director.KEEP_SOUNDS_ID, 1)
         ):
             failures.add("keep-not-set-at-death")
+        # #158: the cue starts at the hit, so the end of the explosion window (the walk's `dying tick` > 43) keeps
+        # the sounds through the transition into player-dead as well.
+        if not any(
+            gated_on(sb, stage_owner, s, director.DYING_TICK_ID, director.DYING_WINDOW_TICKS - 1)
+            for s in sets(sb, director.KEEP_SOUNDS_ID, 1)
+        ):
+            failures.add("keep-not-set-at-window-end")
 
         # Relays: the clone/sprite broadcasts, the Stage receiver plays.
-        for message, sound, sender in (("sfx shot", "zapper_fire", "blaster"), ("sfx death", "solvalou_explode", "solv_death")):
+        # #158: the death cue is raised by the walk's hit (Stage), which plays it from its own receiver thread.
+        for message, sound, sender in (("sfx shot", "zapper_fire", "blaster"), ("sfx death", "solvalou_explode", "Stage")):
             if not receiver_plays(sb, message, sound):
                 failures.add(f"relay-no-stage-receiver:{message}")
             sender_t = targets.get(sender)
@@ -7633,14 +7641,10 @@ class ScratchProjectTests(unittest.TestCase):
 
         if not death_latch_ok():
             failures.add("death-cue-latch-missing")
-        death_t = targets.get("solv_death")
-        if death_t is not None:
-            downer = enclosures(death_t["blocks"])
-            if not all(
-                gated_on(death_t["blocks"], downer, x, director.ATTRACT_ID, 0)
-                for x in broadcasts(death_t["blocks"], "sfx death")
-            ):
-                failures.add("death-cue-in-attract")
+        if not all(
+            gated_on(sb, stage_owner, x, director.ATTRACT_ID, 0) for x in broadcasts(sb, "sfx death")
+        ):
+            failures.add("death-cue-in-attract")
         for name in ("start", "bgm"):
             if not plays(sb, name) or not all(
                 gated_on(sb, stage_owner, x, director.ATTRACT_ID, 0) for x in plays(sb, name)
@@ -7810,9 +7814,10 @@ class ScratchProjectTests(unittest.TestCase):
             ("death-cue-latch-missing", retarget_var(director.DEATH_CUE_PLAYING_ID, 1, 7)),
             ("keep-not-consumed-after-stop", retarget_var(director.KEEP_SOUNDS_ID, 0, 7)),
             ("keep-not-set-at-death", retarget_var(director.KEEP_SOUNDS_ID, 1, 7)),
+            ("keep-not-set-at-window-end", retarget_var(director.KEEP_SOUNDS_ID, 1, 7)),
             ("relay-no-stage-receiver:sfx shot", drop_receiver("sfx shot")),
             ("relay-no-stage-receiver:sfx death", drop_receiver("sfx death")),
-            ("death-cue-in-attract", blank_var_in_conds("solv_death", director.ATTRACT_ID)),
+            ("death-cue-in-attract", blank_var_in_conds("Stage", director.ATTRACT_ID)),
             ("music-in-attract:bgm", blank_var_in_conds("Stage", director.ATTRACT_ID)),
             ("coin-sound-not-latched-by-poll", retarget_var(director.COIN_SOUND_ID, 1, 7)),
             ("coin-sound-not-gated-on-latch", blank_var_in_conds("Stage", director.COIN_SOUND_ID)),
@@ -15921,20 +15926,19 @@ class ScratchProjectTests(unittest.TestCase):
             if {director.PLAYER_HIT_ID, director.INVULN_ID} <= refs:
                 death_if = bid
                 break
-        if death_if is None:
-            failures.add("death-gated-on-hit-and-invuln")
-        else:
-            body = reachable(death_if)
+        def sets_to(body, var_id, value):
+            return any(
+                blocks[bid]["opcode"] == "data_setvariableto"
+                and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == var_id
+                and blocks[bid]["inputs"].get("VALUE") == [1, [4, value]]
+                for bid in body
+            )
+
+        def spends_and_transitions(body):
             spends = any(
                 blocks[bid]["opcode"] == "data_changevariableby"
                 and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
                 and blocks[bid]["inputs"].get("VALUE") == [1, [4, -1]]
-                for bid in body
-            )
-            clears = any(
-                blocks[bid]["opcode"] == "data_setvariableto"
-                and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
-                and blocks[bid]["inputs"].get("VALUE") == [1, [4, 0]]
                 for bid in body
             )
             transitions = any(
@@ -15942,7 +15946,45 @@ class ScratchProjectTests(unittest.TestCase):
                 and blocks[bid].get("mutation", {}).get("proccode") == director.PROCCODE
                 for bid in body
             )
-            if not (spends and clears and transitions):
+            return spends and transitions
+
+        # #158: the hit opens the explosion window — clear the hit, `dying` = 1, `dying tick` = 0 — and the
+        # game stays in `playing`: the hit body itself neither spends a craft nor transitions.
+        if death_if is None:
+            failures.add("death-gated-on-hit-and-invuln")
+        else:
+            body = reachable(death_if)
+            opens = (
+                sets_to(body, director.PLAYER_HIT_ID, 0)
+                and sets_to(body, director.DYING_ID, 1)
+                and sets_to(body, director.DYING_TICK_ID, 0)
+            )
+            if not opens or spends_and_transitions(body):
+                failures.add("death-opens-window")
+        # The window's end: `if dying tick > DYING_WINDOW_TICKS - 1` (inside the `dying == 1` step, which counts
+        # the tick) runs the old death route — the craft is spent and the player-dead transition runs there.
+        window_end = [
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "control_if"
+            and blocks.get((b["inputs"].get("CONDITION") or [None, None])[1], {}).get("opcode") == "operator_gt"
+            and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND1", [None, [None]])[1][2:3]
+            == [director.DYING_TICK_ID]
+            and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND2") == [1, [4, director.DYING_WINDOW_TICKS - 1]]
+        ]
+        if len(window_end) != 1 or not spends_and_transitions(reachable(window_end[0])):
+            failures.add("death-spends-craft-and-transitions")
+        else:
+            step = blocks[window_end[0]]["parent"]
+            while step and blocks[step]["opcode"] != "control_if":
+                step = blocks[step]["parent"]
+            counts = step and any(
+                blocks[bid]["opcode"] == "data_changevariableby"
+                and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.DYING_TICK_ID
+                and blocks[bid]["inputs"].get("VALUE") == [1, [4, 1]]
+                for bid in reachable(step)
+            )
+            if not counts or equals_var(blocks[step]["inputs"].get("CONDITION")) != director.DYING_ID:
                 failures.add("death-spends-craft-and-transitions")
 
         # the death-complete handler decides from craft > 0: respawn vs game over.
@@ -16039,39 +16081,16 @@ class ScratchProjectTests(unittest.TestCase):
                         return
             raise AssertionError("no invuln equals-operand in a death gate to break")
 
-        def break_death_body(p):
-            # Death registers but never spends a craft: neutralise the `change craft by -1` reachable
-            # from the death gate.
-            s = next(t for t in p["targets"] if t["isStage"])
-            blocks = s["blocks"]
-
-            def equals_var(op_spec):
-                if not (isinstance(op_spec, list) and len(op_spec) > 1 and isinstance(op_spec[1], str)):
-                    return None
-                eq = blocks.get(op_spec[1])
-                if not eq or eq["opcode"] != "operator_equals":
-                    return None
-                lhs = eq["inputs"].get("OPERAND1")
-                if isinstance(lhs, list) and len(lhs) > 1 and isinstance(lhs[1], list) and lhs[1][0] == 12:
-                    return lhs[1][2]
-                return None
-
-            death_if = None
-            for bid, b in blocks.items():
-                if b["opcode"] != "control_if":
-                    continue
-                cond = b["inputs"].get("CONDITION")
-                if not (isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)):
-                    continue
-                cb = blocks.get(cond[1])
-                if not cb or cb["opcode"] != "operator_and":
-                    continue
-                refs = {equals_var(cb["inputs"].get("OPERAND1")), equals_var(cb["inputs"].get("OPERAND2"))}
-                if {director.PLAYER_HIT_ID, director.INVULN_ID} <= refs:
-                    death_if = bid
-                    break
-            assert death_if is not None
-            seen, stack = set(), [death_if]
+        def window_end_body(blocks):
+            end = next(
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "control_if"
+                and blocks.get((b["inputs"].get("CONDITION") or [None, None])[1], {}).get("opcode") == "operator_gt"
+                and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND1", [None, [None]])[1][2:3]
+                == [director.DYING_TICK_ID]
+            )
+            seen, stack = set(), [blocks[end]["inputs"]["SUBSTACK"][1]]
             while stack:
                 bid = stack.pop()
                 if not bid or bid in seen or bid not in blocks:
@@ -16083,7 +16102,12 @@ class ScratchProjectTests(unittest.TestCase):
                     val = b["inputs"].get(slot)
                     if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str):
                         stack.append(val[1])
-            for bid in seen:
+            return end, seen
+
+        def break_death_body(p):
+            # The window ends but never spends a craft: neutralise the `change craft by -1` at its end.
+            blocks = next(t for t in p["targets"] if t["isStage"])["blocks"]
+            for bid in window_end_body(blocks)[1]:
                 b = blocks[bid]
                 if (
                     b["opcode"] == "data_changevariableby"
@@ -16092,7 +16116,26 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["inputs"]["VALUE"] = [1, [4, 0]]
                     return
-            raise AssertionError("no `change craft by -1` in the death body to break")
+            raise AssertionError("no `change craft by -1` at the window's end to break")
+
+        def break_window_length(p):
+            # A 43-tick window (one tick short of the arcade's 88 frames).
+            blocks = next(t for t in p["targets"] if t["isStage"])["blocks"]
+            end = window_end_body(blocks)[0]
+            blocks[blocks[end]["inputs"]["CONDITION"][1]]["inputs"]["OPERAND2"] = [1, [4, director.DYING_WINDOW_TICKS - 2]]
+
+        def break_window_open(p):
+            # The hit no longer opens the window (its `dying = 1` writes 0).
+            blocks = next(t for t in p["targets"] if t["isStage"])["blocks"]
+            for b in blocks.values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.DYING_ID
+                    and b["inputs"].get("VALUE") == [1, [4, 1]]
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, 0]]
+                    return
+            raise AssertionError("no `set dying to 1` to break")
 
         def break_decision(p):
             # Target the DEATH-decision `craft > threshold` specifically — the operator_gt that is the
@@ -16117,6 +16160,8 @@ class ScratchProjectTests(unittest.TestCase):
             ("bullet-raises-player-hit", break_bullet_hit),
             ("death-gated-on-hit-and-invuln", break_death_gate),
             ("death-spends-craft-and-transitions", break_death_body),
+            ("death-spends-craft-and-transitions", break_window_length),
+            ("death-opens-window", break_window_open),
             ("lives-driven-decision", break_decision),
         ]
         for label, corrupt in cases:
@@ -16439,14 +16484,13 @@ class ScratchProjectTests(unittest.TestCase):
         if not wrap_conditions or not all(is_area_wrap(bid) for bid in wrap_conditions):
             failures.add("area-wrap-16-7")
 
-        # 7. near-end checkpoint, projected, at BOTH sites (new-life re-top and the 2P handoff): the
-        # three statements `set checkpoint progress to (area progress + 1408)`; `if checkpoint
-        # progress > 65055 { wrap; change checkpoint progress by -65536 }`; `if AND(row(checkpoint
-        # progress) > 13, 68 > row(checkpoint progress)) { wrap }` — the window [14, 67] on the row
-        # the arcade reads after its 44 ticks of post-death scrolling. The row VALUES are checked by
-        # interpretation in test_spec_docs.
-        def is_row_of_checkpoint(spec):
-            # floor(((3328 - checkpoint progress) mod 65536) / 256)
+        # 7. near-end checkpoint at BOTH sites (new-life re-top and the 2P handoff): one statement,
+        # `if AND(row(area progress) > 13, 68 > row(area progress)) { wrap }` — the window [14, 67] on the live
+        # row. #158 (slice 21): the walk scrolls through the 44-tick explosion window, so the row is read where
+        # the arcade reads it; the slice-20 projection register and its completion branch are gone. The row
+        # VALUES are checked by interpretation in test_spec_docs.
+        def is_row_of_progress(spec):
+            # floor(((3328 - area progress) mod 65536) / 256)
             fb = blocks.get(spec[1]) if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str) else None
             if not fb or fb["opcode"] != "operator_mathop" or fb["fields"].get("OPERATOR", [None])[0] != "floor":
                 return False
@@ -16461,7 +16505,7 @@ class ScratchProjectTests(unittest.TestCase):
                 sub is not None
                 and sub["opcode"] == "operator_subtract"
                 and literal(sub["inputs"].get("NUM1")) == director.AREA_COUNTER_INIT
-                and refs_var(sub["inputs"].get("NUM2"), director.CHECKPOINT_PROGRESS_ID)
+                and refs_var(sub["inputs"].get("NUM2"), director.AREA_PROGRESS_ID)
             )
 
         def then_advances(b):
@@ -16472,60 +16516,36 @@ class ScratchProjectTests(unittest.TestCase):
                 and any(is_area_wrap(x) for x in reachable(spec[1]))
             )
 
-        def checkpoint_at(start):
-            b = blocks[start]
-            val = b["inputs"].get("VALUE")
-            add = blocks.get(val[1]) if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str) else None
-            if not (
-                add
-                and add["opcode"] == "operator_add"
-                and refs_var(add["inputs"].get("NUM1"), director.AREA_PROGRESS_ID)
-                and literal(add["inputs"].get("NUM2")) == director.AREA_CHECKPOINT_PROJECTION
-            ):
-                return False
-            comp = blocks.get(b.get("next"))
-            if not (
-                comp
-                and comp["opcode"] == "control_if"
-                and gt_var_num(
-                    comp["inputs"].get("CONDITION"),
-                    director.CHECKPOINT_PROGRESS_ID,
-                    director.AREA_COMPLETE_PROGRESS - 1,
-                )
-                and then_advances(comp)
-                and any(
-                    blocks[x]["opcode"] == "data_changevariableby"
-                    and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.CHECKPOINT_PROGRESS_ID
-                    and blocks[x]["inputs"].get("VALUE") == [1, [4, -director.AREA_COUNTER_WRAP]]
-                    for x in reachable(comp["inputs"]["SUBSTACK"][1])
-                )
-            ):
-                return False
-            band = blocks.get(comp.get("next"))
-            if not band or band["opcode"] != "control_if" or not then_advances(band):
+        def is_checkpoint_band(bid):
+            band = blocks[bid]
+            if band["opcode"] != "control_if" or not then_advances(band):
                 return False
             gts = [blocks.get(p[1]) if isinstance(p, list) and len(p) > 1 and isinstance(p[1], str) else None
                    for p in and_parts(band["inputs"].get("CONDITION"))]
             if len(gts) != 2 or any(g is None or g["opcode"] != "operator_gt" for g in gts):
                 return False
             low_ok = any(
-                is_row_of_checkpoint(g["inputs"].get("OPERAND1"))
+                is_row_of_progress(g["inputs"].get("OPERAND1"))
                 and literal(g["inputs"].get("OPERAND2")) == director.AREA_CHECKPOINT_LOW_EXCL
                 for g in gts
             )
             high_ok = any(
                 literal(g["inputs"].get("OPERAND1")) == director.AREA_CHECKPOINT_HIGH_EXCL
-                and is_row_of_checkpoint(g["inputs"].get("OPERAND2"))
+                and is_row_of_progress(g["inputs"].get("OPERAND2"))
                 for g in gts
             )
             return low_ok and high_ok
 
-        starts = [
-            bid for bid, b in blocks.items()
-            if b["opcode"] == "data_setvariableto"
-            and b["fields"].get("VARIABLE", [None, None])[1] == director.CHECKPOINT_PROGRESS_ID
-        ]
-        if len(starts) != 2 or not all(checkpoint_at(s) for s in starts):
+        bands = [bid for bid, b in blocks.items() if b["opcode"] == "control_if" and is_checkpoint_band(bid)]
+        if len(bands) != 2:
+            failures.add("checkpoint-window")
+        # No projection may come back: nothing adds the old 44-tick projection to `area progress`.
+        if any(
+            b["opcode"] == "operator_add"
+            and refs_var(b["inputs"].get("NUM1"), director.AREA_PROGRESS_ID)
+            and literal(b["inputs"].get("NUM2")) == 44 * director.AREA_PROGRESS_STEP
+            for b in blocks.values()
+        ):
             failures.add("checkpoint-window")
         # No checkpoint may still read the frozen `scroll row` (the pre-slice-20 shape).
         if any(
@@ -16630,21 +16650,16 @@ class ScratchProjectTests(unittest.TestCase):
             assert len(matches) == 2, "expected one checkpoint high bound per site"
             matches[1]["inputs"]["OPERAND1"] = [1, [4, director.AREA_CHECKPOINT_HIGH_EXCL - 2]]
 
-        def break_checkpoint_projection(p):
+        def break_checkpoint_reads_progress(p):
+            # Point one site's low-bound row read at another register: the band must read `area progress`.
             s = stage_of(p)
-            b = next(
-                b
-                for b in s["blocks"].values()
-                if b["opcode"] == "operator_add"
-                and (b["inputs"].get("NUM2") or [None, [None, None]])[1][1:2] == [director.AREA_CHECKPOINT_PROJECTION]
-            )
-            b["inputs"]["NUM2"] = [1, [4, 0]]
-
-        def break_checkpoint_completion(p):
-            s = stage_of(p)
-            matches = gt_with(s, None, director.AREA_COMPLETE_PROGRESS - 1)
-            assert len(matches) == 2, "expected one projected-completion test per site"
-            matches[0]["inputs"]["OPERAND2"] = [1, [4, director.AREA_COMPLETE_PROGRESS + 255]]
+            g = gt_with(s, None, director.AREA_CHECKPOINT_LOW_EXCL)[0]
+            sub = s["blocks"][
+                s["blocks"][s["blocks"][s["blocks"][g["inputs"]["OPERAND1"][1]]["inputs"]["NUM"][1]]["inputs"]["NUM1"][1]][
+                    "inputs"
+                ]["NUM1"][1]
+            ]
+            sub["inputs"]["NUM2"] = [3, [12, "schedule cursor", director.SCHEDULE_CURSOR_ID], [10, ""]]
 
         def break_checkpoint_frozen_row(p):
             # Restore the pre-slice-20 shape at one site: a band bound reading the frozen `scroll row`.
@@ -16713,8 +16728,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("area-wrap-16-7", break_wrap_target),
             ("checkpoint-window", break_checkpoint_low),
             ("checkpoint-window", break_checkpoint_high),
-            ("checkpoint-window", break_checkpoint_projection),
-            ("checkpoint-window", break_checkpoint_completion),
+            ("checkpoint-window", break_checkpoint_reads_progress),
             ("checkpoint-reads-frozen-row", break_checkpoint_frozen_row),
         ]
         for label, corrupt in cases:
@@ -19374,32 +19388,60 @@ class ScratchProjectTests(unittest.TestCase):
         if not has("start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy"):
             fails.add("B4-glide")
 
-        # B5/B10 — the tick-counted explosion then the post-death pause; no waits. CAB-05: the explosion is ONE
-        # repeat of exactly its 7 x 4 ticks that picks a costume every tick, and the craft is hidden (straight
-        # after it) for the pause — `finish_solvalou_exploding` clears its STATE (xevious_main.68k 2079-2090).
+        # B5/B10 — the tick-counted explosion then the post-death pause; no waits. #158 (slice 21): the walk owns
+        # the 44-tick window, so the explosion keeps no clock of its own. Each tick the walk sends `death draw`;
+        # the renderer's ONE receiver draws while `dying tick < 28` (the 7 x 4-tick explosion, a costume picked
+        # every tick) and hides otherwise — the 16-tick pause after `finish_solvalou_exploding` clears the craft's
+        # STATE (xevious_main.68k 2079-2090). The window ends at `dying tick > 43` on the Stage.
         death = blocks["solv_death"]
-        explosion_loops = [
-            b
+        stage = next(t["blocks"] for t in project["targets"] if t["isStage"])
+
+        def var_operand(inp):
+            val = (inp or [None, None])[1]
+            return val[2] if isinstance(val, list) and len(val) > 2 else None
+
+        draw_ifs = [
+            death.get(b["next"])
             for b in death.values()
-            if b["opcode"] == "control_repeat"
-            and num(b["inputs"].get("TIMES")) == director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS
+            if b["opcode"] == "event_whenbroadcastreceived"
+            and b["fields"].get("BROADCAST_OPTION", [None])[0] == "death draw"
         ]
-        if len(explosion_loops) != 1 or death.get(
-            (explosion_loops[0]["inputs"].get("SUBSTACK") or [None, None])[1], {}
-        ).get("opcode") != "looks_switchcostumeto":
+        draw_if = draw_ifs[0] if len(draw_ifs) == 1 else None
+        if draw_if is None or draw_if["opcode"] != "control_if_else":
             fails.add("B5B10-explosion")
         else:
-            after = death.get(explosion_loops[0]["next"])
-            pause = death.get(after["next"]) if after else None
+            cond = death.get((draw_if["inputs"].get("CONDITION") or [None, None])[1], {})
+            drawn = []
+            bid = (draw_if["inputs"].get("SUBSTACK") or [None, None])[1]
+            while bid in death:
+                drawn.append(death[bid]["opcode"])
+                bid = death[bid]["next"]
             if (
-                after is None
-                or after["opcode"] != "looks_hide"
-                or pause is None
-                or pause["opcode"] != "control_repeat"
-                or num(pause["inputs"].get("TIMES")) != director.POST_DEATH_PAUSE_TICKS
+                cond.get("opcode") != "operator_lt"
+                or var_operand(cond["inputs"].get("OPERAND1")) != director.DYING_TICK_ID
+                or num(cond["inputs"].get("OPERAND2")) != director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS
+                or "looks_switchcostumeto" not in drawn
+                or "looks_show" not in drawn
             ):
+                fails.add("B5B10-explosion")
+            hidden = death.get((draw_if["inputs"].get("SUBSTACK2") or [None, None])[1], {})
+            if hidden.get("opcode") != "looks_hide":
                 fails.add("CAB05-death-hidden-pause")
-        if count("solv_death", "control_repeat", director.POST_DEATH_PAUSE_TICKS) != 1:
+        window_ends = [
+            b
+            for b in stage.values()
+            if b["opcode"] == "operator_gt" and var_operand(b["inputs"].get("OPERAND1")) == director.DYING_TICK_ID
+        ]
+        if (
+            len(window_ends) != 1
+            or num(window_ends[0]["inputs"].get("OPERAND2"))
+            != director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS + director.POST_DEATH_PAUSE_TICKS - 1
+        ):
+            fails.add("B5B10-pause")
+        if any(
+            count("solv_death", "control_repeat", times)
+            for times in (director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS, director.POST_DEATH_PAUSE_TICKS)
+        ):
             fails.add("B5B10-pause")
         if count("solv_death", "control_wait") != 0:
             fails.add("B5B10-wall-clock")
@@ -19506,11 +19548,19 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertNotIn(
             "sound_playuntildone", {block["opcode"] for block in death.values()}
         )
-        self.assertTrue(
+        # #158: the walk's hit raises the cue (Stage), so the renderer no longer sends it either.
+        self.assertFalse(
             any(
                 block["opcode"] == "event_broadcast"
                 and block["inputs"]["BROADCAST_INPUT"][1][1] == "sfx death"
                 for block in death.values()
+            )
+        )
+        self.assertTrue(
+            any(
+                block["opcode"] == "event_broadcast"
+                and block["inputs"]["BROADCAST_INPUT"][1][1] == "sfx death"
+                for block in next(t for t in targets.values() if t["isStage"])["blocks"].values()
             )
         )
         self.assertTrue(
@@ -19650,14 +19700,14 @@ class ScratchProjectTests(unittest.TestCase):
             )
             b["opcode"] = "motion_gotoxy"
 
-        def break_death_pause(p):  # B10: remove the post-death pause
+        def break_death_pause(p):  # B10: end the walk's window straight after the explosion (no pause)
             b = first(
                 p,
-                "solv_death",
-                lambda b: b["opcode"] == "control_repeat"
-                and num(b["inputs"].get("TIMES")) == director.POST_DEATH_PAUSE_TICKS,
+                "Stage",
+                lambda b: b["opcode"] == "operator_gt"
+                and (b["inputs"].get("OPERAND1") or [None, [None, None, None]])[1][2:3] == [director.DYING_TICK_ID],
             )
-            b["inputs"]["TIMES"] = [1, [4, 1]]
+            b["inputs"]["OPERAND2"] = [1, [4, director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS - 1]]
 
         def break_marker(p):  # B7: re-hide the impact marker
             b = first(p, "target_b", lambda b: b["opcode"] == "looks_show")
@@ -19687,19 +19737,26 @@ class ScratchProjectTests(unittest.TestCase):
             b = first(p, "target_b", lambda b: b["opcode"] == "event_whenbroadcastreceived")
             b["fields"]["BROADCAST_OPTION"][0] = "bomb"
 
-        def explosion_loop(p):
-            return first(
+        def death_draw_if(p):
+            death = blocks_of(p, "solv_death")
+            hat = first(
                 p,
                 "solv_death",
-                lambda b: b["opcode"] == "control_repeat"
-                and num(b["inputs"].get("TIMES")) == director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS,
+                lambda b: b["opcode"] == "event_whenbroadcastreceived"
+                and b["fields"].get("BROADCAST_OPTION", [None])[0] == "death draw",
             )
+            return death, death[hat["next"]]
 
         def break_explosion_holds(p):  # B5: lengthen the explosion by a tick
-            explosion_loop(p)["inputs"]["TIMES"] = [1, [4, director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS + 1]]
+            death, draw_if = death_draw_if(p)
+            death[draw_if["inputs"]["CONDITION"][1]]["inputs"]["OPERAND2"] = [
+                1,
+                [4, director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS + 1],
+            ]
 
         def show_through_pause(p):  # CAB-05: leave the last explosion frame drawn over the pause
-            blocks_of(p, "solv_death")[explosion_loop(p)["next"]]["opcode"] = "looks_show"
+            death, draw_if = death_draw_if(p)
+            death[draw_if["inputs"]["SUBSTACK2"][1]]["opcode"] = "looks_show"
 
         def break_bomb_arm(p):  # B2: fail to set the in-flight guard on arm (now Stage-owned)
             b = first(
@@ -21514,7 +21571,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "7e0ae006a6436cd75931bcb1a792c0915321fd1aa9f98a21805249ca109d8b2d",
+            "3e887925a4ad3270692f28800ef2c971ac097c0fe5e5da2b5a1e1810e0524fae",
             build_hash,
         )
 

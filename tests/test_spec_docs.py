@@ -584,32 +584,55 @@ class GeneratedAreaClock(unittest.TestCase):
         return area
 
     def test_generated_checkpoint_matches_arcade_outcome(self):
-        # roadmap-evidence: AREA-01 success  (the emitted projected checkpoint gives every reachable
-        #   death the arcade's area outcome, including the completion-during-explosion skip and the
-        #   no-skip carry window)
-        # Run the SHIPPED checkpoint statements (both sites) for every reachable death-tick progress —
-        # area 1 (0..65024) and a carried area (-480..65024) — and compare the area they leave with the
-        # independent tick-by-tick arcade model above.
+        # roadmap-evidence: AREA-01 success  (the emitted checkpoint, read after the walk has scrolled
+        #   through the 44-tick explosion window, gives every reachable death the arcade's area outcome,
+        #   including the completion-during-explosion skip and the no-skip carry window)
+        # #158 (slice 21): the world keeps running through the explosion, so the walk itself scrolls the 44
+        # ticks (completion live, carrying as `advance area` does) and the SHIPPED checkpoint (both sites)
+        # then reads the live row. Model the walk's window here, run the shipped band statement on the
+        # progress it leaves, and compare with the independent arcade model above for every reachable
+        # death-tick progress — area 1 (0..65024) and a carried area (-480..65024).
         blocks = _stage_blocks(json.loads(PROJECT_JSON.read_text()))
-        starts = [
-            bid for bid, b in blocks.items()
-            if b["opcode"] == "data_setvariableto"
-            and b["fields"]["VARIABLE"][0] == "checkpoint progress"
-        ]
+
+        def is_band(b):
+            if b["opcode"] != "control_if":
+                return False
+            cond = blocks.get((b["inputs"].get("CONDITION") or [None, None])[1])
+            if not cond or cond["opcode"] != "operator_and":
+                return False
+            parts = [blocks.get(cond["inputs"][k][1]) for k in ("OPERAND1", "OPERAND2")]
+            return any(
+                g is not None
+                and g["opcode"] == "operator_gt"
+                and (g["inputs"].get("OPERAND2") or [None, [None, None]])[1][1:2] == [13]
+                for g in parts
+            )
+
+        starts = [bid for bid, b in blocks.items() if is_band(b)]
         self.assertEqual(2, len(starts), "the checkpoint runs at the new-life re-top and the 2P handoff")
+
+        def walk_window(progress, area):
+            for _tick in range(44):
+                progress += 32
+                if ((0x0D00 - progress) % 0x10000) // 0x100 == 14 and progress > 0:
+                    area = 7 if area == 16 else area + 1
+                    progress -= 0x10000
+            return progress, area
+
         outcomes = {}
         for start in starts:
             for area in (5, 16):
                 for progress in range(-480, 65056, 32):
-                    env = {"area progress": progress, "area number": area}
-                    _run_statements(blocks, start, env, limit=3)
+                    end_progress, end_area = walk_window(progress, area)
+                    env = {"area progress": end_progress, "area number": end_area}
+                    _run_statements(blocks, start, env, limit=1)
                     expected = self._arcade_checkpoint(progress, area)
                     self.assertEqual(expected, env["area number"], f"death at {progress}, area {area}")
                     if area == 5:
                         outcomes[progress] = env["area number"] - area
         # The landmarks the records state: a death in the carry window does not skip; a death 37-44
         # ticks before the end completes during the explosion and then skips the next area too; the
-        # band floor moved 44 ticks earlier than the frozen-row read.
+        # band floor sits 44 ticks earlier than a frozen death-tick read would put it.
         self.assertTrue(all(outcomes[p] == 0 for p in range(-480, -255, 32)))
         self.assertEqual(
             [p for p, d in outcomes.items() if d == 2], list(range(63648, 63873, 32))
@@ -619,8 +642,9 @@ class GeneratedAreaClock(unittest.TestCase):
         self.assertEqual(50080, first_advance)
 
     def test_checkpoint_projection_bites(self):
-        # roadmap-evidence: AREA-01 failure  (a checkpoint that reads the frozen death-tick row — no
-        #   projection — misses the completion-during-explosion skip and the moved band floor)
+        # roadmap-evidence: AREA-01 failure  (a checkpoint that reads the death-tick row — a world frozen at
+        #   the hit, the pre-#158 shape without its projection — misses the completion-during-explosion skip
+        #   and the moved band floor)
         def frozen(progress, area):
             row = ((0x0D00 - progress) % 0x10000) // 0x100
             return area + 1 if 14 <= row <= 0x43 else area
