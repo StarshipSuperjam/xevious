@@ -1,9 +1,9 @@
 {
   "version": 1,
   "generator_version": 1,
-  "manifest_sha256": "333292e13873deebc3578b5a372fb9ae0aa19a1bbd6d15bba1967b8d052d5c30",
+  "manifest_sha256": "984212e4a6d81ae1273b3b07f309856a84745c8a7df395ffab7d649ad9a863be",
   "outputs": {
-    "a24961bd4fd2644e06471237dfd6325b.png": {
+    "11be22e6641e331073e86efd7de998bc.png": {
       "kind": "glyph",
       "name": "glyph/A",
       "rect": [
@@ -15,7 +15,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "f8a769f4c185d8dda245fc471d42a9e9.png": {
+    "2d82621ee699395a1a1436e78ac609c1.png": {
       "kind": "glyph",
       "name": "glyph/C",
       "rect": [
@@ -27,7 +27,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "8aef1f4258ba433ae5ed71582849c96d.png": {
+    "3391f80fd49e4bf1f09e3dc74c711646.png": {
       "kind": "glyph",
       "name": "glyph/E",
       "rect": [
@@ -39,7 +39,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "4159ab3154963f5162c9ee46ab4aec7d.png": {
+    "a803be11800c393fdfe2e2eb6cc579c0.png": {
       "kind": "glyph",
       "name": "glyph/G",
       "rect": [
@@ -51,7 +51,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "2cede9b96ad1758205c545423b9061ca.png": {
+    "ed79d1840ef4ad576a386522b815ed0c.png": {
       "kind": "glyph",
       "name": "glyph/H",
       "rect": [
@@ -63,7 +63,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "b6bc128dc9501e4597349944c3c6734f.png": {
+    "62170ae728844dd7b343966eadfdf909.png": {
       "kind": "glyph",
       "name": "glyph/I",
       "rect": [
@@ -75,7 +75,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "edd29f7a9732b318085735bb4dbfed28.png": {
+    "9cff98f00ebaefa967a37b68ecc2d723.png": {
       "kind": "glyph",
       "name": "glyph/M",
       "rect": [
@@ -87,7 +87,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "cbf90468afb2dabb97cbf1df898cd95f.png": {
+    "1072299cd848ee517a46f926809ea372.png": {
       "kind": "glyph",
       "name": "digit/0",
       "rect": [
@@ -99,7 +99,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "622fe458e1d0246fcba8890df39db185.png": {
+    "633938ed46e4cdd7c54c9240501efe41.png": {
       "kind": "glyph",
       "name": "glyph/P",
       "rect": [
@@ -111,7 +111,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "d3abb1c767fba7ee545419dd7815af58.png": {
+    "d9ed401003228bae40d93dd606dae44e.png": {
       "kind": "glyph",
       "name": "glyph/R",
       "rect": [
@@ -123,7 +123,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "3abc1a03d3ec0b690acc4f7414056c21.png": {
+    "0631ed16385ce00fb93ef52ce9e2c462.png": {
       "kind": "glyph",
       "name": "glyph/S",
       "rect": [
@@ -135,7 +135,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "6e431c2e37240a93cf6367bf5b7166b4.png": {
+    "1851896972f030c31aa93042d1a2d884.png": {
       "kind": "glyph",
       "name": "glyph/U",
       "rect": [
@@ -147,7 +147,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "4806c019c2f7b59d3514bd0381fecf6c.png": {
+    "4b0e81787324022144424224fc7351f2.png": {
       "kind": "glyph",
       "name": "glyph/V",
       "rect": [
@@ -159,7 +159,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "b0608508202b4397dc189274fcca80e1.png": {
+    "35a8bba9581e1e9340205b7a4bf06685.png": {
       "kind": "glyph",
       "name": "digit/1",
       "rect": [
@@ -171,7 +171,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "a233dc7ba98dac275bf399e4561b5da9.png": {
+    "974b2426de6f6dc3f1289526fff76b3a.png": {
       "kind": "glyph",
       "name": "digit/2",
       "rect": [
@@ -183,7 +183,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "09dca855bb94485eee48db4ba2e094f5.png": {
+    "1cd69aebf66f9b6ca55cafe9c5c19647.png": {
       "kind": "glyph",
       "name": "digit/3",
       "rect": [
@@ -195,7 +195,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "fe1aa016a3a1d92ccb63844421849e0d.png": {
+    "a7ad27ebc3474cc27cb9b9815d06bfa0.png": {
       "kind": "glyph",
       "name": "digit/4",
       "rect": [
@@ -207,7 +207,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "af3408847196a388f672ebccc936329c.png": {
+    "9a82ce56afbd866ce8006106091b8567.png": {
       "kind": "glyph",
       "name": "digit/5",
       "rect": [
@@ -219,7 +219,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "3c47eae3a7644d9ac07a0fdbf24b77ba.png": {
+    "f29c632cd826f66a8557bc4c747406e7.png": {
       "kind": "glyph",
       "name": "digit/6",
       "rect": [
@@ -231,7 +231,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "e99219178b188a992e565a8612a4718c.png": {
+    "0daeb544e98925744d29fc32af9116bc.png": {
       "kind": "glyph",
       "name": "digit/7",
       "rect": [
@@ -243,7 +243,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "f58953535c4ad299bfd50ecdec6e333b.png": {
+    "a238f146aaea35307baf838df37bc7f1.png": {
       "kind": "glyph",
       "name": "digit/8",
       "rect": [
@@ -255,7 +255,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "280e8021ad8e300ce17d6b75447f1fa7.png": {
+    "ae1bd82347176f80f26ae30a7aceb978.png": {
       "kind": "glyph",
       "name": "digit/9",
       "rect": [
@@ -267,7 +267,7 @@
       "recolor": "white",
       "generator_version": 1
     },
-    "0ac742ba828ebc2ff6ef993bcfff4c40.png": {
+    "d31a207dc174ac809a0cf6011a2cd4e1.png": {
       "kind": "glyph",
       "name": "hs/C",
       "rect": [
@@ -279,7 +279,7 @@
       "recolor": "yellow",
       "generator_version": 1
     },
-    "b1ee129cf78bf03746c49db05f9fca31.png": {
+    "09106fe46fd590b1836c887c5da1fad8.png": {
       "kind": "glyph",
       "name": "hs/E",
       "rect": [
@@ -291,7 +291,7 @@
       "recolor": "yellow",
       "generator_version": 1
     },
-    "740eb0b7490c509ee99a920669ba6f19.png": {
+    "c3049c869ae55f5aadbf09b78db66a5d.png": {
       "kind": "glyph",
       "name": "hs/G",
       "rect": [
@@ -303,7 +303,7 @@
       "recolor": "yellow",
       "generator_version": 1
     },
-    "64a7d8162a6bcf00815f4f94c1cce292.png": {
+    "1198855da04d9a01dd17cc8a549366c8.png": {
       "kind": "glyph",
       "name": "hs/H",
       "rect": [
@@ -315,7 +315,7 @@
       "recolor": "yellow",
       "generator_version": 1
     },
-    "0ef75d93f65ff0e3509948ad46c1d349.png": {
+    "04a95064258fa4225264aa0de6c2b539.png": {
       "kind": "glyph",
       "name": "hs/I",
       "rect": [
@@ -327,7 +327,7 @@
       "recolor": "yellow",
       "generator_version": 1
     },
-    "70511dfcdbcaeab0feb5f93d79071c7d.png": {
+    "0f894c9da6c580d69d5e1af16e81944d.png": {
       "kind": "glyph",
       "name": "hs/O",
       "rect": [
@@ -339,7 +339,7 @@
       "recolor": "yellow",
       "generator_version": 1
     },
-    "29b91425efd081ee5dfbd97543c64d1d.png": {
+    "956797e01c08c03fe06320159a6186eb.png": {
       "kind": "glyph",
       "name": "hs/R",
       "rect": [
@@ -351,7 +351,7 @@
       "recolor": "yellow",
       "generator_version": 1
     },
-    "5601d78fac9eb01d7ced6ce7242e40e1.png": {
+    "25b266746a245d26fe9dbb539b9a2121.png": {
       "kind": "glyph",
       "name": "hs/S",
       "rect": [
@@ -379,7 +379,7 @@
       "name": "extend",
       "generator_version": 1
     },
-    "4db3bb63b8e8f84b713b9c2c33b67562.png": {
+    "5009da425e2cab1931b4819c208f61f8.png": {
       "kind": "credit",
       "name": "credit",
       "text": [
@@ -393,14 +393,34 @@
       "name": "air_destroy",
       "generator_version": 1
     },
+    "26cad25da9d13a924450938e174db27a.wav": {
+      "kind": "game_sound",
+      "name": "andor_genesis",
+      "generator_version": 1
+    },
     "57fc7f1fc0968d5bb0ca08ccbef35740.wav": {
       "kind": "game_sound",
       "name": "bacura",
       "generator_version": 1
     },
+    "04be97cfa6686cb23d0294eb3e162492.wav": {
+      "kind": "game_sound",
+      "name": "bgm",
+      "generator_version": 1
+    },
+    "83598aacae5f7c3ebc37501c6a803443.wav": {
+      "kind": "game_sound",
+      "name": "blaster_fire",
+      "generator_version": 1
+    },
     "bc057a046ad0628da56171dda196976e.wav": {
       "kind": "game_sound",
       "name": "bonus_flag",
+      "generator_version": 1
+    },
+    "6fcac907d92df318159f97a75769c2af.wav": {
+      "kind": "game_sound",
+      "name": "credit",
       "generator_version": 1
     },
     "16c42ba9bdcbdb001971e90d341a6382.wav": {
@@ -413,9 +433,29 @@
       "name": "ground_destroy",
       "generator_version": 1
     },
+    "aadd29f6eeb1f65f49c0406d174025fb.wav": {
+      "kind": "game_sound",
+      "name": "name_entry",
+      "generator_version": 1
+    },
+    "618c9eaf07180a8ba7b4c69b1866efb5.wav": {
+      "kind": "game_sound",
+      "name": "name_entry_top",
+      "generator_version": 1
+    },
     "53c4552f29ecb3bf31211d23a382fa39.wav": {
       "kind": "game_sound",
       "name": "sheonite",
+      "generator_version": 1
+    },
+    "f07945a1b65713209ff680a8a1b8d1e9.wav": {
+      "kind": "game_sound",
+      "name": "solvalou_explode",
+      "generator_version": 1
+    },
+    "cdeaffc7fc6d20f1fe0a4ac857094082.wav": {
+      "kind": "game_sound",
+      "name": "start",
       "generator_version": 1
     },
     "69c1e82bac42ff81d7af0124a69990a2.wav": {
@@ -423,267 +463,272 @@
       "name": "zakato",
       "generator_version": 1
     },
-    "3dd97ce85f8370f1c6f887e06d69b1a4.png": {
+    "fa1955e97059f766f68afaf17462081f.wav": {
+      "kind": "game_sound",
+      "name": "zapper_fire",
+      "generator_version": 1
+    },
+    "846e61ac3ff83edc2166c27829567f0e.png": {
       "kind": "attract",
       "name": "glyph/O",
       "generator_version": 1
     },
-    "6dfb27006741525e939cfadb53686df8.png": {
+    "9dbdbf5f1882435e8f9a28388c070400.png": {
       "kind": "attract",
       "name": "digit/1",
       "generator_version": 1
     },
-    "7ff6f5a8efce3eebbf369b78d8e07fad.png": {
+    "303cdec8ff277091e0f75f58e8740bfa.png": {
       "kind": "attract",
       "name": "digit/2",
       "generator_version": 1
     },
-    "8a285c4403a1d37310131dd3dd1abea2.png": {
+    "6bff0bcfdb08e93bce6d7a528096d016.png": {
       "kind": "attract",
       "name": "digit/3",
       "generator_version": 1
     },
-    "a0dd90725e2dd1b9998836c4cc412522.png": {
+    "8eff3da3c6b677dc241e15399ff96083.png": {
       "kind": "attract",
       "name": "digit/4",
       "generator_version": 1
     },
-    "900f3efbb8866c300b31f3f66be052f5.png": {
+    "3a1c0af2fe50df79ac0bb7cbf0d63c39.png": {
       "kind": "attract",
       "name": "digit/5",
       "generator_version": 1
     },
-    "b21b9f647edcaaabdf8fb81ea5a540d1.png": {
+    "571798f45daa380767c89f067025e7dd.png": {
       "kind": "attract",
       "name": "digit/6",
       "generator_version": 1
     },
-    "0716394310d0aeb77739a4fad04417dd.png": {
+    "172974bc3dff546cf22f22677ae1cae9.png": {
       "kind": "attract",
       "name": "digit/7",
       "generator_version": 1
     },
-    "a03094797702b1d9d4c6ed8f6b2afaa5.png": {
+    "b95b76c7f32827d5c7df36ff8aa0855b.png": {
       "kind": "attract",
       "name": "digit/8",
       "generator_version": 1
     },
-    "56613d5194231eee1f7e1dc4663cc82c.png": {
+    "5105948f769f6d16a50360edf1dc3a71.png": {
       "kind": "attract",
       "name": "digit/9",
       "generator_version": 1
     },
-    "9aefc80582f27742d45cc6f771bf2593.png": {
+    "fdda6fc74ebd8a05c78110aab7a7d377.png": {
       "kind": "attract",
       "name": "credit-label",
       "generator_version": 1
     },
-    "d9fbeddb3754db8d539b315cdadcb8b6.png": {
+    "5f5ff2d952dc175b346a2ac891a60041.png": {
       "kind": "attract",
       "name": "push-start",
       "generator_version": 1
     },
-    "64cd63fcbeb4a3e983c14afa15cb3b48.png": {
+    "0d70f55ec757bcf05498951513133b1c.png": {
       "kind": "attract",
       "name": "insert-coin",
       "generator_version": 1
     },
-    "f4050bb18b08de13fa547aae1880c6bb.png": {
+    "d52065e8b2d4a14f993b9ff66aa95d02.png": {
       "kind": "attract",
       "name": "select-1p",
       "generator_version": 1
     },
-    "a2c8ddcbb2bbafe9e6290eff65f4f80c.png": {
+    "01cea9176b2e40f9fda42411546c49cd.png": {
       "kind": "attract",
       "name": "select-2p",
       "generator_version": 1
     },
-    "db2312eee2ef40e3112f55e00ebd1299.png": {
+    "a1dbb71d8062a2cd2d30035b4d28686d.png": {
       "kind": "attract",
       "name": "best-five-header",
       "generator_version": 1
     },
-    "e813cf336c00cf9852b4d6766b0fc4e0.png": {
+    "e5ddc81186ddf86403062085ac08563d.png": {
       "kind": "attract",
       "name": "rank/1",
       "generator_version": 1
     },
-    "cc3e9aa0e0b17470b2cff6e5cc1ff63e.png": {
+    "bb58392f0f178ed6ef929ac29e240cd9.png": {
       "kind": "attract",
       "name": "rank/2",
       "generator_version": 1
     },
-    "f742026b7d6a32eee601770a90963d9f.png": {
+    "ca6bad7b7f5f3f5d3b9ba50f9de7e366.png": {
       "kind": "attract",
       "name": "rank/3",
       "generator_version": 1
     },
-    "3d4b1c74032d709b48da8aab3bbce4ac.png": {
+    "918877124f9aa1ab1aa4bd0b7f7316ba.png": {
       "kind": "attract",
       "name": "rank/4",
       "generator_version": 1
     },
-    "3ab78661b7e70921ff24c82c203749bf.png": {
+    "a4f8c63394046f83e232cf610d79e891.png": {
       "kind": "attract",
       "name": "rank/5",
       "generator_version": 1
     },
-    "375a326f1f448dc1b780c78fa1ac116d.png": {
+    "e87517b9811f0be4bcfb69befbb043c4.png": {
       "kind": "attract",
       "name": "entry-congrats",
       "generator_version": 1
     },
-    "18e1e92ac6224d2b146f30a14808112e.png": {
+    "25f49578ec4cdbb5cbb8a226327827f4.png": {
       "kind": "attract",
       "name": "entry-initials",
       "generator_version": 1
     },
-    "fcc8c28f0a9da94d0cfe55ea3501389e.png": {
+    "ca72ba4d11039557d4ce2800899e9097.png": {
       "kind": "attract",
       "name": "entry-player-1",
       "generator_version": 1
     },
-    "03c15250a4524504ed2e95dcfce8e2f2.png": {
+    "8592e5549d7ffd4e92c7b1d7f58f0d40.png": {
       "kind": "attract",
       "name": "entry-player-2",
       "generator_version": 1
     },
-    "d63109882d5335375d61e1717aa92a2a.png": {
+    "0e4ef39153a7b904dd0bbaa12755c3e7.png": {
       "kind": "attract",
       "name": "glyph/A",
       "generator_version": 1
     },
-    "80938f80ec136d9a4b4824f9e0c9b825.png": {
+    "2542a1a1cbb52dfd3d72aba34d4c4aa6.png": {
       "kind": "attract",
       "name": "glyph/B",
       "generator_version": 1
     },
-    "052943a49aa9be12b7f4caa41a836cc1.png": {
+    "4cc23cffcdaed7b6f7642a2cc935be16.png": {
       "kind": "attract",
       "name": "glyph/C",
       "generator_version": 1
     },
-    "f0ace1d40f9fa242098bbd555c825698.png": {
+    "c49f0618af23718e336767127eb5e5c9.png": {
       "kind": "attract",
       "name": "glyph/D",
       "generator_version": 1
     },
-    "13aa3fe7d2f19e33983f87d7f0b528f9.png": {
+    "7df0240e52537b56ee60398523617c2e.png": {
       "kind": "attract",
       "name": "glyph/E",
       "generator_version": 1
     },
-    "73fc9da4c536ec2037b47b21be962e90.png": {
+    "106915e3e11a43aa45ea928ab686275e.png": {
       "kind": "attract",
       "name": "glyph/F",
       "generator_version": 1
     },
-    "6e0d7604c7e1531c5a3529172ca2c7e8.png": {
+    "8b091b47f1dc31565c81b35125ba53ba.png": {
       "kind": "attract",
       "name": "glyph/G",
       "generator_version": 1
     },
-    "bbafae71e167caa9227718564347282b.png": {
+    "f1c19625af9ab3ec394d0524ad75fb3c.png": {
       "kind": "attract",
       "name": "glyph/H",
       "generator_version": 1
     },
-    "ae7e649881eb1b40502c5556d4511af8.png": {
+    "c8a88d74aa7d95cb50c6da4d4d93355c.png": {
       "kind": "attract",
       "name": "glyph/I",
       "generator_version": 1
     },
-    "15f7f7f0626638674a2333e57a3b120e.png": {
+    "a3bb57af6eec1955fa9bc484e8c70e00.png": {
       "kind": "attract",
       "name": "glyph/J",
       "generator_version": 1
     },
-    "48d20c5ee5fd2dd18b80c867e3ae55dc.png": {
+    "4997ef7015187626021d24a658d20bd2.png": {
       "kind": "attract",
       "name": "glyph/K",
       "generator_version": 1
     },
-    "95f87fe213b2cb599d33d630a1eb3b40.png": {
+    "ad3f75a6cee8281d1b80a2550c342873.png": {
       "kind": "attract",
       "name": "glyph/L",
       "generator_version": 1
     },
-    "7f0532d89d1c1fe53b887167fac7e8ff.png": {
+    "50bf99243a43103ae335982b0fe86caa.png": {
       "kind": "attract",
       "name": "glyph/M",
       "generator_version": 1
     },
-    "3529f7e7ad3cea19b24aceeca56eb37a.png": {
+    "2fa07087bb08daf2561d0172cd6b21e1.png": {
       "kind": "attract",
       "name": "glyph/N",
       "generator_version": 1
     },
-    "496efc46abedacca2833b7f3394fd3eb.png": {
+    "5eb7b8b9a66c20ffb33ca768962d8515.png": {
       "kind": "attract",
       "name": "glyph/P",
       "generator_version": 1
     },
-    "2fb2d0f34b4a3c71a3ffbea32e564c30.png": {
+    "52309530e39600024bfe658752c82834.png": {
       "kind": "attract",
       "name": "glyph/Q",
       "generator_version": 1
     },
-    "2e91e053d32e7aa3e0544d5e71dc442b.png": {
+    "7bc90652f80063ef749382862e9850de.png": {
       "kind": "attract",
       "name": "glyph/R",
       "generator_version": 1
     },
-    "5c4b1a603bf3b0dab7f43c5a3d11565b.png": {
+    "a1113f922c1e5a8d685243ec2e9834c5.png": {
       "kind": "attract",
       "name": "glyph/S",
       "generator_version": 1
     },
-    "1ed843590f3781e5880a636b7cfc13e0.png": {
+    "c65c5df5d1c785bcf8f29a9cf0880743.png": {
       "kind": "attract",
       "name": "glyph/T",
       "generator_version": 1
     },
-    "2a61284e8b95113a865681360611260e.png": {
+    "edc9a261701771dc63be1b1ac7285f4d.png": {
       "kind": "attract",
       "name": "glyph/U",
       "generator_version": 1
     },
-    "468d04018913269bddd28ae3ae5136a7.png": {
+    "46f616b42d07c3c57e7caff6d58ae33f.png": {
       "kind": "attract",
       "name": "glyph/V",
       "generator_version": 1
     },
-    "6d6327d33df8cd12c613606806c78261.png": {
+    "07384573c84042807d2ca5e00106e69a.png": {
       "kind": "attract",
       "name": "glyph/W",
       "generator_version": 1
     },
-    "a589d0b3154a55be30e52bd144ae684e.png": {
+    "8214046c5cf58ee5e0ee0403d485f7f2.png": {
       "kind": "attract",
       "name": "glyph/X",
       "generator_version": 1
     },
-    "39bffe08b92aec86c16fc14e2c89d0a4.png": {
+    "e7dfd1b40a0a8b265694e4862aa773de.png": {
       "kind": "attract",
       "name": "glyph/Y",
       "generator_version": 1
     },
-    "9f5cdc8d9e72b493b6afcf0e25ccd8b2.png": {
+    "aeaa195949dd4d6433813be87a72260b.png": {
       "kind": "attract",
       "name": "glyph/Z",
       "generator_version": 1
     },
-    "b5767372e08802065523174c94eef6e5.png": {
+    "181f0bc6b72d60f2bc03cf80975d3cc8.png": {
       "kind": "attract",
       "name": "glyph/.",
       "generator_version": 1
     },
-    "28b10c7d97bce2107812386c39a05f64.png": {
+    "ef418edda9e05d1faed02063a9409461.png": {
       "kind": "banner",
       "name": "game-over-player-1",
       "generator_version": 1
     },
-    "3d0d49990c3fd136e30b9652ff1d9531.png": {
+    "955061f4229283977ce14e92a8ff93ae.png": {
       "kind": "banner",
       "name": "game-over-player-2",
       "generator_version": 1

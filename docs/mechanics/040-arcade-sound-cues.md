@@ -67,3 +67,13 @@
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
+
+## Update (presentation slice, CAB-05)
+
+Deviations (1) **base sounds kept** and (2) **unbuilt-behavior cues deferred**, and the "unchanged" base music,
+start jingle, death and bomb sounds in the Mechanic and Acceptance fields, are superseded ([record 055](055-presentation-fidelity.md)). Slice 20
+replaces the base start jingle, flight music, death sound, shot sound and both bomb sounds with the arcade
+recordings (`start`, `bgm`, `solvalou_explode`, `zapper_fire`, one `blaster_fire`), and adds the coin sound, the
+two high-score entry tunes and the Andor Genesis drone; the bonus flag cue was already added with SEC-02
+([record 044](044-secrets.md)). The replaced baseline sounds stay in the project unplayed. The extend cue and the
+six cues recorded here are unchanged.

@@ -185,7 +185,7 @@ ATTRACT_SELECTOR_LABELS = (
 # labels above these attach to the HUD target (not start_screen) — the banner shows on the game field during a
 # two-player handoff, where the HUD is the during-play overlay (game_director's HUD banner clone, gated on
 # `banner player`, switches to the matching costume). Same credited sheet + compositor; rendered at the shared
-# SMALL_TEXT_GEOM cell (~16 px, slice-18 playtest scale correction) so the banner matches the plain GAME OVER
+# SMALL_TEXT_GEOM cell (slice-18 playtest scale correction) so the banner matches the plain GAME OVER
 # screen and the 18-char line stays on the 480-wide stage. All glyphs (G A M E O V R P L Y, space, and 1/2) are
 # already in SHEET_TEXT_RECTS. The wording is arcade-faithful English UI text, set in the credited font like
 # every other port string.
@@ -202,7 +202,7 @@ BANNER_COSTUME_NAMES = frozenset(name for name, _text in BANNER_LABELS)
 # so this is the port's own wording in the credited font, exactly like the CREDIT / PUSH START / 1P-2P
 # selector strings (the operator confirms the wording at playtest). All glyphs used (C O N G R A T U L I S E Y P,
 # space, and 1/2) are already in SHEET_TEXT_RECTS; the longest line (ENTER YOUR INITIALS, 19 chars) is
-# 19 * 17 = 323 px < 480, so it fits the stage at the SMALL_TEXT_GEOM advance.
+# 19 * 20 - 2 = 378 px = 189 units < 480, so it fits the stage at the SMALL_TEXT_GEOM advance.
 ATTRACT_ENTRY_LABELS = (
     ("entry-congrats", "CONGRATULATIONS"),
     ("entry-initials", "ENTER YOUR INITIALS"),
@@ -246,35 +246,43 @@ SHEET_TEXT_RECTS = {
 }
 # Native (sheet-pixel) cell the crops are laid out on before decimation. 100 clears the widest
 # measured glyph rect (98 px) with a symmetric 1 px margin and divides evenly by the downscale, so
-# the decimation is exact (mirrors the HUD manifest's 100/4 geometry). One space char = one empty
+# the decimation is exact (the HUD manifest's 100 px cell). These are the compositor's defaults; every
+# caller now passes SMALL_TEXT_GEOM or the credit's own gaps. One space char = one empty
 # advance. Monospace so the best-five rank/initials/score columns line up.
 SHEET_TEXT_CELL_W = 100
 SHEET_TEXT_CELL_H = 100
 SHEET_TEXT_GLYPH_GAP = 8  # native columns between cells; 108 total advance, divisible by 4
 SHEET_TEXT_LINE_GAP = 20  # native rows between lines; 120 total, divisible by 4
-SHEET_TEXT_DOWNSCALE = 4  # 100 px cell -> 25 px costume cell, matching the HUD glyph pixel size
+SHEET_TEXT_DOWNSCALE = 4  # 100 px cell -> 25 px costume cell
 
-# The SEC-03 hidden-credit overlay uses the SAME sheet and compositor, but its longest line
-# ("BY STARSHIP SUPERJAM", 20 chars) will not fit the 480 px stage at the 27 px attract advance
-# (20 * 27 > 540). Render it at a smaller cell so the two-line credit sits within the stage:
-# 100 px cell / downscale 5 -> 20 px cells, 22 px advance, so line 2 is 20 * 110 - 10 = 2190 native
-# -> 438 px < 480. Gaps chosen divisible by the downscale so the decimation stays exact.
-SHEET_CREDIT_GLYPH_GAP = 10  # native columns between cells; 110 advance, divisible by 5
-SHEET_CREDIT_LINE_GAP = 20  # native rows between lines; 120 pitch, divisible by 5
-SHEET_CREDIT_DOWNSCALE = 5  # 100 px cell -> 20 px costume cell; keeps the widest credit line on-stage
+# CAB-05 (slice 20, docs/mechanics 054 deviation 16): every sheet-text costume is rendered at the size it
+# is drawn, so it is resampled once (here) rather than twice (here, then again by a run-time size). The
+# text grid is 10 stage units a column and a row (game_director.HUD_TEXT_PITCH); at bitmap resolution 2 a
+# costume pixel is half a stage unit, so one column is exactly 20 costume pixels and the costume draws at
+# 100% — on a 2x (full-screen or high-density) stage each costume pixel is one screen pixel.
+TEXT_BITMAP_RESOLUTION = 2
 
 # Playtest correction (slice 18): at the default attract cell (25 px) the title-screen text — the
 # CREDIT line, the PUSH START / INSERT COIN prompt, and the 1P/2P selector labels — read far too
 # large and the stacked lines overlapped, and the "GAME OVER PLAYER n" banner towered over the plain
-# GAME OVER screen (per-glyph HUD costumes at a 16 px advance). Render all of that title and banner
-# text at a smaller cell matched to that HUD GAME OVER glyph scale: cell 112 / downscale 7 -> 16 px
-# cells, 17 px advance, 18 px line pitch. The cell and both gaps divide by the downscale so the
-# decimation stays exact. The best-five high-score table keeps the default cell (its own attract
-# sub-screen, not reported and unchanged this correction).
-SHEET_SMALL_CELL = 112
-SHEET_SMALL_GLYPH_GAP = 7  # 112 + 7 = 119 advance / 7 = 17 px
-SHEET_SMALL_LINE_GAP = 14  # 112 + 14 = 126 pitch / 7 = 18 px
-SHEET_SMALL_DOWNSCALE = 7
+# GAME OVER screen. All of that title and banner text (and, since slice 20, the best-five table) renders
+# at a smaller cell matched to the HUD GAME OVER glyph scale. CAB-05 re-cut that cell for the
+# whole-pixel grid: cell 108 / downscale 6 -> 18 px cells with a 2 px gap, a 20 px (one column) advance
+# and a 20 px (one row) line pitch — the same ink size as the slice-18 cell (97 native px of ink is
+# 8.1 stage units either way). The cell clears the widest glyph rect (98 px) and the cell and both gaps
+# divide by the downscale, so the decimation stays exact.
+SHEET_SMALL_CELL = 108
+SHEET_SMALL_GLYPH_GAP = 12  # 108 + 12 = 120 advance / 6 = 20 px = one 10-unit column
+SHEET_SMALL_LINE_GAP = 12  # 108 + 12 = 120 pitch / 6 = 20 px = one 10-unit row
+SHEET_SMALL_DOWNSCALE = 6
+
+# The SEC-03 hidden-credit overlay uses the SAME sheet, compositor and cell as the small text — its
+# longest line ("BY STARSHIP SUPERJAM", 20 chars) is 20 * 20 - 2 = 398 px = 199 units, well on-stage —
+# but keeps its own line pitch: 22 px (11 units), the whole-pixel pitch nearest the 10.9 units the owner
+# kept (docs/mechanics 054 deviation 13). The gaps divide by the downscale so the decimation stays exact.
+SHEET_CREDIT_GLYPH_GAP = SHEET_SMALL_GLYPH_GAP
+SHEET_CREDIT_LINE_GAP = 24  # 108 + 24 = 132 pitch / 6 = 22 px
+SHEET_CREDIT_DOWNSCALE = SHEET_SMALL_DOWNSCALE
 SMALL_TEXT_GEOM = dict(
     cell_w=SHEET_SMALL_CELL,
     cell_h=SHEET_SMALL_CELL,
@@ -569,14 +577,16 @@ def render_life_icon(manifest: dict) -> LifeIconOutput:
 
 def render_credit(sheet: se.Image, threshold: int) -> CreditOutput:
     """Compose the two-line hidden-credit overlay bitmap (SEC-03) from the high-res Xevious HUD
-    font sheet — the same sheet and compositor as the attract text, at the smaller SEC-03 cell
-    so the widest line ("BY STARSHIP SUPERJAM") stays within the 480 px stage. The wording is the
+    font sheet — the same sheet, compositor and cell as the attract text, at its own line pitch
+    (SHEET_CREDIT_LINE_GAP). The wording is the
     port's own original content; only the letterforms are the credited CC-BY font."""
     return render_sheet_text_costume(
         sheet,
         threshold,
         CREDIT_COSTUME_NAME,
         CREDIT_TEXT_LINES,
+        cell_w=SHEET_SMALL_CELL,
+        cell_h=SHEET_SMALL_CELL,
         glyph_gap=SHEET_CREDIT_GLYPH_GAP,
         line_gap=SHEET_CREDIT_LINE_GAP,
         downscale=SHEET_CREDIT_DOWNSCALE,
@@ -598,10 +608,9 @@ def render_sheet_text_costume(
     """Compose one costume of centered text lines from the high-res Xevious HUD font sheet.
 
     The single compositor for every sheet-font overlay — the CAB-01 attract text and CAB-03
-    banner (render_attract_costumes / render_banner_costumes; the title text and banner at the
-    smaller SMALL_TEXT_GEOM cell since the slice-18 playtest scale correction, the best-five table
-    at the default cell) and the SEC-03 hidden credit (render_credit, at a smaller cell so its
-    longest line stays on-stage). Each glyph is
+    banner (render_attract_costumes / render_banner_costumes) and the SEC-03 hidden credit
+    (render_credit), all on the SMALL_TEXT_GEOM cell since slice 20: one 20 px column per character
+    at bitmapResolution 2, so each draws on the 10-unit text grid at 100%. Each glyph is
     cropped from the credited sheet by its SHEET_TEXT_RECTS entry, placed in a fixed monospace
     cell — centered horizontally, bottom-aligned to a shared baseline — and the assembled lines
     are decimated by `downscale`. Monospace so the best-five columns align; a space is one empty
@@ -649,7 +658,7 @@ def render_attract_costumes(sheet: se.Image, threshold: int) -> list[CreditOutpu
     clone switches to `digit/<n>` each tick); the per-letter `glyph/<c>` costumes drive the live
     best-five NAME columns (CAB-04); the CREDIT / PUSH START / INSERT COIN labels are static. Rendered
     from the same credited HUD font sheet the score/label readouts use (render_sheet_text_costume)."""
-    # The title-screen text renders at the smaller SMALL_TEXT_GEOM cell (~16 px, slice-18 playtest scale
+    # The title-screen text renders at the smaller SMALL_TEXT_GEOM cell (one 20 px column, slice-18 playtest scale
     # correction) so the stacked title lines do not overlap; the live best-five cells use the same cell so
     # the table columns align with the credit digits.
     outputs = [
@@ -680,8 +689,8 @@ def render_banner_costumes(sheet: se.Image, threshold: int) -> list[CreditOutput
     """The CAB-03 "GAME OVER PLAYER n" elimination-banner costumes, in the Xevious HUD font.
 
     Two whole-string costumes (BANNER_LABELS) composited by the same sheet compositor as the
-    attract text. Playtest correction (slice 18): rendered at the shared SMALL_TEXT_GEOM cell
-    (~16 px), matching the plain GAME OVER screen's per-glyph HUD scale, rather than the larger
+    attract text. Playtest correction (slice 18): rendered at the shared SMALL_TEXT_GEOM cell,
+    matching the plain GAME OVER screen's per-glyph HUD scale, rather than the larger
     credit downscale that towered over it; the 18-char line still fits the 480 px stage. These
     attach to the HUD target (not start_screen): the banner shows on the game field during a
     two-player handoff, where game_director's HUD banner clone — gated on `banner player` —
@@ -695,7 +704,7 @@ def render_banner_costumes(sheet: se.Image, threshold: int) -> list[CreditOutput
 def _credit_costume(output: CreditOutput) -> dict:
     return {
         "name": output.name,
-        "bitmapResolution": 1,
+        "bitmapResolution": TEXT_BITMAP_RESOLUTION,
         "dataFormat": "png",
         "assetId": output.filename.removesuffix(".png"),
         "md5ext": output.filename,
@@ -715,9 +724,9 @@ def _overlay_credit_record(manifest: dict, output: CreditOutput) -> dict:
         "notes": (
             f"Credit: {sheet['credit']}. The repository operator did not create the font. "
             f"Source {sheet['asset']} at SHA-256 {sheet['sha256']}; glyphs cropped by "
-            f"SHEET_TEXT_RECTS, laid out on a {SHEET_TEXT_CELL_W}px monospace cell and "
+            f"SHEET_TEXT_RECTS, laid out on a {SHEET_SMALL_CELL}px monospace cell and "
             f"{SHEET_CREDIT_DOWNSCALE}x nearest-neighbor decimated, white ink on transparent, "
-            "bitmapResolution 1. The two-line WORDING is the repository operator's own content: "
+            f"bitmapResolution {TEXT_BITMAP_RESOLUTION}. The two-line WORDING is the repository operator's own content: "
             f"{' / '.join(CREDIT_TEXT_LINES)} — NOT arcade art and NOT the arcade "
             "str_program_by_EVEZOO credit; the port's own placeholder text set in the credited font."
         ),
@@ -736,9 +745,10 @@ def _overlay_attract_record(manifest: dict, output: CreditOutput) -> dict:
             f"Credit: {sheet['credit']}. The repository operator did not create the font. "
             f"Source {sheet['asset']} at SHA-256 {sheet['sha256']}; glyphs cropped by "
             f"SHEET_TEXT_RECTS and nearest-neighbor decimated, white ink on transparent, "
-            f"bitmapResolution 1. Costumes on the start_screen target, all on the smaller "
+            f"bitmapResolution {TEXT_BITMAP_RESOLUTION}. Costumes on the start_screen target, all on the smaller "
             f"{SHEET_SMALL_CELL}px monospace cell at {SHEET_SMALL_DOWNSCALE}x (slice-18 playtest scale "
-            f"correction, ~16px to match the HUD GAME OVER glyphs): the title-screen text — the "
+            f"correction to match the HUD GAME OVER glyphs; one 20px column at the drawn size since "
+            f"slice 20): the title-screen text — the "
             f"credit-counter digits, the CREDIT / PUSH START / INSERT COIN prompts, and the CAB-02 "
             f"1P/2P start-selector labels (port-original control text — the arcade had no on-screen "
             f"selector); the PRES-01 best-five header (port-original wording) and ordinal rank labels "
@@ -765,8 +775,8 @@ def _overlay_banner_record(manifest: dict, output: CreditOutput) -> dict:
             f"Source {sheet['asset']} at SHA-256 {sheet['sha256']}; glyphs cropped by "
             f"SHEET_TEXT_RECTS, laid out on the {SHEET_SMALL_CELL}px monospace cell and "
             f"{SHEET_SMALL_DOWNSCALE}x nearest-neighbor decimated (slice-18 playtest scale "
-            f"correction, ~16px to match the plain GAME OVER screen), white ink on transparent, "
-            "bitmapResolution 1. Costume on the hud target: the game_director banner clone "
+            f"correction to match the plain GAME OVER screen), white ink on transparent, "
+            f"bitmapResolution {TEXT_BITMAP_RESOLUTION}. Costume on the hud target: the game_director banner clone "
             f"switches to it during a two-player handoff. The WORDING ({label}) is arcade-faithful "
             "English UI text set in the credited font — not arcade art and not transcribed ROM text."
         ),

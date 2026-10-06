@@ -6,7 +6,7 @@
 - Transfer class: General behavior, numeric constant, and historical baseline.
 - Scratch interpretation: The Stage owns `game state`, `state epoch`, `reset scope`, `death outcome`, an inspectable allowed-transition list, and one `transition to () reset ()` custom block. The block enters a temporary resetting state, waits for `director stop`, stops audio, waits for finite `director reset` handlers, then publishes the destination through `director enter`. D and G are temporary respawn and terminal-death fixtures whose outcome decision remains Stage-owned.
 - Scratch evidence: Stage variables (including the shared `bomb in flight` weapon guard) and `allowed transitions`; broadcasts `director stop`, `director reset`, `director enter`, `ready complete`, `death complete`, `game over complete`, and the `bomb` release broadcast; the blaster `blaster reload` counter and per-strip `scroll step` counters; finite reset handlers in `solvalou`, `blaster`, `area_01a`, `area_01b`, `start_screen`, `solv_death`, `target_a`, `target_b`, and `bomb`; deterministic generation in `tools/game_director.py`; structural and negative-fixture checks in `tests/test_scratch_project.py`.
-- Acceptance criteria: Green flag from every state produces the same title (gliding in from the top); Space performs one title-to-ready-to-playing sequence; READY holds its 30-tick beat with no speech bubble; D performs the tick-counted explosion, the post-death pause, and one respawn READY; G performs the death sequence and cold-title return (the GAME OVER presentation, its hold included, is deferred to ECO-04); held fire polls at the blaster reload cadence and one bomb arms at a time; gameplay input is inert outside playing; new-life reset preserves terrain while cold-start/new-game rewind it; old scripts, sounds, and clones cannot act after transition cleanup.
+- Acceptance criteria: Green flag from every state produces the same title (gliding in from the top); Space performs one title-to-ready-to-playing sequence; READY holds its beat with no speech bubble (30 ticks here; 32 since slice 20, see the update below); D performs the tick-counted explosion, the post-death pause, and one respawn READY; G performs the death sequence and cold-title return (the GAME OVER presentation, its hold included, is deferred to ECO-04); held fire polls at the blaster reload cadence and one bomb arms at a time; gameplay input is inert outside playing; new-life reset preserves terrain while cold-start/new-game rewind it; old scripts, sounds, and clones cannot act after transition cleanup.
 - Fidelity status: Repo-derived lifecycle interpreted for the current partial project; D/G death outcomes are deliberate pre-life-economy fixtures.
 - License status: The pinned reference repository states no reusable license; no reference source text or media was copied.
 - Known deviations or uncertainty: Attract, credits, player alternation, real collision death, life-count decisions, scoring, enemies, and high-score flow remain later slices. READY uses a Scratch speech bubble and the fixture timing is project-defined pending the presentation fidelity slice.
@@ -55,7 +55,7 @@ The regression-recovery build discharges audit items B1-B10 and A1-A2, re-expres
 **Tick conversion (units rule).** Gameplay timing is counted in build ticks (1 tick = 2 arcade frames;
 [core game systems](../spec/core-game-systems.md)). Only the tick roundings live here; each arcade-frame
 original stays in its locked spec section, cited above, never restated: blaster reload 10 ticks; explosion
-7 holds of 4 ticks (28 ticks total); post-death pause 16 ticks; READY hold 30 ticks. The former wall-clock
+7 holds of 4 ticks (28 ticks total); post-death pause 16 ticks; READY hold 32 ticks (30 until slice 20; see the update below). The former wall-clock
 `wait` blocks are gone from the touched gameplay scripts.
 
 **No-regression control.** `tests/test_scratch_project.py` now encodes the recovery contract structurally
@@ -74,3 +74,18 @@ from the craft counter rather than a hardcoded D/G value — is recorded in
 checkpoint exception to the restart rule is now built in the area clock and recorded in
 [015-area-clock](015-area-clock.md) — a death in the final fifth of an area advances to the next area
 instead of restarting — so the locked reset-scope rule is fully satisfied.
+
+## Update (presentation slice, CAB-05)
+
+Two statements above are superseded by slice 20's audio and animation pass ([record 055](055-presentation-fidelity.md)):
+
+- **READY hold.** The READY beat, recorded above as a 30-tick project-defined placeholder, is now 32 ticks,
+  sized to the arcade's 64-frame forest wait (`main_gameplay_loop` 511, 535–536 in `src/xevious_main.68k`). That
+  wait runs only after a death and shows no craft; the arcade's first life has none. The port keeps the hold on
+  the first life too and shows the craft, so this is a port reading — record 055 deviation (10).
+- **B5 death cue.** The 1.361 s base death sound is replaced by the arcade recording (1.81 s), which is longer
+  than the 44-tick explosion and pause. The arcade stops only the flight tune at a death and lets the death cue
+  play out (`update_solvalou` 2026–2030). The port now stops all sounds as the death begins, plays the cue, and
+  sets a `keep sounds` flag so the one transition after the death skips its stop-all; a `death cue playing`
+  latch then holds off any later stop-all, the respawning → playing edge included, until the cue has ended
+  (record 055 deviation (2)).

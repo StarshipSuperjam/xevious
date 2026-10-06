@@ -48,19 +48,18 @@ stopping old work and entering the destination; it is part of the recorded machi
 fixtures must expect it. In the Scratch build the Stage is the sole writer of state; all transitions pass
 through one transition block that stops old work, applies a named reset scope (cold-start, new-game,
 new-life, game-over — each with the postconditions recorded below), and enters the
-destination exactly once. One postcondition is
-already known to diverge from the arcade: the new-life scope preserves terrain position, while the arcade
-restarts the area from its top on every new life
-([Area progression and terrain](area-progression-and-terrain.md)) — recorded as an interim fixture for
-correction with the life-economy work. Presentation timings around these states, honestly marked: the READY hold (currently 30 ticks) is a
-**project-defined placeholder with no reference basis** — and the READY presentation state itself is a
-recorded deliberate presentation choice pending arcade confirmation of its arcade equivalent; the
-current 0.7-second death presentation is a **recorded divergence from the known arcade value** (the
-56-frame explosion plus 32-frame pause owned by
-[Player craft and weapons](player-craft-and-weapons.md)), corrected by the recovery build; the GAME OVER
-hold has its reference value — 128 frames — normatively owned by
-[Scoring, lives, and game over](scoring-lives-and-game-over.md). The READY speech-bubble presentation in the
-current build is an unsupported invention already recorded for correction.
+destination exactly once. The new-life scope restarts the current area from its top, with the arcade's
+late-area checkpoint, as the arcade does on every new life
+([Area progression and terrain](area-progression-and-terrain.md)). Presentation timings around these
+states: the READY hold is 32 ticks, a **port reading** sized to the arcade's 64-frame post-death forest wait
+(`src/xevious_main.68k` `main_gameplay_loop` 511, 535–536; [record 055](../mechanics/055-presentation-fidelity.md)
+deviation 10), while the READY state itself stays a recorded presentation choice of the port; the death
+presentation is the arcade's 56-frame explosion plus 32-frame pause, owned by
+[Player craft and weapons](player-craft-and-weapons.md); the GAME OVER hold has its reference value — 128
+frames — normatively owned by [Scoring, lives, and game over](scoring-lives-and-game-over.md). The invented
+READY and GAME OVER speech bubbles are removed: READY is the tick-counted hold, and GAME OVER is drawn in the
+HUD's own glyphs. The arcade also runs the forest wait after the **last** death, before initials entry or
+GAME OVER; the port does not yet (record 055 deviation 2; the slice-21 leaf `player.final-forest-wait`).
 
 The reset scopes' postconditions (this document is their
 normative home):
@@ -69,11 +68,12 @@ normative home):
 | --- | --- |
 | cold-start | Stop sounds and old work; remove or hide clones, weapons, targets, bomb, and death effects; rewind terrain to its canonical area-1 state; reset player and reticle positions; hide the player; show one title screen. |
 | new-game | The cold-start world reset with the title kept hidden, then one entry into READY. |
-| new-life | Stop old work; clear weapons, clones, targets, bomb, and death effects; reset player and reticle positions; then one entry into respawn READY. Interim divergence: the current build preserves terrain here, while the arcade restarts the area from its top (above). |
+| new-life | Stop old work; clear weapons, clones, targets, bomb, and death effects; reset player and reticle positions; rewind the terrain to the top of the current area, or to the next area past the late-area checkpoint; then one entry into respawn READY. Its stop of old work leaves the death cue sounding until it ends ([record 055](../mechanics/055-presentation-fidelity.md) deviation 2). |
 | game-over | Stop gameplay and audio, clear transient gameplay, hold the final terrain under the GAME OVER display; the following cold-start rewinds the world before title. |
 
-Per-state input rules (project-defined for the current slice, pending cabinet work): title accepts only
-the start key; READY, player-dead, respawning, and game-over accept no gameplay input; playing accepts
+Per-state input rules (the port's own, with the keys in the control mapping below): title accepts the
+coin key, the up/down 1P/2P selector and the start (Space), and coins are accepted in every state; the
+initials-entry screen accepts its up/down scroll and Space commit; READY, player-dead, respawning, and game-over accept no gameplay input; playing accepts
 movement, fire, and bomb. (Earlier slices carried two temporary keyboard fixtures — `D` to request
 respawn and `G` to request terminal death — solely to exercise the death paths before any enemy could
 kill the craft; now that live flying enemies and their bullets deal real lethal contact, those fixtures

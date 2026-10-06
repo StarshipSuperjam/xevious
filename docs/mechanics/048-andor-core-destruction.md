@@ -13,3 +13,13 @@
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.
+
+## Update (presentation slice, CAB-05)
+
+Deviations (1) and (6) are superseded ([record 055](055-presentation-fidelity.md)). (1) The gun ports and the core
+now draw the arcade's own explosion frames and step every 4 frames, as `gun_port_explosion` does (5715–5741 in
+`src/xevious_main.68k`: seven frames, then explosion state 4), so the burst lasts 28 frames (14 ticks) instead of
+the shared 64-frame ground burst, and the core turns into the Bragza when it ends — the frame count is now the
+arcade's, not a port convention. (6) The boss now has sound: its drone plays while it descends, hovers and leaves,
+and stops re-arming once the core is destroyed.
+
