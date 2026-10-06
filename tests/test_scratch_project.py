@@ -25,6 +25,28 @@ import game_director as director  # noqa: E402
 import hud_glyphs  # noqa: E402
 
 
+# #161: every flying family whose contact kills the craft, by its update procedure. Each raises `player hit`
+# from an `if <alive and overlap>` test — the shared `_craft_overlap_reporter` (the flying/bullet box,
+# check_bullet_or_flying_hit_solvalou, xevious_main.68k 2207-2219) or, for the Bacura, its fair box
+# (`_bacura_fair_craft_reporter`, check_bacura_hit_solvalou 2225-2237, record 037). The Sheonite is inert
+# (record 039) and is listed separately: it must never raise the flag.
+CRAFT_CONTACT_PROCS = {
+    "toroid": director.UPDATE_TOROID_PROCCODE,
+    "bullet": director.UPDATE_BULLET_PROCCODE,
+    "terrazi": director.UPDATE_TERRAZI_PROCCODE,
+    "kapi": director.UPDATE_KAPI_PROCCODE,
+    "torkan": director.UPDATE_TORKAN_PROCCODE,
+    "jara": director.UPDATE_JARA_PROCCODE,
+    "zoshi": director.UPDATE_ZOSHI_PROCCODE,
+    "zakato": director.UPDATE_ZAKATO_PROCCODE,
+    "giddo-spario": director.UPDATE_GIDDO_SPARIO_PROCCODE,
+    "brag-spario": director.UPDATE_BRAG_SPARIO_PROCCODE,
+    "brag-zakato": director.UPDATE_BRAG_ZAKATO_PROCCODE,
+    "garu-zakato": director.UPDATE_GARU_ZAKATO_PROCCODE,
+    "bacura": director.UPDATE_BACURA_PROCCODE,
+}
+
+
 def _proc_body_blocks(stage: dict, proccode: str) -> list:
     """Every block reachable from a custom-procedure definition's body (following `next` and
     every SUBSTACK / reporter input), so a structural check can inspect exactly one proc's stack.
@@ -17136,6 +17158,45 @@ class ScratchProjectTests(unittest.TestCase):
         if not raises_player_hit(director.UPDATE_BULLET_PROCCODE):
             failures.add("bullet-raises-player-hit")
 
+        # #161: so does every other flying family (CRAFT_CONTACT_PROCS), each from an `if` whose condition is
+        # `<dying = 0> and <overlap>` (#158: no hit during the explosion window) and whose body raises the flag;
+        # the inert Sheonite never raises it.
+        def alive_gated_raise(proccode: str) -> bool:
+            def linked(inp):
+                ok = isinstance(inp, list) and len(inp) > 1 and isinstance(inp[1], str)
+                return blocks.get(inp[1]) if ok else None
+
+            for b in _proc_body_blocks(stage, proccode):
+                if b["opcode"] != "control_if":
+                    continue
+                first = linked(b["inputs"].get("SUBSTACK"))
+                both = linked(b["inputs"].get("CONDITION"))
+                alive = linked((both or {}).get("inputs", {}).get("OPERAND1"))
+                if (
+                    first is not None
+                    and first["opcode"] == "data_setvariableto"
+                    and first["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+                    and first["inputs"].get("VALUE") == [1, [4, 1]]
+                    and both is not None
+                    and both["opcode"] == "operator_and"
+                    and alive is not None
+                    and alive["opcode"] == "operator_equals"
+                    and alive["inputs"].get("OPERAND1", [None, [None]])[1][2:3] == [director.DYING_ID]
+                    and _num_operand(alive["inputs"].get("OPERAND2")) == 0
+                ):
+                    return True
+            return False
+
+        for family, proccode in CRAFT_CONTACT_PROCS.items():
+            if not raises_player_hit(proccode):
+                failures.add(f"contact-kills:{family}")
+            if not alive_gated_raise(proccode):
+                failures.add(f"contact-gated-on-alive:{family}")
+        if not _proc_body_blocks(stage, director.UPDATE_SHEONITE_PROCCODE) or raises_player_hit(
+            director.UPDATE_SHEONITE_PROCCODE
+        ):
+            failures.add("sheonite-inert")
+
         # The walk's death gate: a control_if whose CONDITION is an AND of (player hit == 1) and
         # (invuln == 0) — so contact kills only when not invulnerable.
         def equals_var(op_spec) -> str | None:
@@ -17565,6 +17626,67 @@ class ScratchProjectTests(unittest.TestCase):
                     return
             raise AssertionError("no `set player hit = 1` in update bullet to break")
 
+        def break_contact(proccode):
+            # #161: the family's `set player hit = 1` retargeted to another flag: its contact no longer kills.
+            def corrupt(p):
+                s = next(t for t in p["targets"] if t["isStage"])
+                for b in _proc_body_blocks(s, proccode):
+                    if (
+                        b["opcode"] == "data_setvariableto"
+                        and b["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+                        and b["inputs"].get("VALUE") == [1, [4, 1]]
+                    ):
+                        b["fields"]["VARIABLE"] = ["invuln", director.INVULN_ID]
+                raise_count = sum(
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+                    for b in _proc_body_blocks(s, proccode)
+                )
+                assert raise_count == 0, proccode
+
+            return corrupt
+
+        def break_alive_gate(proccode):
+            # #161 / #158: the family's hit test no longer checks the explosion window (`dying = 0` -> `dying = 1`).
+            def corrupt(p):
+                s = next(t for t in p["targets"] if t["isStage"])
+                for b in _proc_body_blocks(s, proccode):
+                    if (
+                        b["opcode"] == "operator_equals"
+                        and b["inputs"].get("OPERAND1", [None, [None]])[1][2:3] == [director.DYING_ID]
+                    ):
+                        b["inputs"]["OPERAND2"] = [1, [4, 1]]
+
+            return corrupt
+
+        def sheonite_kills(p):
+            # The inert Sheonite gains a `set player hit to 1` at the top of its update.
+            s = next(t for t in p["targets"] if t["isStage"])
+            blocks = s["blocks"]
+            proto = next(
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.UPDATE_SHEONITE_PROCCODE
+            )
+            did, definition = next(
+                (bid, b)
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_definition" and b["inputs"]["custom_block"][1] == proto
+            )
+            blocks["sheonite-kills"] = {
+                "opcode": "data_setvariableto",
+                "next": definition["next"],
+                "parent": did,
+                "inputs": {"VALUE": [1, [4, 1]]},
+                "fields": {"VARIABLE": ["player hit", director.PLAYER_HIT_ID]},
+                "shadow": False,
+                "topLevel": False,
+            }
+            if definition["next"]:
+                blocks[definition["next"]]["parent"] = "sheonite-kills"
+            definition["next"] = "sheonite-kills"
+
         def break_death_gate(p):
             # Drop `invuln` from the death gate's AND so contact would kill even while invulnerable —
             # retarget the invuln equals-operand to the score, defeating the guard.
@@ -17683,6 +17805,13 @@ class ScratchProjectTests(unittest.TestCase):
             ("death-pause-craft-at-zero", break_pause_zero),
             ("flying-raises-player-hit", break_flying_hit),
             ("bullet-raises-player-hit", break_bullet_hit),
+            # roadmap-evidence: PLY-02 failure  (#161: any flying family's contact stops killing, or kills during the explosion window, or the inert Sheonite kills)
+            *[(f"contact-kills:{family}", break_contact(proccode)) for family, proccode in CRAFT_CONTACT_PROCS.items()],
+            *[
+                (f"contact-gated-on-alive:{family}", break_alive_gate(proccode))
+                for family, proccode in CRAFT_CONTACT_PROCS.items()
+            ],
+            ("sheonite-inert", sheonite_kills),
             ("death-gated-on-hit-and-invuln", break_death_gate),
             ("death-spends-craft-and-transitions", break_death_body),
             ("death-spends-craft-and-transitions", break_window_length),
