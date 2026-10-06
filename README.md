@@ -95,6 +95,10 @@ harness/run.sh   # or: cd harness && npm ci --ignore-scripts && node --test
 
 It is a pre-playtest regression tripwire that observes internal state only, never
 the game on screen — not a gameplay gate. See [`harness/README.md`](harness/README.md).
+Its npm packages are not watched by Dependabot (an accepted gap: the harness never
+ships in the `.sb3`); a `scratch-vm` bump is made by hand and needs the full harness
+run, since the harness's results reflect the VM it pins. The reasoning is in
+[`docs/architecture.md`](docs/architecture.md).
 
 When the sprite manifest changes, regenerate its costumes, provenance, Scratch
 costume records, and review contact sheet, then run both checks:
@@ -188,6 +192,31 @@ check:
 
 Record the tested commit, archive SHA-256 values, date, runtime versions or
 dated web URLs, and each result in the pull request.
+
+## After an Engine update
+
+An Engine update replaces the files under `.engine/`, including one this project has
+edited locally, so expect one Engine self-test to go red afterwards until the edit is
+re-applied (StarshipSuperjam/xevious#164; it was handled once before in StarshipSuperjam/xevious#113).
+
+- **What breaks:** `.engine/tools/test_conduct.py`, test
+  `test_operator_override_ships_empty`. The stock test asserts that the operator's
+  conduct file (`.engine/conduct/operator.md`) ships with no codes; this project adds
+  its own code (check the arcade reference before trusting a claim about the game),
+  so the stock assertion fails.
+- **The fix to re-apply:** in that test, replace the stock line
+  `self.assertEqual(validate.frontmatter(_OPERATOR).get("codes"), [])` with a check
+  that the codes list is well-formed:
+
+  ```python
+  codes = validate.frontmatter(_OPERATOR).get("codes")
+  self.assertIsInstance(codes, list)
+  ```
+
+  and keep the comment that points at the upstream issue.
+- **The real fix** belongs in the Engine's home repository,
+  StarshipSuperjam/engine-template#1200. Engine faults filed in this repository do not
+  reach the Engine's home, so the edit stays a per-update chore until that issue ships.
 
 ## Arcade reference boundary
 

@@ -96,3 +96,11 @@ director's authority) → explosion presentation → *respawning* with the recor
   check in `tests/` carries corrupted-project negatives — and block coverage is not a release criterion for a
   fidelity port whose behaviour is judged against the arcade source and the operator's playtest. It stays
   an option after the release, on this same substrate, if block coverage ever becomes a goal.
+- **The harness's npm packages stay outside Dependabot (accepted gap, slice 21, #162).**
+  `.github/dependabot.yml` is the Engine's own file and watches only the Engine's tool runtime and the
+  GitHub Actions, so an advisory against `scratch-vm` or its dependencies raises no update PR. Accepted
+  because the harness is a test tool that never ships in the `.sb3`, its install runs with
+  `--ignore-scripts` from a committed lockfile, and a `scratch-vm` bump is deliberate work that needs the
+  full harness run anyway (the harness's results reflect the VM it pins). Chosen over hand-adding an npm
+  entry to the Engine's file, which the next Engine update would silently overwrite, and over installing
+  a dependency add-on for one test tool.
