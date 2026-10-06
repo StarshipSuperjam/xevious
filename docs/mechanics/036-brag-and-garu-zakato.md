@@ -16,7 +16,7 @@
   detonation is the sole spawner of the Brag Spario ([record 035](035-giddo-and-brag-spario.md)) and a live
   driver of the shared radiating emitter ([record 026](026-enemy-bullets-and-collision-death.md)).
 - Derived behavior: **Brag rnd** (`handle_16_Brag_Zakato_rnd`) runs `init_teleport`, stamps `_PTS` (600 pts),
-  and while teleporting scrolls in place; on completion (`zakato_teleport` clears carry) `brag_zakato_16_main`
+  and while teleporting scrolls with the terrain from its random row 5–20; on completion (`zakato_teleport` clears carry) `brag_zakato_16_main`
   draws a **1-64 fuse** (`pseudo_random_gen`, `and #0x3f`, `addq #1`), stamps `_CODE = 0x12`, aims at the craft
   over `angle_dX_dY_tbl` (the 32-tier), sets `_STATE = 2`, and each active frame — unless shot
   (`_STATE == 3` → `flying_enemy_hit`) — decrements the fuse (`subq.b #1,(_TIMER)`) and at zero jumps to
@@ -70,14 +70,17 @@
   - **Brag.** `install_init_brag_zakato` clones the base Zakato teleport-in exactly — the craft-independent spawn
     column (`exclude_craft=False` → `gen_random_Y_store_obj`, no craft reject, **with** `init_teleport`'s `+1`-cell
     offset `col_offset=1`, since the Brag teleports in like the base Zakato), `SLOT_TELEPORT` (indestructible),
-    `slot code` = `BRAG_ZAKATO_MAIN_CODE` (`0x12`), and the per-variant
+    `slot code` = `BRAG_ZAKATO_MAIN_CODE` (`0x12`), the random teleport row 5–20 drawn first (slice 21), and the
+    per-variant
     `slot pts` — capturing **no** fire mask and seeding **no** fire timer at spawn (the fuse is drawn later, on
     teleport completion). `install_update_brag_zakato` runs the shared teleport → active → self-destruct machine:
     on completion it aims both variants through `compute aim` over the **32-tier** `aim dx 32` / `aim dy 32`
     tables, commits `SLOT_ACTIVE`, and (rnd only) seeds `slot fire timer` = `(rng mod 64) + 1`. Each active tick
     it checks craft collision, decrements the rnd fuse, and on its trigger (rnd: fuse ≤ 0; close-Y: the craft is
     in the `[-4, 3]` lateral band) calls **`brag zakato shoot`**, flips to `SLOT_SELF_EXPLODE`, and zeroes the
-    velocity; `SLOT_SELF_EXPLODE` and `SLOT_HIT` both play the **shared** `explode toroid tick`. `install_brag_zakato_shoot`
+    velocity; `SLOT_SELF_EXPLODE` and `SLOT_HIT` both play the **shared** `explode toroid tick`. Since slice 21
+    the teleport and self-destruct phases also drift with the terrain and make the base Zakato's one-cell moves
+    ([record 056](056-release-fidelity.md) (7)). `install_brag_zakato_shoot`
     aims at the craft, folds the aim base to a radiating index (`floor(((aim base − 32) mod 256) / 8) mod 32`,
     the arcade `sub #32` / `ror.b #3` / `and #0x1f`), then loops **5 times** calling the shared `emit radiating
     bullet` and stepping `radiating angle` by 2 — all five leave the Brag's own cell.
@@ -155,7 +158,8 @@
   spawn — a **one-tick head start**. (5) **No enemy
   scroll.** The port has no background-scroll term for flying slots, so the arcade's scroll-during-flight renders
   as pure `slot dx`/`slot dy` motion — the same "no enemy scroll" deviation class recorded for every flying
-  family. (6) **Garu natural spawn — resolved in slice 21.** In the arcade the Garu Zakato is scheduled by the
+  family. The Brags' teleport and self-destruct scroll is no longer part of it: since slice 21 both phases
+  drift with the terrain ([record 056](056-release-fidelity.md) (7)). (6) **Garu natural spawn — resolved in slice 21.** In the arcade the Garu Zakato is scheduled by the
   area `add_object` records (areas 9/10/14). That spawn source now exists ([record 056](056-release-fidelity.md)
   (1)): the Garu appears in natural play in those areas, in obj `0x3B`, and is dropped if that slot is busy. The
   two Brag variants still arrive through the normal formation waves. (7) **Garu art deferred.** The

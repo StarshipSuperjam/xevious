@@ -3659,7 +3659,7 @@ export const SCENARIOS = [
   {
     key: 'zakato-teleports-in-then-commits-active',
     behavior:
-      'A Zakato teleports in HELD IN PLACE and not yet hittable (state SLOT_TELEPORT, dx=dy=0) while its ~20-frame sparkle plays; when the sparkle clock completes `update zakato` flips it to the hittable SLOT_ACTIVE and stamps its movement (an aimed variant gets a non-zero velocity toward the craft) — the arcade zakato_teleport -> zakato_NN_main fall-through (3961 -> 3733)',
+      'A Zakato teleports in on no velocity of its own and not yet hittable (state SLOT_TELEPORT, dx=dy=0) while its ~20-frame sparkle plays; when the sparkle clock completes `update zakato` flips it to the hittable SLOT_ACTIVE and stamps its movement (an aimed variant gets a non-zero velocity toward the craft) — the arcade zakato_teleport -> zakato_NN_main fall-through (3961 -> 3733)',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -3681,7 +3681,7 @@ export const SCENARIOS = [
       const slot = 63;
       const pc = readVar(vm, 'player-col');
       put('slot-type', slot, 21); // cont (0x15): aims at the craft on commit → observable non-zero velocity
-      put('slot-state', slot, 4); // SLOT_TELEPORT: indestructible, holding in place
+      put('slot-state', slot, 4); // SLOT_TELEPORT: indestructible, drifting with the terrain
       put('slot-x', slot, 10 * 256); // interior row, clear of the top/bottom cull edges
       put('slot-y', slot, (pc - 8) * 256); // 8 columns aside: an on-field column outside the [-4,3] band (so
       // no fire on commit) yet not off the left edge (so the commit-tick active move does not cull it)
@@ -4104,6 +4104,154 @@ export const SCENARIOS = [
         throw new Error('brag-spario-survives-a-shot negative: the update has no recovery second');
       }
       write.inputs.ITEM = [1, [4, 2]];
+    },
+  },
+  {
+    key: 'zakato-teleports-mid-field-and-drifts',
+    behavior:
+      'AIR-07/AIR-08: a base or Brag Zakato teleports in on a random row 5-20 and column 4-28, not the top row '
+      + '(init_teleport 3994-4001); while its sparkle plays it drifts with the terrain one scroll step a tick and '
+      + 'moves one cell at timer 8 (+1 row, -1 column, zakato_teleport 3961-3967); while its self-destruct burst '
+      + 'plays it drifts the same way and moves one cell at timer 16 (-1 row, +1 column, zakato_explode 3931-3938)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      step(vm, 1);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const get = (id, i) => Number(readVar(vm, id)[i]);
+      for (const sl of FLYING_SLOT_INDICES) {
+        put('slot-type', sl, 0);
+        put('slot-state', sl, 0);
+      }
+      const slot = 63;
+      // Entry: many teleport-ins of both families from the live random stream.
+      const entries = [];
+      for (let i = 0; i < 48; i += 1) {
+        const brag = i % 2 === 1;
+        put('slot-type', slot, 0);
+        put('slot-state', slot, 0);
+        put('slot-x', slot, -99 * 256);
+        put('slot-y', slot, -99 * 256);
+        writeVar(vm, 'walk-type', brag ? 22 : 21);
+        writeVar(vm, 'slot-index', slot + 1);
+        callProc(vm, 'Stage', brag ? 'init brag zakato' : 'init zakato');
+        stepUntil(vm, () => get('slot-state', slot) === 4, 40);
+        entries.push({
+          brag,
+          state: get('slot-state', slot),
+          row: Math.floor(get('slot-x', slot) / 256),
+          col: Math.floor(get('slot-y', slot) / 256),
+        });
+      }
+      // One tick of an update, returning the slot's movement over that tick.
+      const tick = (proc) => {
+        const x = get('slot-x', slot);
+        const y = get('slot-y', slot);
+        writeVar(vm, 'slot-index', slot + 1);
+        callProc(vm, 'Stage', proc);
+        step(vm, 1);
+        return {
+          dx: get('slot-x', slot) - x,
+          dy: get('slot-y', slot) - y,
+          timer: get('slot-timer', slot),
+          state: get('slot-state', slot),
+          type: get('slot-type', slot),
+        };
+      };
+      const pc = readVar(vm, 'player-col');
+      const seed = (type, state) => {
+        put('slot-type', slot, type);
+        put('slot-state', slot, state);
+        put('slot-x', slot, 10 * 256);
+        put('slot-y', slot, (pc - 8) * 256); // outside the closeY band, on-field
+        put('slot-dx', slot, 0);
+        put('slot-dy', slot, 0);
+        put('slot-timer', slot, 0);
+        put('slot-fire-timer', slot, 200);
+      };
+      const run = (proc, type, state) => {
+        seed(type, state);
+        const ticks = [];
+        for (let t = 0; t < 14; t += 1) {
+          const r = tick(proc);
+          if (r.state !== state || r.type !== type) break;
+          ticks.push(r);
+        }
+        return ticks;
+      };
+      return {
+        entries,
+        teleport: run('update zakato', 18, 4), // slow: straight, so the commit tick is excluded cleanly
+        bragTeleport: run('update brag zakato', 22, 4),
+        selfExplode: run('update zakato', 18, 5),
+      };
+    },
+    assert(obs) {
+      for (const e of obs.entries) {
+        assert.equal(e.state, 4, `the ${e.brag ? 'Brag ' : ''}Zakato is stamped teleporting`);
+        assert.ok(e.row >= 5 && e.row <= 20, `teleport row ${e.row} is in 5-20 (rnd&15 + 5)`);
+        assert.ok(e.col >= 4 && e.col <= 28, `teleport column ${e.col} is in 4-28 (gen_random_Y_store_obj + 1)`);
+      }
+      const rows = new Set(obs.entries.map((e) => e.row));
+      assert.ok(rows.size >= 6, `the entry row is drawn at random; saw only ${[...rows].join(',')}`);
+      for (const [name, ticks] of [['base', obs.teleport], ['Brag', obs.bragTeleport]]) {
+        assert.equal(ticks.length, 9, `the ${name} sparkle plays 9 drifting ticks before the commit tick`);
+        for (const t of ticks) {
+          const nudge = t.timer === 8;
+          assert.equal(t.dx, 32 + (nudge ? 256 : 0), `${name} teleport tick at timer ${t.timer} drifts one scroll step${nudge ? ' plus the +1-row move' : ''}`);
+          assert.equal(t.dy, nudge ? -256 : 0, `${name} teleport tick at timer ${t.timer} moves ${nudge ? '-1 column' : 'no column'}`);
+        }
+      }
+      assert.equal(obs.selfExplode.length, 9, 'the self-destruct burst drifts 9 ticks, then the slot frees');
+      for (const t of obs.selfExplode) {
+        const nudge = t.timer === 16;
+        assert.equal(t.dx, 32 - (nudge ? 256 : 0), `self-destruct tick at timer ${t.timer} drifts one scroll step${nudge ? ' less the -1-row move' : ''}`);
+        assert.equal(t.dy, nudge ? 256 : 0, `self-destruct tick at timer ${t.timer} moves ${nudge ? '+1 column' : 'no column'}`);
+      }
+    },
+    // Put the Zakatos back on the old fixed entry: the base init's row draw becomes `(rnd mod 1) + 0` = row 0,
+    // and the drift step in both updates becomes 0. The entry-row and per-tick drift assertions bite.
+    negativeMutation: (p) => {
+      const stage = p.targets.find((t) => t.isStage);
+      const b = stage.blocks;
+      const procBlocks = (proccode) => {
+        const proto = Object.keys(b).find(
+          (k) => b[k] && b[k].opcode === 'procedures_prototype' && b[k].mutation && b[k].mutation.proccode === proccode,
+        );
+        if (!proto) throw new Error(`zakato-teleports-mid-field-and-drifts negative: no '${proccode}'`);
+        const seen = new Set();
+        const walk = (id) => {
+          if (!id || seen.has(id) || !b[id] || typeof b[id] !== 'object' || Array.isArray(b[id])) return;
+          seen.add(id);
+          walk(b[id].next);
+          for (const inp of Object.values(b[id].inputs || {})) {
+            if (Array.isArray(inp) && typeof inp[1] === 'string') walk(inp[1]);
+          }
+        };
+        walk(b[proto].parent);
+        return [...seen].map((id) => b[id]);
+      };
+      const lit = (blk, key) => blk.inputs[key] && Array.isArray(blk.inputs[key][1]) ? blk.inputs[key][1] : null;
+      let rowEdits = 0;
+      for (const blk of procBlocks('init zakato')) {
+        const n2 = blk.opcode === 'operator_mod' && lit(blk, 'NUM2');
+        if (n2 && String(n2[1]) === '16') { n2[1] = '1'; rowEdits += 1; }
+        const a2 = blk.opcode === 'operator_add' && lit(blk, 'NUM2');
+        if (a2 && String(a2[1]) === '5') { a2[1] = '0'; rowEdits += 1; }
+      }
+      let driftEdits = 0;
+      for (const proc of ['update zakato', 'update brag zakato']) {
+        for (const blk of procBlocks(proc)) {
+          const a2 = blk.opcode === 'operator_add' && lit(blk, 'NUM2');
+          if (a2 && String(a2[1]) === '32') { a2[1] = '0'; driftEdits += 1; }
+        }
+      }
+      if (rowEdits < 2 || driftEdits < 4) {
+        throw new Error(`zakato-teleports-mid-field-and-drifts negative: found ${rowEdits} row and ${driftEdits} drift literals`);
+      }
     },
   },
   {

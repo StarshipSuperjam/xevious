@@ -3,8 +3,8 @@
 - Mechanic: The base Zakato family (AIR-07) — four flying object types, **slow** `0x12`, **close-Y** `0x13`,
   **fast** `0x14` and **continuous** `0x15`, that share **one** teleport-in phase, **one** hittable active
   body and **one** self-destruct burst, differing only in how they move, in **when** they fire their single
-  shot, and in points. All four **teleport in**: they arrive **indestructible** and hold in place while a
-  ~20-frame sparkle plays, then become hittable and start moving. Each fires **exactly one** aimed bullet —
+  shot, and in points. All four **teleport in**: they arrive mid-field, on a random row 5–20, **indestructible**, and
+  drift with the terrain while a ~20-frame sparkle plays, then become hittable and start moving. Each fires **exactly one** aimed bullet —
   the slow/fast variants on a random countdown, the close-Y/continuous variants when the craft draws level in
   the lateral axis — and then **self-destructs**, playing its own burst and vanishing while **awarding
   nothing**. A Zakato shot down while active instead scores its variant value (100 / 200 / 150 / 300) through
@@ -13,8 +13,11 @@
   slot fields, [record 026](026-enemy-bullets-and-collision-death.md) bullets), reuses the multi-type idiom of
   Zoshi/Jara ([record 030](030-zoshi-variants.md), [record 031](031-jara-variants.md)) and the fast/32-tier
   craft aim of Kapi/Terrazi ([record 028](028-kapi-peel-away-dive.md)).
-- Derived behavior: Each Zakato is stamped **indestructible** at spawn (`_STATE = 3`) and holds in place while
-  the teleport-in sparkle animates its 6-code table in reverse over ~20 frames; the object is unkillable in
+- Derived behavior: Each Zakato is stamped **indestructible** at spawn (`_STATE = 3`) on a random row
+  `(rng & 0x0F) + 5` (5–20) and column (`gen_random_Y_store_obj`, 3–27, then `+ 1`), and scrolls with the
+  terrain each frame while the teleport-in sparkle animates its 6-code table in reverse over ~20 frames,
+  moving one cell (+1 row, −1 column) at timer 8 as the sprite shrinks from 2×2 to 1×1, which keeps the picture still
+  (a 2×2 sprite draws 8 px right and down of a 1×1 at the same position); the object is unkillable in
   this phase. When the sparkle completes the handler falls through to its `zakato_NN_main` body, which stamps
   the active body code `0x11`, sets `_STATE = 2` (active/hittable), and commits the variant's motion and shot
   schedule: the **straight** variants (slow/close-Y) descend on the raw scroll-axis velocity `_dX = 16`,
@@ -24,10 +27,10 @@
   variants (close-Y/continuous) fire the instant the signed MSB gap `solvalou._Y − self._Y` lands in the close
   band (`− 4` then `+ 8`, carrying → the `[−4, +3]` cell band). Firing is terminal: `zakato_shoot` allocates
   **one** aimed bullet, re-inits the timer, sets `_STATE = 3` ("flag benign"), and falls into
-  `zakato_explode_and_remove`, which plays the forward 6-code burst and frees the slot **with no score**. The
-  points are `_PTS` bytes 15 / 21 / 18 / 27 (100 / 200 / 150 / 300). The teleport X-scatter (`init_teleport`
-  picks a random column) is the arcade's cosmetic re-placement; the shared explosion, the aimed bullet and the
-  fast angle table are the derived data of the earlier records.
+  `zakato_explode_and_remove`, which plays the forward 6-code burst, scrolling with the terrain and moving one
+  cell (−1 row, +1 column) at timer 0x10, and frees the slot **with no score**. The points are `_PTS` bytes
+  15 / 21 / 18 / 27 (100 / 200 / 150 / 300). The shared explosion, the aimed bullet and the fast angle table
+  are the derived data of the earlier records.
 - Reference provenance: `jotd666/xevious@71473685a8c7856c8401c8519276cd97a38d4183`. Line citations are
   `src/xevious_main.68k` unless noted. The four handlers are `handle_12_Zakato_slow` 3733–3742 (init_teleport,
   `_PTS = 15` = 100 pts, `_dY = 0`, `_dX = 16`), `handle_13_Zakato_closeY` 3775–3784 (`_PTS = 21` = 200 pts,
@@ -59,17 +62,21 @@
   port carries the phase **explicitly** in `slot state`:
   - `SLOT_TELEPORT` (4) — teleporting in: **indestructible**, because the shared `check air hit` gate scores
     only `== SLOT_ACTIVE` slots, so a teleporting Zakato is skipped (the arcade's `_STATE = 3` at
-    `init_teleport`); it holds in place (`slot dx = slot dy = 0`) while the ~20-frame reversed sparkle plays.
+    `init_teleport`); it has no velocity of its own (`slot dx = slot dy = 0`) and drifts with the terrain,
+    `AREA_PROGRESS_STEP` a tick, while the ~20-frame reversed sparkle plays, moving one cell at timer 8; the
+    renderer draws the sparkle one cell right and down until then, so the picture holds still through the move.
   - `SLOT_ACTIVE` (1) — hittable and moving: it fires **exactly one** aimed bullet — on the random fuse
     (slow/fast) or when the lateral offset `player col − self col` is within `[ZAKATO_CLOSEY_LOW,
     ZAKATO_CLOSEY_HIGH]` = `[−4, 3]` (close-Y/continuous) — then flips **itself** to `SLOT_SELF_EXPLODE`;
     killed by a shot first, the detector flips it to `SLOT_HIT` and scores its value.
-  - `SLOT_SELF_EXPLODE` (5) — fired and vanishing: benign (again skipped by the hit gate), holding still while
-    its own 20-frame burst plays, then freed **awarding nothing**.
+  - `SLOT_SELF_EXPLODE` (5) — fired and vanishing: benign (again skipped by the hit gate), drifting with the
+    terrain while its own 20-frame burst plays (one cell at timer 0x10, a visible hop, since `zakato_explode` never
+    stores its size bits and the burst stays 1×1), then freed **awarding nothing**.
   - `SLOT_HIT` (2) — shot down while active: the **shared** flying explosion (`explode toroid tick`), its value
     already scored by the detector, exactly like every other flying family.
 
-  `install_init_zakato` draws the spawn column through the shared helper with the **craft-gap exclusion OFF**
+  `install_init_zakato` first draws the teleport row (`_zakato_teleport_row`: one RNG draw, `slot x` =
+  `((rng mod 16) + 5) × SLOT_UNITS_PER_CELL`), then draws the spawn column through the shared helper with the **craft-gap exclusion OFF**
   (`gen_random_Y_store_obj` 5147 — an in-range clamp only, *no* craft-proximity reject, so a Zakato can
   teleport in over the craft's own column), plus the **`+1`-cell teleport offset** `init_teleport` applies
   (`add.b #1,(_Y,a5)` 4000, modelled as `col_offset=1`),
@@ -77,7 +84,7 @@
   body ordinal, captures **no** fire mask (a Zakato fires structurally, not under the periodic gate), and
   stamps the per-variant `slot pts` by `walk type`. `install_update_zakato` runs a top HIT-vs-else guard
   (explode on `SLOT_HIT`, else the shot detector then the phase machine); the `SLOT_TELEPORT` arm advances the
-  sparkle clock and, on completion, commits `SLOT_ACTIVE` + the straight `dx = 16` or the 32-tier aim + the
+  sparkle clock, drifts (`_zakato_scroll`), makes the timer-8 move (`_zakato_nudge`) and, on completion, commits `SLOT_ACTIVE` + the straight `dx = 16` or the 32-tier aim + the
   slow/fast random fuse; the `SLOT_ACTIVE` arm checks craft collision, decrements the fuse for the fused
   variants, and — on the fuse-elapsed **or** in-band trigger — fires **one** aimed bullet via
   `_fire_aimed_bullet`, flips to `SLOT_SELF_EXPLODE`, and zeroes the velocity; otherwise it moves `4×` velocity
@@ -85,12 +92,14 @@
   nested in the fire arm of an `if/else` whose taken branch **leaves `SLOT_ACTIVE`**, so it can never recur —
   the same downward-SUBSTACK gate that closed the Torkan/Jara "fires every tick" gaps
   ([record 029](029-torkan-attack-and-retreat.md), [record 031](031-jara-variants.md)). The self-destruct
-  reuses the shared 20-frame free clock (`explode toroid tick`); it differs from a shot kill only in the sprite
+  reuses the shared 20-frame free clock (`explode toroid tick`), wrapped by the drift and the timer-0x10 move
+  (`_zakato_self_explode`); it differs from a shot kill only in the sprite
   the renderer draws (self burst vs shared burst, keyed on the state) and in awarding nothing — the detector,
   not the tick, awards, and it never runs on a self-destructing slot.
 - Scratch evidence: `install_init_zakato` and `install_update_zakato` (the shared lifecycle procs, reusing
   `_fire_aimed_bullet`, `COMPUTE_AIM`, the 32-tier `aim dx 32`/`aim dy 32` tables, the craft-independent
-  `_draw_spawn_column` (`exclude_craft=False`, `col_offset=1`), the shared `explode toroid tick`, and the
+  `_draw_spawn_column` (`exclude_craft=False`, `col_offset=1`), the shared `explode toroid tick`, the teleport
+  helpers `_zakato_teleport_row` / `_zakato_scroll` / `_zakato_nudge` / `_zakato_self_explode`, and the
   inlined move/cull), the single Zakato branch
   in `install_advance_slots`, the four per-type spawn branches in `install_spawn_flying`, `zakato_blocks` for
   the body/self-burst render, the four base-Zakato entries in `DEBUG_SPAWN_FAMILIES` with their
@@ -103,19 +112,23 @@
   teleport commits `SLOT_ACTIVE` and sets the straight `dx` / 32-tier aim,
   that it seeds the slow/fast random fuse, that it fires **exactly one** aimed bullet **then** self-destructs
   (with corrupters that ungate the fire and that skip the self-destruct flip), that the proximity band carries
-  both constants, and that the self-destruct runs the shared tick and awards nothing while a shot-kill plays
-  the shared explosion; the live scenarios in `harness/lib/catalog.js`
+  both constants, that the self-destruct runs the shared tick and awards nothing while a shot-kill plays
+  the shared explosion, and (slice 21) that both Zakato families draw the random row before the column and
+  drift and move one cell while teleporting and while self-destructing, with the sparkle drawn one cell right and
+  down until its move; the live scenarios in `harness/lib/catalog.js`
   (`zakato-teleports-in-then-commits-active` asserting the indestructible hold then the aimed commit,
   `zakato-fires-once-then-self-destructs` asserting the one-shot suicide that frees the slot without scoring,
-  and the extended `debug-key-cycles-families`), each with a biting negative.
+  `zakato-teleports-mid-field-and-drifts` asserting the row/column ranges over 48 teleport-ins and the
+  per-tick drift and one-cell moves, and the extended `debug-key-cycles-families`), each with a biting negative.
 - Acceptance criteria: Four Zakato object types spawn by type from the debug cycle (and, for fast/continuous,
-  the natural wave); each teleports in **indestructible** and held in place, then becomes hittable and moves —
+  the natural wave); each teleports in mid-field (row 5–20), **indestructible** and drifting with the terrain, then becomes
+  hittable and moves —
   slow/close-Y straight, fast/continuous aimed at the craft; each fires **exactly one** aimed bullet (slow/fast
   on a random fuse, close-Y/continuous when the craft is level in the lateral axis) then **self-destructs
   awarding nothing**; a Zakato shot down while active scores 100 / 200 / 150 / 300 by variant (harness
   `zakato-teleports-in-then-commits-active`, `zakato-fires-once-then-self-destructs`,
   `debug-key-cycles-families`, each with a biting negative); the operator playtest confirms the felt behavior —
-  a Zakato winking in, holding a beat, loosing a single shot, and vanishing on its own.
+  a Zakato winking in mid-screen, drifting a beat, loosing a single shot, and vanishing on its own.
 - Fidelity status: Verified line-by-line against the pinned reference this slice (the four handlers, the shared
   `init_teleport`, `zakato_teleport`, the two active-body forms, the random-fuse and close-Y triggers,
   `zakato_shoot`, `zakato_explode_and_remove`/`zakato_explode`/`remove_zakato`, and both sprite tables were
@@ -148,13 +161,12 @@
   `SLOT_ACTIVE`. No fire mask and no fire timer of the periodic kind are used — faithful to the Zakato handlers
   never setting `_FFREQ`. (5) **Fire-once-aimed bullet, not per-frame homing.** The arcade bullet re-vectors onto
   the craft every frame; this port aims the bullet once at allocation and does not re-home
-  ([record 026](026-enemy-bullets-and-collision-death.md), pre-existing). (6) **No enemy scroll.** The port has
-  no background-scroll term for flying slots (they move purely by `slot dx`/`slot dy`), so the arcade's
-  scroll-during-teleport and scroll-during-explode (`scroll_sprite_X`) render as holding still — the same "no
-  enemy scroll" deviation class recorded for every flying family. (7) **Teleport X-scatter deferred.** The
-  arcade `init_teleport` re-places the object at a random column as it winks in; the port enters from the shared
-  top-row spawn column like every flying family and does not re-scatter — a cosmetic deviation, the shot
-  schedule and phase machine are unaffected. (8) **Natural reachability differs by variant.** In the built
+  ([record 026](026-enemy-bullets-and-collision-death.md), pre-existing). (6) **Scroll during teleport and
+  self-destruct — resolved in slice 21.** The arcade calls `scroll_sprite_X` every frame of both phases; the
+  port now drifts the slot `AREA_PROGRESS_STEP` a tick in both, with the one-cell moves at timer 8 and 0x10
+  ([record 056](056-release-fidelity.md) (7)). While active a Zakato moves by its own velocity only, as in the
+  arcade. (7) **Teleport row — resolved in slice 21.** The port used to stamp the top row; it now draws the
+  arcade's row 5–20 before the column ([record 056](056-release-fidelity.md) (7)). (8) **Natural reachability differs by variant.** In the built
   areas 1–16 the formation waves reach only the **fast** (`0x14`) and **continuous** (`0x15`) variants (the
   `ZAKATO_FAST_FORMATION_OFFSET` = 60 and `ZAKATO_CONT_FORMATION_OFFSET` = 110 runs appear in the area
   schedules); **slow** (`0x12`) and **close-Y** (`0x13`) are not scheduled in any built area, so the debug key

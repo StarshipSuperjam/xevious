@@ -5462,6 +5462,131 @@ class ScratchProjectTests(unittest.TestCase):
         if not (self_tick and hit_tick and offers_detector):
             failures.add("zakato-self-destruct-no-score")
 
+        # (15) BOTH ZAKATO FAMILIES TELEPORT IN MID-FIELD (init_teleport 3994-4001). Each init draws the row
+        # FIRST — an RNG call, then a top-level `slot x` write of `((rng mod 16) + 5) * cell` — ahead of the
+        # column draw loop, and never stamps the top row the other flying families enter on.
+        top_row = director.TOROID_SPAWN_ROW * director.SLOT_UNITS_PER_CELL
+        for proccode in (director.INIT_ZAKATO_PROCCODE, director.INIT_BRAG_ZAKATO_PROCCODE):
+            top = _proc_top_chain(stage, proccode)
+            body = _proc_body_blocks(stage, proccode)
+
+            def top_index(pred):
+                return next((i for i, bid in enumerate(top) if pred(blocks[bid])), None)
+
+            rng_at = top_index(
+                lambda b: b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == director.RNG_PROCCODE
+            )
+            row_at = top_index(
+                lambda b: b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_X_ID
+                and (root := ref(b["inputs"].get("ITEM"))) is not None
+                and cond_has_num(root, director.ZAKATO_TELEPORT_ROW_MASK + 1)
+                and cond_has_num(root, director.ZAKATO_TELEPORT_ROW_BASE)
+            )
+            loop_at = top_index(lambda b: b["opcode"] == "control_repeat_until")
+            fixed_row = any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_X_ID
+                and const_item(b) == top_row
+                for b in body
+            )
+            if None in (rng_at, row_at, loop_at) or not (rng_at < row_at < loop_at) or fixed_row:
+                failures.add("zakato-teleports-mid-field")
+
+        # (16)/(17) BOTH ZAKATO FAMILIES DRIFT WITH THE TERRAIN while the sparkle plays and while the self-destruct
+        # burst plays (scroll_sprite_X from the teleport and explode loops, 3741/3770, 3869/3899): a `slot x +=
+        # AREA_PROGRESS_STEP` gated on that state, plus the one-cell move at the phase's timer value —
+        # sparkle at 8 (+1 row, -1 column, 3964-3967), burst at 0x10 (-1 row, +1 column, 3934-3937).
+        def adds(body, list_id, value):
+            return [
+                id_of[id(b)]
+                for b in body
+                if b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == list_id
+                and (item := rref(b["inputs"].get("ITEM"))) is not None
+                and item["opcode"] == "operator_add"
+                and num_operand(item["inputs"].get("NUM2")) == value
+            ]
+
+        def at_timer(node_id, value):
+            return ancestor_if(node_id, lambda c: cond_has_eq(c, director.SLOT_TIMER_ID, value))
+
+        cell = director.SLOT_UNITS_PER_CELL
+        for proccode in (director.UPDATE_ZAKATO_PROCCODE, director.UPDATE_BRAG_ZAKATO_PROCCODE):
+            body = _proc_body_blocks(stage, proccode)
+            for state_value, nudge_timer, row_step, label in (
+                (director.SLOT_TELEPORT, director.ZAKATO_TELEPORT_NUDGE_TIMER, 1, "zakato-drifts-while-teleporting"),
+                (director.SLOT_SELF_EXPLODE, director.ZAKATO_EXPLODE_NUDGE_TIMER, -1, "zakato-drifts-while-self-destructing"),
+            ):
+                scroll = any(gated_by_state(w, state_value) for w in adds(body, director.SLOT_X_ID, director.AREA_PROGRESS_STEP))
+                nudge_x = any(
+                    gated_by_state(w, state_value) and at_timer(w, nudge_timer)
+                    for w in adds(body, director.SLOT_X_ID, row_step * cell)
+                )
+                nudge_y = any(
+                    gated_by_state(w, state_value) and at_timer(w, nudge_timer)
+                    for w in adds(body, director.SLOT_Y_ID, -row_step * cell)
+                )
+                if not (scroll and nudge_x and nudge_y):
+                    failures.add(label)
+
+        # (18) THE SPARKLE HOLDS STILL THROUGH ITS MOVE. Its first two cells are 2x2 sprites (3987-3988), drawn
+        # 8 px right and down of the position (sprite_draw_double_width_and_height, amiga 2529-2544), and the
+        # timer-8 move cancels that. The Zakato renderer places the sparkle DOUBLE_TILE_STAGE_OFFSET right
+        # (+x) and down (-y) while `slot timer` < ZAKATO_TELEPORT_NUDGE_TIMER, inside the SLOT_TELEPORT branch.
+        # (The burst gets no such offset: zakato_explode never stores its size bits, 3946-3949.)
+        renderer = next((t for t in project["targets"] if t["name"] == director.ZAKATO_TARGET), None)
+        rb = renderer["blocks"] if renderer else {}
+
+        def r_ancestor_if(node_id, pred):
+            cur = rb.get(node_id)
+            while cur is not None:
+                parent = rb.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    cond = rb.get(ref(parent["inputs"].get("CONDITION")))
+                    if cond is not None and pred(cond, parent, cur):
+                        return True
+                cur = parent
+            return False
+
+        def reads_list(inp, list_id):
+            b = rb.get(ref(inp))
+            return b is not None and b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] == list_id
+
+        def before_move(cond, parent, child):
+            return (
+                cond["opcode"] == "operator_lt"
+                and reads_list(cond["inputs"].get("OPERAND1"), director.SLOT_TIMER_ID)
+                and num_operand(cond["inputs"].get("OPERAND2")) == director.ZAKATO_TELEPORT_NUDGE_TIMER
+            )
+
+        def in_teleport_branch(cond, parent, child):
+            # Only the THEN branch of the `slot state = SLOT_TELEPORT` test: walk to the substack head.
+            head = child
+            while head is not None and head.get("parent") and rb.get(head["parent"]) is not parent:
+                head = rb.get(head["parent"])
+            return (
+                cond["opcode"] == "operator_equals"
+                and reads_list(cond["inputs"].get("OPERAND1"), director.SLOT_STATE_ID)
+                and num_operand(cond["inputs"].get("OPERAND2")) == director.SLOT_TELEPORT
+                and ref(parent["inputs"].get("SUBSTACK")) == id_of_r.get(id(head))
+            )
+
+        id_of_r = {id(b): bid for bid, b in rb.items()}
+        offset = director.DOUBLE_TILE_STAGE_OFFSET
+        sparkle_offset = any(
+            b["opcode"] == "motion_changexby"
+            and num_operand(b["inputs"].get("DX")) == offset
+            and (nxt := rb.get(b.get("next"))) is not None
+            and nxt["opcode"] == "motion_changeyby"
+            and num_operand(nxt["inputs"].get("DY")) == -offset
+            and r_ancestor_if(bid, before_move)
+            and r_ancestor_if(bid, in_teleport_branch)
+            for bid, b in rb.items()
+        )
+        if not sparkle_offset:
+            failures.add("zakato-sparkle-holds-still")
+
         return failures
 
     # Roadmap closure evidence for leaf `air.zakato` (AIR-07): the four base Zakato variants are a live
@@ -5475,6 +5600,8 @@ class ScratchProjectTests(unittest.TestCase):
     # `zakato-fires-once-then-vanishes`.
     # roadmap-evidence: AIR-07 success  (test_zakato_slice_authoring_present — lifecycle procs warp, spawn-inits + dispatch-updates, spawns indestructible SLOT_TELEPORT not ACTIVE, per-variant points gated by walk type, no fire mask at spawn, craft-independent draw, teleport commits ACTIVE, commit sets straight dx and 32-tier aim, seeds slow/fast random fuse, fires exactly one aimed bullet then SELF_EXPLODE, never the fire gate, proximity band carries both constants, self-destruct runs the shared tick and awards nothing while a shot-kill plays the shared explosion)
     # roadmap-evidence: AIR-07 failure  (test_zakato_slice_negative_fixtures — each contract clause corrupted bites)
+    # roadmap-evidence: AIR-07 success  (AIR-07.teleport-art, the teleport scatter: test_zakato_slice_authoring_present — both Zakato families draw the teleport row (rng mod 16)+5 before the column, never the top row, and drift one scroll step a tick while teleporting and while self-destructing, moving one cell at timer 8 and 0x10, with the sparkle drawn one cell right and down until its move; harness zakato-teleports-mid-field-and-drifts)
+    # roadmap-evidence: AIR-07 failure  (AIR-07.teleport-art, the teleport scatter: test_zakato_slice_negative_fixtures — a top-row stamp, a column-first draw, a zero drift, a moved one-cell move, or a zeroed or never-applied sparkle offset in either family bites)
     def test_zakato_slice_authoring_present(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._air07_failures(project))
@@ -5678,6 +5805,99 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["mutation"]["proccode"] = "noop"
 
+        def top_row_entry(proccode):
+            # Stamp the old fixed top row in place of the random teleport row -> the mid-field clause bites.
+            def corrupt(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for bid in _proc_top_chain(stage, proccode):
+                    b = stage["blocks"][bid]
+                    if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_X_ID:
+                        b["inputs"]["ITEM"] = [1, [4, "0"]]
+
+            return corrupt
+
+        def row_after_column(p: dict) -> None:
+            # Draw the column before the row (swap the RNG/row pair behind the draw loop) -> the mid-field
+            # clause bites on the arcade's draw order.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            blocks = stage["blocks"]
+            top = _proc_top_chain(stage, director.INIT_ZAKATO_PROCCODE)
+            rng, row = top[0], top[1]
+            loop = next(bid for bid in top if blocks[bid]["opcode"] == "control_repeat_until")
+            definition = blocks[rng]["parent"]
+            after_row = blocks[row]["next"]
+            blocks[definition]["next"] = after_row
+            blocks[after_row]["parent"] = definition
+            after_loop = blocks[loop]["next"]
+            blocks[loop]["next"] = rng
+            blocks[rng]["parent"] = loop
+            blocks[row]["next"] = after_loop
+            if after_loop:
+                blocks[after_loop]["parent"] = row
+
+        def zero_drift(proccode, state_value):
+            # Turn that phase's terrain drift into a zero step -> the Zakato holds still in it.
+            def corrupt(p: dict) -> None:
+                stage, body = _body(p, proccode)
+                blocks = stage["blocks"]
+                for b in body:
+                    if (
+                        b["opcode"] == "data_replaceitemoflist"
+                        and b["fields"]["LIST"][1] == director.SLOT_X_ID
+                        and (item := blocks.get(b["inputs"]["ITEM"][1]) if isinstance(b["inputs"]["ITEM"][1], str) else None)
+                        and item["opcode"] == "operator_add"
+                        and _num_operand(item["inputs"].get("NUM2")) == director.AREA_PROGRESS_STEP
+                    ):
+                        # Only the write under this phase's state gate.
+                        cur, inside = b, False
+                        while cur is not None and not inside:
+                            parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                            if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                                cond = blocks.get(parent["inputs"]["CONDITION"][1])
+                                o2 = cond["inputs"].get("OPERAND2") if cond else None
+                                o1 = blocks.get(cond["inputs"]["OPERAND1"][1]) if cond and isinstance(cond["inputs"].get("OPERAND1", [None, None])[1], str) else None
+                                if (
+                                    cond is not None and cond["opcode"] == "operator_equals"
+                                    and o1 is not None and o1["opcode"] == "data_itemoflist"
+                                    and o1["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                                    and _num_operand(o2) == state_value
+                                ):
+                                    inside = True
+                            cur = parent
+                        if inside:
+                            item["inputs"]["NUM2"] = [1, [4, "0"]]
+
+            return corrupt
+
+        def no_nudge(proccode, timer_value):
+            # Move the one-cell move off its timer value -> it never fires.
+            def corrupt(p: dict) -> None:
+                stage, body = _body(p, proccode)
+                blocks = stage["blocks"]
+                for b in body:
+                    if b["opcode"] != "operator_equals" or _num_operand(b["inputs"].get("OPERAND2")) != timer_value:
+                        continue
+                    o1 = b["inputs"].get("OPERAND1")
+                    lhs = blocks.get(o1[1]) if isinstance(o1, list) and len(o1) >= 2 and isinstance(o1[1], str) else None
+                    if lhs is not None and lhs["opcode"] == "data_itemoflist" and lhs["fields"]["LIST"][1] == director.SLOT_TIMER_ID:
+                        b["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+            return corrupt
+
+        def sparkle_offset_edit(key, value):
+            # Corrupt the sparkle's 2x2 placement in the Zakato renderer: zero the offset, or move its
+            # timer bound so it never applies -> the sparkle jumps through the timer-8 move.
+            def corrupt(p: dict) -> None:
+                target = next(t for t in p["targets"] if t["name"] == director.ZAKATO_TARGET)
+                for b in target["blocks"].values():
+                    if key == "offset" and b["opcode"] in ("motion_changexby", "motion_changeyby"):
+                        slot = "DX" if b["opcode"] == "motion_changexby" else "DY"
+                        b["inputs"][slot] = [1, [4, str(value)]]
+                    if key == "bound" and b["opcode"] == "operator_lt" and _num_operand(b["inputs"].get("OPERAND2")) == director.ZAKATO_TELEPORT_NUDGE_TIMER:
+                        b["inputs"]["OPERAND2"] = [1, [4, str(value)]]
+
+            return corrupt
+
         cases = [
             ("zakato-lifecycle-procs-warp", unwarp_update),
             ("spawn-inits-zakato", drop_init_call),
@@ -5692,6 +5912,17 @@ class ScratchProjectTests(unittest.TestCase):
             ("zakato-fires-without-gate", add_fire_gate),
             ("zakato-fire-trigger-proximity-band", break_proximity_band),
             ("zakato-self-destruct-no-score", self_explode_no_tick),
+            ("zakato-teleports-mid-field", top_row_entry(director.INIT_ZAKATO_PROCCODE)),
+            ("zakato-teleports-mid-field", top_row_entry(director.INIT_BRAG_ZAKATO_PROCCODE)),
+            ("zakato-teleports-mid-field", row_after_column),
+            ("zakato-drifts-while-teleporting", zero_drift(director.UPDATE_ZAKATO_PROCCODE, director.SLOT_TELEPORT)),
+            ("zakato-drifts-while-teleporting", zero_drift(director.UPDATE_BRAG_ZAKATO_PROCCODE, director.SLOT_TELEPORT)),
+            ("zakato-drifts-while-teleporting", no_nudge(director.UPDATE_ZAKATO_PROCCODE, director.ZAKATO_TELEPORT_NUDGE_TIMER)),
+            ("zakato-drifts-while-self-destructing", zero_drift(director.UPDATE_ZAKATO_PROCCODE, director.SLOT_SELF_EXPLODE)),
+            ("zakato-drifts-while-self-destructing", zero_drift(director.UPDATE_BRAG_ZAKATO_PROCCODE, director.SLOT_SELF_EXPLODE)),
+            ("zakato-drifts-while-self-destructing", no_nudge(director.UPDATE_BRAG_ZAKATO_PROCCODE, director.ZAKATO_EXPLODE_NUDGE_TIMER)),
+            ("zakato-sparkle-holds-still", sparkle_offset_edit("offset", 0)),
+            ("zakato-sparkle-holds-still", sparkle_offset_edit("bound", 0)),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -22154,7 +22385,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "f9e23ab015ceb1bff7816b116693025c6c93fd9304e74fbf75ac139442bb29b3",
+            "3ef6c889f63d8e250b6c3ad301e41f39d63f54edf84629d904d06651075ebfb7",
             build_hash,
         )
 

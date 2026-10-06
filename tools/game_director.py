@@ -1623,6 +1623,24 @@ ZAKATO_FAST_FUSE_SPAN = 64  # (rng mod 64) + 1 = 1-64 arcade frames (handle_14 a
 # SLOT_UNITS_PER_CELL. Fire when the lateral offset (player col - self col) is within this band.
 ZAKATO_CLOSEY_LOW = -4
 ZAKATO_CLOSEY_HIGH = 3
+# Teleport entry and drift, shared by the base and Brag Zakatos (init_teleport 3994-4006, zakato_teleport
+# 3961-3967, zakato_explode 3931-3938). The entry row is `(rnd & 0x0F) + 5` (3996-3999), so rows 5-20 —
+# NOT the top row the other flying families use; the column is then drawn by gen_random_Y_store_obj and
+# offset +1 (4000-4001, `col_offset=1` on the shared draw). While the sparkle plays and while the
+# self-destruct burst plays, the handler calls scroll_sprite_X every frame (3741/3770 and 3869/3899), so
+# the Zakato drifts with the terrain, AREA_PROGRESS_STEP per tick. Each phase also moves the object one
+# cell once: the sparkle at timer 8 (+1 row, -1 column, 3964-3967), the burst at timer 0x10 (-1 row,
+# +1 column, 3934-3937). The sparkle's move cancels its size change: its first two cells are 2x2 (attr
+# 0x83, 3987-3988, stored at 3981), drawn 8 px right and down of a 1x1 at the same position
+# (sprite_draw_double_width_and_height, amiga 2529-2544), so the renderer places those frames
+# DOUBLE_TILE_STAGE_OFFSET right and down and the picture holds still through the move. The burst's move
+# is VISIBLE: zakato_explode builds the size bits but never stores them (3946-3949, no write to _ATTR),
+# so the burst stays 1x1 and shifts up-left one cell at 0x10. The port timer counts 2 per tick, matching
+# the arcade TIMER, as the phase-completion test above does.
+ZAKATO_TELEPORT_ROW_MASK = 0x0F
+ZAKATO_TELEPORT_ROW_BASE = 5
+ZAKATO_TELEPORT_NUDGE_TIMER = 8
+ZAKATO_EXPLODE_NUDGE_TIMER = 0x10
 # AIR-10 Spario: two INDEPENDENT projectile-like flyers with distinct motion and distinct death.
 # Giddo Spario (handle_08_Giddo_Spario 5219-5240) is aimed ONCE at the craft at spawn on the fast
 # 64-magnitude tier (angle_dX_dY_sheonite_tbl, 4 px/frame — faster than any other family), then flies
@@ -7151,6 +7169,52 @@ def install_update_jara(blocks: Blocks) -> None:
     blocks.chain(definition, [top])
 
 
+def _zakato_teleport_row(blocks: Blocks) -> list:
+    # init_teleport's entry row (3996-3999): one draw from the shared stream, `(rnd & 0x0F) + 5`, written to
+    # the slot's scroll axis BEFORE the column draw, in the arcade's draw order. If the column draw were to
+    # exhaust (the bounded-draw deviation) the slot stays empty, so the row written here is never shown.
+    return [
+        blocks.call_proc(RNG_PROCCODE, warp=True),
+        _set_cur_item(
+            blocks,
+            "slot x",
+            SLOT_X_ID,
+            blocks.op_mul(
+                blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(ZAKATO_TELEPORT_ROW_MASK + 1)), number(ZAKATO_TELEPORT_ROW_BASE)),
+                number(SLOT_UNITS_PER_CELL),
+            ),
+        ),
+    ]
+
+
+def _zakato_scroll(blocks: Blocks) -> str:
+    # scroll_sprite_X (4849): the teleporting or self-destructing Zakato drifts with the terrain.
+    return _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), number(AREA_PROGRESS_STEP)))
+
+
+def _zakato_nudge(blocks: Blocks, at_timer: int, row_step: int) -> str:
+    # The phase's one-cell move: `row_step` cells along the scroll axis and the opposite along the lateral
+    # axis, on the tick the phase timer reaches `at_timer`.
+    return blocks.if_reporter(
+        blocks.op_eq(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(at_timer)),
+        [
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), number(row_step * SLOT_UNITS_PER_CELL))),
+            _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), number(-row_step * SLOT_UNITS_PER_CELL))),
+        ],
+    )
+
+
+def _zakato_self_explode(blocks: Blocks) -> list:
+    # zakato_explode_and_remove (3766-3771): drift with the terrain while the burst plays out on the shared
+    # clock, moving one cell up-left once at timer 0x10 (3934-3937; visible, the burst stays 1x1). The shared tick frees the slot at 20, after which the
+    # nudge's timer test no longer matches.
+    return [
+        _zakato_scroll(blocks),
+        blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True),
+        _zakato_nudge(blocks, ZAKATO_EXPLODE_NUDGE_TIMER, -1),
+    ]
+
+
 def install_init_zakato(blocks: Blocks) -> None:
     # AIR-07: initialize the flying slot at `slot index` as a Zakato of type `walk type` (handle_12-15
     # 3733-3859; init_teleport 3994). All four base variants share this initializer; they differ only in
@@ -7159,10 +7223,8 @@ def install_init_zakato(blocks: Blocks) -> None:
     # `check air hit` gate skips any non-ACTIVE slot (the arcade's `_STATE=3` at init_teleport 3995) — and
     # holds in place while the ~20-frame sparkle plays (rendered from `slot timer`, the reversed burst).
     # When the sparkle ends the update flips it to SLOT_ACTIVE and stamps its aimed/straight velocity and
-    # shot fuse. Top-row entry via the shared spawn-column draw; the arcade's random teleport X
-    # (init_teleport 3996-3999) is a deferred cosmetic deviation, the same no-enemy-scroll top entry every
-    # flying family uses. No fire mask is captured — a Zakato fires exactly one bullet, structurally, not
-    # under the periodic gate.
+    # shot fuse. It appears mid-field, on a random row 5-20 (init_teleport 3996-3999), not at the top row.
+    # No fire mask is captured — a Zakato fires exactly one bullet, structurally, not under the periodic gate.
     definition = _install_warp_proc(blocks, INIT_ZAKATO_PROCCODE)
     # init_teleport draws the entry column CRAFT-INDEPENDENTLY: gen_random_Y_store_obj (5147-5154) does the
     # in-range clamp with NO craft-proximity reject, so a base Zakato CAN teleport in over/adjacent to the
@@ -7190,7 +7252,6 @@ def install_init_zakato(blocks: Blocks) -> None:
             # SLOT_TELEPORT: invulnerable and not yet moving — the sparkle plays in place, then the update
             # transitions to SLOT_ACTIVE. Not SLOT_ACTIVE, so `check air hit` cannot score it mid-teleport.
             _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_TELEPORT)),
-            _set_cur_item(blocks, "slot x", SLOT_X_ID, number(TOROID_SPAWN_ROW * SLOT_UNITS_PER_CELL)),
             _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
             _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
@@ -7200,7 +7261,7 @@ def install_init_zakato(blocks: Blocks) -> None:
             blocks.play_sound("zakato"),
         ],
     )
-    blocks.chain(definition, [*reset, draw_loop, stamp])
+    blocks.chain(definition, [*_zakato_teleport_row(blocks), *reset, draw_loop, stamp])
 
 
 def install_update_zakato(blocks: Blocks) -> None:
@@ -7210,13 +7271,14 @@ def install_update_zakato(blocks: Blocks) -> None:
     # the phase EXPLICITLY in `slot state`:
     #   SLOT_TELEPORT      teleporting in: indestructible (the shared `check air hit` gate ignores any
     #                      non-ACTIVE slot, so it is unkillable here — the arcade's `_STATE=3` at
-    #                      init_teleport 3995), holding in place while the ~20-frame reversed sparkle plays.
+    #                      init_teleport 3995), drifting with the terrain while the ~20-frame reversed
+    #                      sparkle plays (scroll_sprite_X, 3741).
     #   SLOT_ACTIVE        hittable and moving: it fires EXACTLY ONE aimed bullet — on a random countdown
     #                      (slow/fast) or when the craft is level in the lateral axis (closeY/cont) — then
     #                      flips itself to SLOT_SELF_EXPLODE; killed by a shot first, it scores its value.
-    #   SLOT_SELF_EXPLODE  fired and vanishing: benign (again ignored by the hit gate), holding still while
-    #                      its own 20-frame burst plays, then freed awarding NOTHING (zakato_explode_and_
-    #                      remove 3766 -> remove_zakato 3926, no score).
+    #   SLOT_SELF_EXPLODE  fired and vanishing: benign (again ignored by the hit gate), drifting with the
+    #                      terrain while its own 20-frame burst plays, then freed awarding NOTHING
+    #                      (zakato_explode_and_remove 3766 -> remove_zakato 3926, no score).
     #   SLOT_HIT           shot down while active: the SHARED flying explosion (`explode toroid tick`), its
     #                      value already scored by the detector — exactly like every other flying family.
     # The self-destruct reuses `explode toroid tick` (same 20-frame free clock); it differs from a shot
@@ -7232,7 +7294,7 @@ def install_update_zakato(blocks: Blocks) -> None:
     is_fused = lambda: blocks.op_or(blocks.op_eq(wt(), number(ZAKATO_SLOW_TYPE)), blocks.op_eq(wt(), number(ZAKATO_FAST_TYPE)))
     is_proximity = lambda: blocks.op_or(blocks.op_eq(wt(), number(ZAKATO_CLOSEY_TYPE)), blocks.op_eq(wt(), number(ZAKATO_CONT_TYPE)))
 
-    # --- TELEPORT phase: hold in place, advance the sparkle clock; on completion commit to ACTIVE. ---
+    # --- TELEPORT phase: drift with the terrain, advance the sparkle clock; on completion commit to ACTIVE. ---
     # Straight variants (slow/closeY) descend on the raw scroll-axis velocity dX=16, dY=0 (handle_12/13
     # 3736-3737); aimed variants (fast/cont) aim at the craft's CURRENT cell on the 32-magnitude generic
     # tier at the completion instant (zakato_14/15_main's calc_dX_dY_for_vector_to_solvalou 3822/3848).
@@ -7287,6 +7349,8 @@ def install_update_zakato(blocks: Blocks) -> None:
         blocks.op_eq(state(), number(SLOT_TELEPORT)),
         [
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(timer(), number(TICK_TIMER_STEP))),
+            _zakato_scroll(blocks),
+            _zakato_nudge(blocks, ZAKATO_TELEPORT_NUDGE_TIMER, 1),
             blocks.if_reporter(blocks.op_not(blocks.op_lt(timer(), number(ZAKATO_PHASE_FRAMES))), commit_active),
         ],
     )
@@ -7312,8 +7376,8 @@ def install_update_zakato(blocks: Blocks) -> None:
     fired_prox = blocks.op_and(is_proximity(), in_band)
     fire_now = blocks.op_or(fired_fused, fired_prox)
     # Self-destruct: fire the one bullet, flip to SELF_EXPLODE, zero the velocity (the arcade stops calling
-    # move_object_dX_dY and only scroll-drifts — which this no-enemy-scroll port renders as holding still),
-    # and reset the burst clock.
+    # move_object_dX_dY and only scroll-drifts, which the SELF_EXPLODE phase below applies), and reset the
+    # burst clock.
     on_fire = [
         *_fire_aimed_bullet(blocks),
         _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_SELF_EXPLODE)),
@@ -7344,10 +7408,10 @@ def install_update_zakato(blocks: Blocks) -> None:
         [craft_hit, dec_fuse, fire_choice],
     )
 
-    # --- SELF_EXPLODE phase: play out the burst clock and free (no score). ---
+    # --- SELF_EXPLODE phase: drift, play out the burst clock and free (no score). ---
     self_explode = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_SELF_EXPLODE)),
-        [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)],
+        _zakato_self_explode(blocks),
     )
 
     # Top: a shot kill (SLOT_HIT) plays the SHARED flying explosion; otherwise offer to the shot detector
@@ -7943,8 +8007,7 @@ def install_init_brag_zakato(blocks: Blocks) -> None:
     # update then aims it, drives its terminal fan trigger (random fuse for rnd / level-in-Y for closeY)
     # and its self-destruct. Top-row entry via the shared spawn column, exactly as install_init_zakato:
     # CRAFT-INDEPENDENT draw (gen_random_Y_store_obj, no craft reject) plus the +1-cell teleport offset
-    # (init_teleport 4000). The arcade's random teleport X (init_teleport 3996-3999) is the same deferred
-    # no-enemy-scroll cosmetic every ported flying family shares.
+    # (init_teleport 4000), on the same random row 5-20 (init_teleport 3996-3999).
     definition = _install_warp_proc(blocks, INIT_BRAG_ZAKATO_PROCCODE)
     reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=False, col_offset=1)  # mirrors install_init_zakato
     wt = lambda: variable("walk type", WALK_TYPE_ID)
@@ -7963,7 +8026,6 @@ def install_init_brag_zakato(blocks: Blocks) -> None:
         [
             _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, wt()),
             _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_TELEPORT)),
-            _set_cur_item(blocks, "slot x", SLOT_X_ID, number(TOROID_SPAWN_ROW * SLOT_UNITS_PER_CELL)),
             _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
             _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
@@ -7974,7 +8036,7 @@ def install_init_brag_zakato(blocks: Blocks) -> None:
             blocks.play_sound("zakato"),
         ],
     )
-    blocks.chain(definition, [*reset, draw_loop, stamp])
+    blocks.chain(definition, [*_zakato_teleport_row(blocks), *reset, draw_loop, stamp])
 
 
 def install_update_brag_zakato(blocks: Blocks) -> None:
@@ -7996,7 +8058,7 @@ def install_update_brag_zakato(blocks: Blocks) -> None:
     is_fused = lambda: blocks.op_eq(wt(), number(BRAG_ZAKATO_RND_TYPE))
     is_proximity = lambda: blocks.op_eq(wt(), number(BRAG_ZAKATO_CLOSEY_TYPE))
 
-    # --- TELEPORT phase: hold in place, advance the sparkle clock; on completion aim + commit to ACTIVE. ---
+    # --- TELEPORT phase: drift with the terrain, advance the sparkle clock; on completion aim + commit. ---
     set_aimed = [
         blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
         blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
@@ -8024,6 +8086,8 @@ def install_update_brag_zakato(blocks: Blocks) -> None:
         blocks.op_eq(state(), number(SLOT_TELEPORT)),
         [
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(timer(), number(TICK_TIMER_STEP))),
+            _zakato_scroll(blocks),
+            _zakato_nudge(blocks, ZAKATO_TELEPORT_NUDGE_TIMER, 1),
             blocks.if_reporter(blocks.op_not(blocks.op_lt(timer(), number(ZAKATO_PHASE_FRAMES))), commit_active),
         ],
     )
@@ -8073,10 +8137,10 @@ def install_update_brag_zakato(blocks: Blocks) -> None:
         [craft_hit, dec_fuse, fire_choice],
     )
 
-    # --- SELF_EXPLODE phase: play out the shared burst clock and free (no score). ---
+    # --- SELF_EXPLODE phase: drift, play out the shared burst clock and free (no score). ---
     self_explode = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_SELF_EXPLODE)),
-        [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)],
+        _zakato_self_explode(blocks),
     )
 
     top = blocks.add("control_if_else")
@@ -15821,9 +15885,20 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
     is_tele = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_TELEPORT))
     blocks.blocks[tele_or_rest]["inputs"]["CONDITION"] = [2, is_tele]
     blocks.blocks[is_tele]["parent"] = tele_or_rest
+    # The sparkle's first two cells are 2x2 sprites (3987-3988), drawn 8 px right and down of the position
+    # (sprite_draw_double_width_and_height): until the timer-8 move they are placed DOUBLE_TILE_STAGE_OFFSET
+    # right (+x) and down (-y), so the picture holds still through the one-cell move (see the constants).
+    double_sparkle = blocks.if_reporter(
+        blocks.op_lt(timer(), number(ZAKATO_TELEPORT_NUDGE_TIMER)),
+        [
+            blocks.add("motion_changexby", inputs={"DX": number(DOUBLE_TILE_STAGE_OFFSET)}),
+            blocks.add("motion_changeyby", inputs={"DY": number(-DOUBLE_TILE_STAGE_OFFSET)}),
+        ],
+    )
     blocks.substack(
         tele_or_rest,
         [
+            double_sparkle,
             blocks.switch_costume_expr(
                 blocks.op_sub(
                     number(ZAKATO_BURST_ORDINAL_BASE + AIR_EXPLOSION_FLIP_COSTUMES * (ZAKATO_ANIM_PHASES - 1)),

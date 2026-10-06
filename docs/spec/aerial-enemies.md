@@ -164,7 +164,10 @@ catalog's older description of a distinctive "expand" attack is unsupported by t
 recorded as ruled out.
 
 **Zakato line (AIR-07).** All Zakatos teleport in with a ~20-frame sparkle during which they cannot be
-hit (`init_teleport` 3961–4006), then live briefly and fire **exactly once**: firing is terminal — the
+hit (`init_teleport` 3961–4006). They appear mid-field, on a random row 5–20 (`(rnd & 0x0F) + 5`) and a
+random column, and drift down with the terrain while they sparkle and again while they self-destruct
+(`scroll_sprite_X` 4849–4854, called from `handle_12_Zakato_slow` 3733–3742 and
+`zakato_explode_and_remove` 3766–3771). They then live briefly and fire **exactly once**: firing is terminal — the
 Zakato launches its single aimed bullet and immediately self-destructs through its own ~20-frame flash,
 awarding nothing (`zakato_shoot` 3761–3771, `zakato_explode` 3931–3950). Points are scored only by
 killing it first. Variants: slow (1 px/frame drift, random 1–256-frame fuse), close-Y (same drift, fires
