@@ -293848,7 +293848,7 @@
         },
         "gd-toroid-031": {
           "opcode": "control_start_as_clone",
-          "next": "gd-toroid-087",
+          "next": "gd-toroid-089",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -293860,7 +293860,7 @@
         "gd-toroid-032": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-toroid-087",
+          "parent": "gd-toroid-089",
           "inputs": {
             "CONDITION": [
               2,
@@ -294766,8 +294766,8 @@
         },
         "gd-toroid-075": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-toroid-085",
+          "next": "gd-toroid-087",
+          "parent": "gd-toroid-086",
           "inputs": {
             "CONDITION": [
               2,
@@ -294862,7 +294862,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -294924,7 +294924,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -294961,11 +294961,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-toroid-075"
+              "gd-toroid-086"
             ],
             "SUBSTACK2": [
               2,
-              "gd-toroid-086"
+              "gd-toroid-088"
             ]
           },
           "fields": {},
@@ -294973,6 +294973,40 @@
           "topLevel": false
         },
         "gd-toroid-086": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-toroid-075",
+          "parent": "gd-toroid-085",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-toroid-087": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-toroid-075",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-toroid-088": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-toroid-085",
@@ -294981,7 +295015,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-toroid-087": {
+        "gd-toroid-089": {
           "opcode": "looks_hide",
           "next": "gd-toroid-032",
           "parent": "gd-toroid-031",
@@ -296432,7 +296466,7 @@
         },
         "gd-enemy-bullet-070": {
           "opcode": "control_start_as_clone",
-          "next": "gd-enemy-bullet-101",
+          "next": "gd-enemy-bullet-103",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -296444,7 +296478,7 @@
         "gd-enemy-bullet-071": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-enemy-bullet-101",
+          "parent": "gd-enemy-bullet-103",
           "inputs": {
             "CONDITION": [
               2,
@@ -296732,8 +296766,8 @@
         },
         "gd-enemy-bullet-084": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-enemy-bullet-099",
+          "next": "gd-enemy-bullet-101",
+          "parent": "gd-enemy-bullet-100",
           "inputs": {
             "CONDITION": [
               2,
@@ -296924,7 +296958,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -296986,7 +297020,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -297023,11 +297057,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-enemy-bullet-084"
+              "gd-enemy-bullet-100"
             ],
             "SUBSTACK2": [
               2,
-              "gd-enemy-bullet-100"
+              "gd-enemy-bullet-102"
             ]
           },
           "fields": {},
@@ -297035,6 +297069,40 @@
           "topLevel": false
         },
         "gd-enemy-bullet-100": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-enemy-bullet-084",
+          "parent": "gd-enemy-bullet-099",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-enemy-bullet-101": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-enemy-bullet-084",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-enemy-bullet-102": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-enemy-bullet-099",
@@ -297043,7 +297111,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-enemy-bullet-101": {
+        "gd-enemy-bullet-103": {
           "opcode": "looks_hide",
           "next": "gd-enemy-bullet-071",
           "parent": "gd-enemy-bullet-070",
@@ -297637,7 +297705,7 @@
         },
         "gd-terrazi-031": {
           "opcode": "control_start_as_clone",
-          "next": "gd-terrazi-086",
+          "next": "gd-terrazi-088",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -297649,7 +297717,7 @@
         "gd-terrazi-032": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-terrazi-086",
+          "parent": "gd-terrazi-088",
           "inputs": {
             "CONDITION": [
               2,
@@ -298531,8 +298599,8 @@
         },
         "gd-terrazi-074": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-terrazi-084",
+          "next": "gd-terrazi-086",
+          "parent": "gd-terrazi-085",
           "inputs": {
             "CONDITION": [
               2,
@@ -298627,7 +298695,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -298689,7 +298757,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -298726,11 +298794,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-terrazi-074"
+              "gd-terrazi-085"
             ],
             "SUBSTACK2": [
               2,
-              "gd-terrazi-085"
+              "gd-terrazi-087"
             ]
           },
           "fields": {},
@@ -298738,6 +298806,40 @@
           "topLevel": false
         },
         "gd-terrazi-085": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-terrazi-074",
+          "parent": "gd-terrazi-084",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-086": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-terrazi-074",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-terrazi-087": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-terrazi-084",
@@ -298746,7 +298848,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-terrazi-086": {
+        "gd-terrazi-088": {
           "opcode": "looks_hide",
           "next": "gd-terrazi-032",
           "parent": "gd-terrazi-031",
@@ -299547,7 +299649,7 @@
         },
         "gd-kapi-031": {
           "opcode": "control_start_as_clone",
-          "next": "gd-kapi-099",
+          "next": "gd-kapi-101",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -299559,7 +299661,7 @@
         "gd-kapi-032": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-kapi-099",
+          "parent": "gd-kapi-101",
           "inputs": {
             "CONDITION": [
               2,
@@ -300698,8 +300800,8 @@
         },
         "gd-kapi-087": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-kapi-097",
+          "next": "gd-kapi-099",
+          "parent": "gd-kapi-098",
           "inputs": {
             "CONDITION": [
               2,
@@ -300794,7 +300896,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -300856,7 +300958,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -300893,11 +300995,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-kapi-087"
+              "gd-kapi-098"
             ],
             "SUBSTACK2": [
               2,
-              "gd-kapi-098"
+              "gd-kapi-100"
             ]
           },
           "fields": {},
@@ -300905,6 +301007,40 @@
           "topLevel": false
         },
         "gd-kapi-098": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-kapi-087",
+          "parent": "gd-kapi-097",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-099": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-kapi-087",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-kapi-100": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-kapi-097",
@@ -300913,7 +301049,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-kapi-099": {
+        "gd-kapi-101": {
           "opcode": "looks_hide",
           "next": "gd-kapi-032",
           "parent": "gd-kapi-031",
@@ -301714,7 +301850,7 @@
         },
         "gd-torkan-031": {
           "opcode": "control_start_as_clone",
-          "next": "gd-torkan-102",
+          "next": "gd-torkan-104",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -301726,7 +301862,7 @@
         "gd-torkan-032": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-torkan-102",
+          "parent": "gd-torkan-104",
           "inputs": {
             "CONDITION": [
               2,
@@ -302921,8 +303057,8 @@
         },
         "gd-torkan-090": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-torkan-100",
+          "next": "gd-torkan-102",
+          "parent": "gd-torkan-101",
           "inputs": {
             "CONDITION": [
               2,
@@ -303017,7 +303153,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -303079,7 +303215,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -303116,11 +303252,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-torkan-090"
+              "gd-torkan-101"
             ],
             "SUBSTACK2": [
               2,
-              "gd-torkan-101"
+              "gd-torkan-103"
             ]
           },
           "fields": {},
@@ -303128,6 +303264,40 @@
           "topLevel": false
         },
         "gd-torkan-101": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-torkan-090",
+          "parent": "gd-torkan-100",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-torkan-102": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-torkan-090",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-torkan-103": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-torkan-100",
@@ -303136,7 +303306,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-torkan-102": {
+        "gd-torkan-104": {
           "opcode": "looks_hide",
           "next": "gd-torkan-032",
           "parent": "gd-torkan-031",
@@ -303928,7 +304098,7 @@
         },
         "gd-zoshi-031": {
           "opcode": "control_start_as_clone",
-          "next": "gd-zoshi-090",
+          "next": "gd-zoshi-092",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -303940,7 +304110,7 @@
         "gd-zoshi-032": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-zoshi-090",
+          "parent": "gd-zoshi-092",
           "inputs": {
             "CONDITION": [
               2,
@@ -304914,8 +305084,8 @@
         },
         "gd-zoshi-078": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-zoshi-088",
+          "next": "gd-zoshi-090",
+          "parent": "gd-zoshi-089",
           "inputs": {
             "CONDITION": [
               2,
@@ -305010,7 +305180,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -305072,7 +305242,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -305109,11 +305279,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-zoshi-078"
+              "gd-zoshi-089"
             ],
             "SUBSTACK2": [
               2,
-              "gd-zoshi-089"
+              "gd-zoshi-091"
             ]
           },
           "fields": {},
@@ -305121,6 +305291,40 @@
           "topLevel": false
         },
         "gd-zoshi-089": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-zoshi-078",
+          "parent": "gd-zoshi-088",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-zoshi-090": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-zoshi-078",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-zoshi-091": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-zoshi-088",
@@ -305129,7 +305333,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-zoshi-090": {
+        "gd-zoshi-092": {
           "opcode": "looks_hide",
           "next": "gd-zoshi-032",
           "parent": "gd-zoshi-031",
@@ -305903,7 +306107,7 @@
         },
         "gd-jara-031": {
           "opcode": "control_start_as_clone",
-          "next": "gd-jara-104",
+          "next": "gd-jara-106",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -305915,7 +306119,7 @@
         "gd-jara-032": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-jara-104",
+          "parent": "gd-jara-106",
           "inputs": {
             "CONDITION": [
               2,
@@ -307169,8 +307373,8 @@
         },
         "gd-jara-092": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-jara-102",
+          "next": "gd-jara-104",
+          "parent": "gd-jara-103",
           "inputs": {
             "CONDITION": [
               2,
@@ -307265,7 +307469,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -307327,7 +307531,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -307364,11 +307568,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-jara-092"
+              "gd-jara-103"
             ],
             "SUBSTACK2": [
               2,
-              "gd-jara-103"
+              "gd-jara-105"
             ]
           },
           "fields": {},
@@ -307376,6 +307580,40 @@
           "topLevel": false
         },
         "gd-jara-103": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-jara-092",
+          "parent": "gd-jara-102",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-jara-104": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-jara-092",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-jara-105": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-jara-102",
@@ -307384,7 +307622,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-jara-104": {
+        "gd-jara-106": {
           "opcode": "looks_hide",
           "next": "gd-jara-032",
           "parent": "gd-jara-031",
@@ -308176,7 +308414,7 @@
         },
         "gd-zakato-031": {
           "opcode": "control_start_as_clone",
-          "next": "gd-zakato-144",
+          "next": "gd-zakato-146",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -308188,7 +308426,7 @@
         "gd-zakato-032": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-zakato-144",
+          "parent": "gd-zakato-146",
           "inputs": {
             "CONDITION": [
               2,
@@ -310287,8 +310525,8 @@
         },
         "gd-zakato-132": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-zakato-142",
+          "next": "gd-zakato-144",
+          "parent": "gd-zakato-143",
           "inputs": {
             "CONDITION": [
               2,
@@ -310383,7 +310621,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -310445,7 +310683,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -310482,11 +310720,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-zakato-132"
+              "gd-zakato-143"
             ],
             "SUBSTACK2": [
               2,
-              "gd-zakato-143"
+              "gd-zakato-145"
             ]
           },
           "fields": {},
@@ -310494,6 +310732,40 @@
           "topLevel": false
         },
         "gd-zakato-143": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-zakato-132",
+          "parent": "gd-zakato-142",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-zakato-144": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-zakato-132",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-zakato-145": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-zakato-142",
@@ -310502,7 +310774,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-zakato-144": {
+        "gd-zakato-146": {
           "opcode": "looks_hide",
           "next": "gd-zakato-032",
           "parent": "gd-zakato-031",
@@ -311645,7 +311917,7 @@
         },
         "gd-giddo-spario-031": {
           "opcode": "control_start_as_clone",
-          "next": "gd-giddo-spario-078",
+          "next": "gd-giddo-spario-080",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -311657,7 +311929,7 @@
         "gd-giddo-spario-032": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-giddo-spario-078",
+          "parent": "gd-giddo-spario-080",
           "inputs": {
             "CONDITION": [
               2,
@@ -312377,8 +312649,8 @@
         },
         "gd-giddo-spario-066": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-giddo-spario-076",
+          "next": "gd-giddo-spario-078",
+          "parent": "gd-giddo-spario-077",
           "inputs": {
             "CONDITION": [
               2,
@@ -312473,7 +312745,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -312535,7 +312807,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -312572,11 +312844,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-giddo-spario-066"
+              "gd-giddo-spario-077"
             ],
             "SUBSTACK2": [
               2,
-              "gd-giddo-spario-077"
+              "gd-giddo-spario-079"
             ]
           },
           "fields": {},
@@ -312584,6 +312856,40 @@
           "topLevel": false
         },
         "gd-giddo-spario-077": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-giddo-spario-066",
+          "parent": "gd-giddo-spario-076",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-giddo-spario-078": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-giddo-spario-066",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-giddo-spario-079": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-giddo-spario-076",
@@ -312592,7 +312898,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-giddo-spario-078": {
+        "gd-giddo-spario-080": {
           "opcode": "looks_hide",
           "next": "gd-giddo-spario-032",
           "parent": "gd-giddo-spario-031",
@@ -313438,7 +313744,7 @@
         },
         "gd-brag-spario-031": {
           "opcode": "control_start_as_clone",
-          "next": "gd-brag-spario-072",
+          "next": "gd-brag-spario-074",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -313450,7 +313756,7 @@
         "gd-brag-spario-032": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-brag-spario-072",
+          "parent": "gd-brag-spario-074",
           "inputs": {
             "CONDITION": [
               2,
@@ -314043,8 +314349,8 @@
         },
         "gd-brag-spario-060": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-brag-spario-070",
+          "next": "gd-brag-spario-072",
+          "parent": "gd-brag-spario-071",
           "inputs": {
             "CONDITION": [
               2,
@@ -314139,7 +314445,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -314201,7 +314507,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -314238,11 +314544,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-brag-spario-060"
+              "gd-brag-spario-071"
             ],
             "SUBSTACK2": [
               2,
-              "gd-brag-spario-071"
+              "gd-brag-spario-073"
             ]
           },
           "fields": {},
@@ -314250,6 +314556,40 @@
           "topLevel": false
         },
         "gd-brag-spario-071": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-brag-spario-060",
+          "parent": "gd-brag-spario-070",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-brag-spario-072": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-brag-spario-060",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-brag-spario-073": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-brag-spario-070",
@@ -314258,7 +314598,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-brag-spario-072": {
+        "gd-brag-spario-074": {
           "opcode": "looks_hide",
           "next": "gd-brag-spario-032",
           "parent": "gd-brag-spario-031",
@@ -314852,7 +315192,7 @@
         },
         "gd-garu-zakato-031": {
           "opcode": "control_start_as_clone",
-          "next": "gd-garu-zakato-083",
+          "next": "gd-garu-zakato-085",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -314864,7 +315204,7 @@
         "gd-garu-zakato-032": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-garu-zakato-083",
+          "parent": "gd-garu-zakato-085",
           "inputs": {
             "CONDITION": [
               2,
@@ -315685,8 +316025,8 @@
         },
         "gd-garu-zakato-071": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-garu-zakato-081",
+          "next": "gd-garu-zakato-083",
+          "parent": "gd-garu-zakato-082",
           "inputs": {
             "CONDITION": [
               2,
@@ -315781,7 +316121,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -315843,7 +316183,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -315880,11 +316220,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-garu-zakato-071"
+              "gd-garu-zakato-082"
             ],
             "SUBSTACK2": [
               2,
-              "gd-garu-zakato-082"
+              "gd-garu-zakato-084"
             ]
           },
           "fields": {},
@@ -315892,6 +316232,40 @@
           "topLevel": false
         },
         "gd-garu-zakato-082": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-garu-zakato-071",
+          "parent": "gd-garu-zakato-081",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-garu-zakato-083": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-garu-zakato-071",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-garu-zakato-084": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-garu-zakato-081",
@@ -315900,7 +316274,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-garu-zakato-083": {
+        "gd-garu-zakato-085": {
           "opcode": "looks_hide",
           "next": "gd-garu-zakato-032",
           "parent": "gd-garu-zakato-031",
@@ -317183,7 +317557,7 @@
         },
         "gd-bacura-061": {
           "opcode": "control_start_as_clone",
-          "next": "gd-bacura-096",
+          "next": "gd-bacura-098",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -317195,7 +317569,7 @@
         "gd-bacura-062": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-bacura-096",
+          "parent": "gd-bacura-098",
           "inputs": {
             "CONDITION": [
               2,
@@ -317613,8 +317987,8 @@
         },
         "gd-bacura-081": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-bacura-094",
+          "next": "gd-bacura-096",
+          "parent": "gd-bacura-095",
           "inputs": {
             "CONDITION": [
               2,
@@ -317755,7 +318129,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -317817,7 +318191,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -317854,11 +318228,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-bacura-081"
+              "gd-bacura-095"
             ],
             "SUBSTACK2": [
               2,
-              "gd-bacura-095"
+              "gd-bacura-097"
             ]
           },
           "fields": {},
@@ -317866,6 +318240,40 @@
           "topLevel": false
         },
         "gd-bacura-095": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-bacura-081",
+          "parent": "gd-bacura-094",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-bacura-096": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-bacura-081",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-bacura-097": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-bacura-094",
@@ -317874,7 +318282,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-bacura-096": {
+        "gd-bacura-098": {
           "opcode": "looks_hide",
           "next": "gd-bacura-062",
           "parent": "gd-bacura-061",
@@ -318504,7 +318912,7 @@
         },
         "gd-sheonite-031": {
           "opcode": "control_start_as_clone",
-          "next": "gd-sheonite-088",
+          "next": "gd-sheonite-090",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -318516,7 +318924,7 @@
         "gd-sheonite-032": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-sheonite-088",
+          "parent": "gd-sheonite-090",
           "inputs": {
             "CONDITION": [
               2,
@@ -319424,8 +319832,8 @@
         },
         "gd-sheonite-075": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-sheonite-086",
+          "next": "gd-sheonite-088",
+          "parent": "gd-sheonite-087",
           "inputs": {
             "CONDITION": [
               2,
@@ -319537,7 +319945,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -319599,7 +320007,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -319636,11 +320044,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-sheonite-075"
+              "gd-sheonite-087"
             ],
             "SUBSTACK2": [
               2,
-              "gd-sheonite-087"
+              "gd-sheonite-089"
             ]
           },
           "fields": {},
@@ -319648,6 +320056,40 @@
           "topLevel": false
         },
         "gd-sheonite-087": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-sheonite-075",
+          "parent": "gd-sheonite-086",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-sheonite-088": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-sheonite-075",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-sheonite-089": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-sheonite-086",
@@ -319656,7 +320098,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-sheonite-088": {
+        "gd-sheonite-090": {
           "opcode": "looks_hide",
           "next": "gd-sheonite-032",
           "parent": "gd-sheonite-031",
@@ -320054,7 +320496,7 @@
         },
         "gd-bonus-flag-016": {
           "opcode": "control_start_as_clone",
-          "next": "gd-bonus-flag-048",
+          "next": "gd-bonus-flag-050",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -320066,7 +320508,7 @@
         "gd-bonus-flag-017": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-bonus-flag-048",
+          "parent": "gd-bonus-flag-050",
           "inputs": {
             "CONDITION": [
               2,
@@ -320420,8 +320862,8 @@
         },
         "gd-bonus-flag-033": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-bonus-flag-046",
+          "next": "gd-bonus-flag-048",
+          "parent": "gd-bonus-flag-047",
           "inputs": {
             "CONDITION": [
               2,
@@ -320561,7 +321003,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -320623,7 +321065,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -320660,11 +321102,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-bonus-flag-033"
+              "gd-bonus-flag-047"
             ],
             "SUBSTACK2": [
               2,
-              "gd-bonus-flag-047"
+              "gd-bonus-flag-049"
             ]
           },
           "fields": {},
@@ -320672,6 +321114,40 @@
           "topLevel": false
         },
         "gd-bonus-flag-047": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-bonus-flag-033",
+          "parent": "gd-bonus-flag-046",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-bonus-flag-048": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-bonus-flag-033",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-bonus-flag-049": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-bonus-flag-046",
@@ -320680,7 +321156,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-bonus-flag-048": {
+        "gd-bonus-flag-050": {
           "opcode": "looks_hide",
           "next": "gd-bonus-flag-017",
           "parent": "gd-bonus-flag-016",
@@ -322189,7 +322665,7 @@
         },
         "gd-ground-061": {
           "opcode": "control_start_as_clone",
-          "next": "gd-ground-747",
+          "next": "gd-ground-749",
           "parent": null,
           "inputs": {},
           "fields": {},
@@ -322201,7 +322677,7 @@
         "gd-ground-062": {
           "opcode": "control_repeat_until",
           "next": null,
-          "parent": "gd-ground-747",
+          "parent": "gd-ground-749",
           "inputs": {
             "CONDITION": [
               2,
@@ -335516,8 +335992,8 @@
         },
         "gd-ground-702": {
           "opcode": "control_if_else",
-          "next": null,
-          "parent": "gd-ground-745",
+          "next": "gd-ground-747",
+          "parent": "gd-ground-746",
           "inputs": {
             "CONDITION": [
               2,
@@ -336294,7 +336770,7 @@
               1,
               [
                 4,
-                1024
+                256
               ]
             ]
           },
@@ -336356,7 +336832,7 @@
               1,
               [
                 4,
-                10240
+                11008
               ]
             ]
           },
@@ -336393,11 +336869,11 @@
             ],
             "SUBSTACK": [
               2,
-              "gd-ground-702"
+              "gd-ground-746"
             ],
             "SUBSTACK2": [
               2,
-              "gd-ground-746"
+              "gd-ground-748"
             ]
           },
           "fields": {},
@@ -336405,6 +336881,40 @@
           "topLevel": false
         },
         "gd-ground-746": {
+          "opcode": "looks_setsizeto",
+          "next": "gd-ground-702",
+          "parent": "gd-ground-745",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                100000
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-ground-747": {
+          "opcode": "looks_setsizeto",
+          "next": null,
+          "parent": "gd-ground-702",
+          "inputs": {
+            "SIZE": [
+              1,
+              [
+                4,
+                125.0
+              ]
+            ]
+          },
+          "fields": {},
+          "shadow": false,
+          "topLevel": false
+        },
+        "gd-ground-748": {
           "opcode": "looks_hide",
           "next": null,
           "parent": "gd-ground-745",
@@ -336413,7 +336923,7 @@
           "shadow": false,
           "topLevel": false
         },
-        "gd-ground-747": {
+        "gd-ground-749": {
           "opcode": "looks_hide",
           "next": "gd-ground-062",
           "parent": "gd-ground-061",

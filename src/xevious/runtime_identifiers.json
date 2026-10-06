@@ -11,6 +11,7 @@
     "render_row_top": 210,
     "render_stage_top": 180,
     "render_view_first_row": 4,
+    "render_view_margin_rows": 3,
     "render_view_rows": 40,
     "shot_slot_count": 3,
     "slot_units_per_cell": 256,

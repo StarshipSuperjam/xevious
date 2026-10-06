@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -22017,10 +22018,11 @@ class ScratchProjectTests(unittest.TestCase):
             start = listed.index(air[0]) if air[0] in listed else None
             if start is None or listed[start:start + len(air)] != air:
                 fails.add(f"air-layout-{target}")
+            # The edge gate's move size is not a drawn size: the clone takes its render size before it draws.
             sizes = {
                 num(b["inputs"].get("SIZE"))
                 for b in targets[target]["blocks"].values()
-                if b["opcode"] == "looks_setsizeto"
+                if b["opcode"] == "looks_setsizeto" and num(b["inputs"].get("SIZE")) != director.OFF_EDGE_MOVE_SIZE
             }
             if len(sizes) != 1:
                 fails.add(f"air-one-size-{target}")
@@ -22414,8 +22416,10 @@ class ScratchProjectTests(unittest.TestCase):
             self.assertIn(label, self._cab05_weapon_art_failures(project), f"corruption '{label}' was not caught")
 
     def _pres01_framing_failures(self, project: dict) -> set[str]:
-        """PRES-01 playfield framing as a static contract (docs/mechanics/053): no border sprites; every
-        slot-driven world renderer draws only inside the visible rows [4, 40) and hides whole otherwise;
+        """PRES-01 playfield framing as a static contract (docs/mechanics/053, 056): no border sprites; every
+        slot-driven world renderer draws while any of it can reach the visible rows 4-39 — its slot row within
+        RENDER_VIEW_MARGIN_ROWS of them — and hides otherwise, and it moves at OFF_EDGE_MOVE_SIZE and then
+        takes SPRITE_RENDER_SIZE, so a sprite over the stage edge is clipped there, never fenced back on;
         world renderers never front themselves (so the HUD, fronted once at creation, draws over them while
         the craft still fronts every tick); and the static world band keeps ground under every flyer."""
         targets = {t["name"]: t for t in project["targets"]}
@@ -22423,14 +22427,21 @@ class ScratchProjectTests(unittest.TestCase):
         fails: set[str] = set()
         if set(director.FRAME_TARGETS) & set(targets):
             fails.add("frames-present")
-        view_units = director.RENDER_VIEW_ROWS * director.SLOT_UNITS_PER_CELL
-        first_units = director.RENDER_VIEW_FIRST_ROW * director.SLOT_UNITS_PER_CELL
-        if view_units != 40 * 256:  # row 40 is where check_scroll_offscreen culls (xevious_main.68k 4827-4839)
+        margin = director.RENDER_VIEW_MARGIN_ROWS
+        view_units = (director.RENDER_VIEW_ROWS + margin) * director.SLOT_UNITS_PER_CELL
+        first_units = (director.RENDER_VIEW_FIRST_ROW - margin) * director.SLOT_UNITS_PER_CELL
+        if director.RENDER_VIEW_ROWS != 40:  # row 40 is where check_scroll_offscreen culls (xevious_main.68k 4827-4839)
             fails.add("view-rows")
         # Rows 0-3 sit above the stage top under the 1.25 render scale (docs/mechanics/054): row 4 is the
         # first row whose draw position is inside the window.
-        if first_units != 4 * 256 or director.RENDER_ROW_TOP - 4 * director.RENDER_ROW_STAGE >= 180:
+        if director.RENDER_VIEW_FIRST_ROW != 4 or director.RENDER_ROW_TOP - 4 * director.RENDER_ROW_STAGE >= 180:
             fails.add("view-rows")
+        # The margin is the farthest a world sprite reaches from its slot position: a 2x2 drawn
+        # DOUBLE_TILE_STAGE_OFFSET down of it plus the half of its 16-px tile at the render size. Any less and a
+        # sprite that still overlaps the window pops out whole at the edge; much more only costs hidden clones.
+        reach = director.DOUBLE_TILE_STAGE_OFFSET + 16 * director.SPRITE_RENDER_SIZE / 100
+        if not (reach <= margin * director.RENDER_ROW_STAGE < reach + director.RENDER_ROW_STAGE):
+            fails.add("view-margin")
 
         for name in director.WORLD_RENDER_LAYER_ORDERS:
             target = targets.get(name)
@@ -22480,6 +22491,18 @@ class ScratchProjectTests(unittest.TestCase):
             ]
             if not gates:
                 fails.add(f"no-gate-{name}")
+            for gate in gates:
+                # The gated body opens at OFF_EDGE_MOVE_SIZE (so its move is never fenced onto the stage) and
+                # closes at SPRITE_RENDER_SIZE (the size it draws at).
+                chain, cur = [], blocks[gate]["inputs"]["SUBSTACK"][1]
+                while isinstance(cur, str) and cur in blocks:
+                    chain.append(blocks[cur])
+                    cur = blocks[cur].get("next")
+                sized = lambda b, size: b["opcode"] == "looks_setsizeto" and num(b["inputs"].get("SIZE")) == size
+                if len(chain) < 3 or not sized(chain[0], director.OFF_EDGE_MOVE_SIZE) or not sized(
+                    chain[-1], director.SPRITE_RENDER_SIZE
+                ):
+                    fails.add(f"edge-fence-{name}")
             covered = set()
             for gate in gates:
                 covered |= reach(blocks[gate]["inputs"]["SUBSTACK"][1])
@@ -23138,17 +23161,17 @@ class ScratchProjectTests(unittest.TestCase):
             return next(t for t in p["targets"] if t["name"] == name)
 
         def gate_high_bound(p, name):
-            view_units = director.RENDER_VIEW_ROWS * director.SLOT_UNITS_PER_CELL
+            view_units = (director.RENDER_VIEW_ROWS + director.RENDER_VIEW_MARGIN_ROWS) * director.SLOT_UNITS_PER_CELL
             return next(
                 b for b in target(p, name)["blocks"].values()
                 if b["opcode"] == "operator_lt" and self._numeric(b["inputs"].get("OPERAND2")) == view_units
             )
 
-        def widen_gate(p):  # the toroid's bottom cut moved past row 40 -> no longer the on-field gate
+        def widen_gate(p):  # the toroid's bottom cut moved far past row 43 -> no longer the on-field gate
             gate_high_bound(p, director.TOROID_TARGET)["inputs"]["OPERAND2"] = [1, [4, 99999]]
 
-        def lower_gate_to_row_0(p):  # the kapi's top cut back at row 0 -> drawn fenced at the stage top in rows 0-3
-            first_units = director.RENDER_VIEW_FIRST_ROW * director.SLOT_UNITS_PER_CELL
+        def lower_gate_to_row_0(p):  # the kapi's top cut moved to row 0 -> drawn wholly above the stage top
+            first_units = (director.RENDER_VIEW_FIRST_ROW - director.RENDER_VIEW_MARGIN_ROWS) * director.SLOT_UNITS_PER_CELL
             for b in target(p, director.KAPI_TARGET)["blocks"].values():
                 if b["opcode"] == "operator_lt" and self._numeric(b["inputs"].get("OPERAND2")) == first_units:
                     b["inputs"]["OPERAND2"] = [1, [4, 0]]
@@ -23164,7 +23187,23 @@ class ScratchProjectTests(unittest.TestCase):
 
         def refront_bullet(p):  # an enemy bullet fronting itself every tick again (would cover the HUD)
             blocks = target(p, director.ENEMY_BULLET_TARGET)["blocks"]
-            next(b for b in blocks.values() if b["opcode"] == "looks_setsizeto")["opcode"] = "looks_gotofrontback"
+            next(b for b in blocks.values() if b["opcode"] == "looks_cleargraphiceffects" or b["opcode"] == "looks_show")["opcode"] = "looks_gotofrontback"
+
+        def gate_sizes(p, name):
+            return [
+                b for b in target(p, name)["blocks"].values()
+                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) == director.OFF_EDGE_MOVE_SIZE
+            ]
+
+        def move_at_render_size(p):  # andor's part moves at its render size again -> fenced back onto the stage
+            for b in gate_sizes(p, director.GROUND_RENDER_TARGET):
+                b["inputs"]["SIZE"] = [1, [4, director.SPRITE_RENDER_SIZE]]
+
+        def keep_move_size(p):  # the zakato keeps the move size -> draws at the player's clamp, not 125
+            blocks = target(p, director.ZAKATO_TARGET)["blocks"]
+            for b in blocks.values():
+                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) == director.SPRITE_RENDER_SIZE:
+                    b["inputs"]["SIZE"] = [1, [4, director.OFF_EDGE_MOVE_SIZE]]
 
         def sink_toroid(p):  # a flyer back at its old layer, below the ground band
             target(p, director.TOROID_TARGET)["layerOrder"] = 18
@@ -23391,6 +23430,8 @@ class ScratchProjectTests(unittest.TestCase):
             (f"no-gate-{director.KAPI_TARGET}", lower_gate_to_row_0),
             (f"ungated-show-{director.GROUND_RENDER_TARGET}", ungate_ground),
             (f"world-fronts-{director.ENEMY_BULLET_TARGET}", refront_bullet),
+            (f"edge-fence-{director.GROUND_RENDER_TARGET}", move_at_render_size),
+            (f"edge-fence-{director.ZAKATO_TARGET}", keep_move_size),
             ("world-band", sink_toroid),
             ("frames-present", restore_frame),
         ]
@@ -23398,6 +23439,40 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._pres01_framing_failures(project), f"corruption '{label}' was not caught")
+
+    def _off_edge_box_failures(self, project: dict, move_size: float) -> list[str]:
+        """Every world costume, moved at `move_size`, has a box tall enough that the stage fence never pulls it
+        in. Scratch keeps min(15, half the box) of a moving sprite on the stage (scratch-render
+        getFencedPositionOfDrawable), and the player clamps a size to a box 1.5 stages across
+        (scratch-vm RenderedTarget.setSize), so the clamped half-height less 15 must reach the farthest drawn
+        position past the stage edge: the last gated row plus a 2x2's offset."""
+        lowest = director.RENDER_ROW_TOP - (
+            director.RENDER_VIEW_ROWS + director.RENDER_VIEW_MARGIN_ROWS - 1
+        ) * director.RENDER_ROW_STAGE
+        highest = director.RENDER_ROW_TOP - (
+            director.RENDER_VIEW_FIRST_ROW - director.RENDER_VIEW_MARGIN_ROWS
+        ) * director.RENDER_ROW_STAGE
+        overhang = max(highest - 180, -(lowest - director.DOUBLE_TILE_STAGE_OFFSET) - 180)
+        fails = []
+        for target in project["targets"]:
+            if target["name"] not in director.WORLD_RENDER_LAYER_ORDERS:
+                continue
+            for costume in target["costumes"]:
+                data = (scratch.SOURCE_DIR / "assets" / costume["md5ext"]).read_bytes()
+                width, height = struct.unpack(">II", data[16:24])
+                width, height = (v / costume.get("bitmapResolution", 1) for v in (width, height))
+                scale = min(move_size / 100, 1.5 * 480 / width, 1.5 * 360 / height)
+                if height * scale / 2 - 15 < overhang:
+                    fails.append(f"{target['name']}/{costume['name']}")
+        return fails
+
+    def test_pres01_world_sprites_clip_at_the_stage_edge(self) -> None:
+        # Slice 21 (docs/mechanics/056): a world sprite over the top or bottom edge is clipped there, as the
+        # arcade's screen clips it, instead of being fenced back onto the stage or hidden whole.
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual([], self._off_edge_box_failures(base, director.OFF_EDGE_MOVE_SIZE))
+        # Negative: moved at the render size, every world sprite would be fenced at the edge.
+        self.assertTrue(self._off_edge_box_failures(base, director.SPRITE_RENDER_SIZE))
 
     # Roadmap closure evidence for leaf `player.ground-targeting` (WPN-03 target-lock, WPN-04 bomb-flight).
     # The crosshair (slot 35) leads the craft by the fixed 96-px forward lead and locks the bomb target
@@ -23795,7 +23870,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "a700230c5c75935f2f329472cc7275de9a94f0d2ba4d70e036ba262c68bd0a58",
+            "c2bc4c8a937767fa705a5f2d488b21072ce79b3f243640131f8463da249c4de1",
             build_hash,
         )
 

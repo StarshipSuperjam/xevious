@@ -2672,13 +2672,20 @@ assert -RENDER_COL_OFFSET == ARCADE_STAGE_PER_PX * (terrain_render.GROUND_CENTRE
 assert (terrain_render.STAGE_PER_PX, terrain_render.STAGE_TOP, terrain_render.VISIBLE_CENTRE_PX) == (
     ARCADE_STAGE_PER_PX, RENDER_STAGE_TOP, _TERRAIN_VISIBLE_CENTRE_PX
 )
-# PRES-01 visibility gate (docs/mechanics/053, 054). World objects (every slot-driven flying/bullet/ground
-# renderer) are shown only while their slot's scroll row is inside [RENDER_VIEW_FIRST_ROW, RENDER_VIEW_ROWS) —
-# the arcade's visible rows 4..39; row 40 is where check_scroll_offscreen culls (xevious_main.68k 4827-4839).
-# Scratch cannot clip a sprite at a screen edge, so the cut hides the whole sprite (a port necessity). Lateral
-# overhang needs no gate: the opaque bezel panels draw in front of the world band at |x| > 140. Render-only.
+# PRES-01 visibility gate (docs/mechanics/053, 054, 056). The arcade shows rows RENDER_VIEW_FIRST_ROW..
+# RENDER_VIEW_ROWS - 1 (4..39; row 40 is where check_scroll_offscreen culls, xevious_main.68k 4827-4839), and its
+# screen edge clips a sprite that hangs over it. Slice 21: a world object (every slot-driven flying/bullet/ground
+# renderer) is drawn while any of it can reach those rows — its slot row within RENDER_VIEW_MARGIN_ROWS of the
+# window, the farthest a world sprite reaches from its position (a 2x2 drawn 8 px down of it, plus its 16-px
+# half) — and the stage edge clips it. Scratch keeps a sprite's box on the stage only as it moves
+# (scratch-render getFencedPositionOfDrawable), so each world clone moves at OFF_EDGE_MOVE_SIZE, which the
+# player clamps to a box 1.5 stages across, and then takes its render size: the box never meets the fence.
+# Lateral overhang needs no gate: the opaque bezel panels draw in front of the world band at |x| > 140.
+# Render-only.
 RENDER_VIEW_FIRST_ROW = 4
 RENDER_VIEW_ROWS = 40
+RENDER_VIEW_MARGIN_ROWS = 3
+OFF_EDGE_MOVE_SIZE = 100000
 # The craft's positional limits, derived from the arcade clamp (update_solvalou_sprite_XY xevious_main.68k
 # 2119-2135: X 144..304, Y 16..224) through the render map, and its spawn (main_fn_1__handle_solvalou
 # 1999-2003: X 296, Y 120). Y 16..224 puts the sprite flush against both side edges; X 304 puts its bottom edge
@@ -14621,28 +14628,36 @@ def _ensure_hud_target(project: dict[str, Any]) -> None:
 
 
 def _gate_in_view(blocks: Blocks, slotvar, body: list[str]) -> str:
-    # PRES-01 edge-hide: wrap a world renderer's per-tick body so its clone draws only while the slot's
-    # scroll row is on the field — RENDER_VIEW_FIRST_ROW <= slot x < RENDER_VIEW_ROWS cells, the arcade's
-    # visible rows 4..39 — and hides otherwise. Scratch cannot clip a sprite at a screen edge, so an object
-    # off the field is hidden whole rather than drawn fenced at the stage edge. `slotvar` is the renderer's
-    # fresh-per-call slot reporter factory (a reporter binds to one parent, so each read builds its own).
-    # Render-only: writes no slot state.
+    # PRES-01 edge gate: wrap a world renderer's per-tick body so its clone draws while the slot's scroll row
+    # is within RENDER_VIEW_MARGIN_ROWS of the arcade's visible rows 4..39, and hides otherwise. The body moves
+    # the clone before it picks a costume (every world renderer does), so it runs at OFF_EDGE_MOVE_SIZE: the move
+    # is never fenced back onto the stage, and a sprite hanging over the edge is clipped there, as the arcade's
+    # screen clips it. The clone then takes SPRITE_RENDER_SIZE, every world renderer's size. `slotvar` is the
+    # renderer's fresh-per-call slot reporter factory (a reporter binds to one parent, so each read builds its
+    # own). Render-only: writes no slot state.
     in_view = blocks.op_and(
         blocks.op_not(
             blocks.op_lt(
                 blocks.list_item("slot x", SLOT_X_ID, slotvar()),
-                number(RENDER_VIEW_FIRST_ROW * SLOT_UNITS_PER_CELL),
+                number((RENDER_VIEW_FIRST_ROW - RENDER_VIEW_MARGIN_ROWS) * SLOT_UNITS_PER_CELL),
             )
         ),
         blocks.op_lt(
             blocks.list_item("slot x", SLOT_X_ID, slotvar()),
-            number(RENDER_VIEW_ROWS * SLOT_UNITS_PER_CELL),
+            number((RENDER_VIEW_ROWS + RENDER_VIEW_MARGIN_ROWS) * SLOT_UNITS_PER_CELL),
         ),
     )
     gate = blocks.add("control_if_else")
     blocks.blocks[gate]["inputs"]["CONDITION"] = [2, in_view]
     blocks.blocks[in_view]["parent"] = gate
-    blocks.substack(gate, body)
+    blocks.substack(
+        gate,
+        [
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(OFF_EDGE_MOVE_SIZE)}),
+            *body,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(SPRITE_RENDER_SIZE)}),
+        ],
+    )
     blocks.substack(gate, [blocks.hide()], name="SUBSTACK2")
     return gate
 
@@ -18026,6 +18041,7 @@ def identifier_manifest(project: dict[str, Any]) -> dict[str, Any]:
         "render_stage_top": RENDER_STAGE_TOP,
         "render_view_first_row": RENDER_VIEW_FIRST_ROW,
         "render_view_rows": RENDER_VIEW_ROWS,
+        "render_view_margin_rows": RENDER_VIEW_MARGIN_ROWS,
         "slot_units_per_cell": SLOT_UNITS_PER_CELL,
         # AREA-01 screen phase (tools/terrain_render.py): a map row's top line is 8R - C/32 + phase, a
         # ground object's centre line is slot x / 32 + bias, and an object fired at row S rides with its

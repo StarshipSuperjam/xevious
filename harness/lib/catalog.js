@@ -550,10 +550,10 @@ export const SCENARIOS = [
   },
   {
     key: 'pres01-world-hidden-off-field',
-    // roadmap-evidence: PRES-01 success  (a live world object is shown only while its row is inside the window,
-    //   rows 4-39, and hidden in rows 0-3 above the stage top where Scratch would fence it onto the edge)
+    // roadmap-evidence: PRES-01 success  (a live world object is drawn while any of it can reach the window,
+    //   rows 4-39 widened by the 3-row margin, and the stage edge clips it; above that it is hidden)
     behavior:
-      'PRES-01: a live world object is drawn only while its row is inside the window (rows 4-39) — a Bacura held at row 3 (alive, above the window) is hidden, and the same slab at rows 4 and 39 is shown',
+      'PRES-01: a live world object is drawn while any of it can reach the window (slice 21: rows 1-42, the visible rows 4-39 widened by the 3-row margin) — a Bacura at row 3, hanging over the top edge, is drawn and clipped there, and the same slab at row 0, wholly above the window, is hidden; it is drawn at rows 4 and 39',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -587,20 +587,28 @@ export const SCENARIOS = [
           x: Number(readVar(vm, 'slot-x')[slot]),
         };
       };
-      // Row 3 is a live object (the walk culls only at row <= -2), so hiding it is the gate's work. It is
-      // seeded at the row's start so any scroll during the step keeps it inside row 3 (checked by the assert).
-      return { row4: at(4, 32), row3: at(3, 0), row39: at(constants.render_view_rows - 1, 32) };
+      // Row 0 is a live object (the walk culls only at row <= -2), so hiding it is the gate's work. Each slab is
+      // seeded at its row's start so any scroll during the step keeps it inside that row (checked below).
+      return {
+        row4: at(4, 32),
+        row3: at(3, 0),
+        row0: at(0, 0),
+        row39: at(constants.render_view_rows - 1, 32),
+      };
     },
     assert(obs) {
-      const first = constants.render_view_first_row * constants.slot_units_per_cell;
+      const U = constants.slot_units_per_cell;
+      const first = (constants.render_view_first_row - constants.render_view_margin_rows) * U;
       assert.equal(obs.row4.visible, true, 'a slab at row 4, the first row inside the window, is shown');
-      assert.equal(obs.row3.alive, true, 'precondition: the slab at row 3 is still a live object');
-      assert.ok(obs.row3.x < first, `precondition: the slab is still in row 3 when sampled (slot x ${obs.row3.x})`);
-      assert.equal(obs.row3.visible, false, 'a live slab at row 3, above the window, is hidden');
+      assert.equal(obs.row3.visible, true, 'a slab at row 3, hanging over the top edge, is drawn (the edge clips it)');
+      assert.ok(obs.row3.x < 4 * U, `precondition: the slab is still in row 3 when sampled (slot x ${obs.row3.x})`);
+      assert.equal(obs.row0.alive, true, 'precondition: the slab at row 0 is still a live object');
+      assert.ok(obs.row0.x < first, `precondition: the slab is still in row 0 when sampled (slot x ${obs.row0.x})`);
+      assert.equal(obs.row0.visible, false, 'a live slab at row 0, wholly above the window, is hidden');
       assert.equal(obs.row39.visible, true, 'a slab at row 39, the last on-field row, is shown');
     },
-    // roadmap-evidence: PRES-01 failure  (with the gate's lower bound widened, the live slab at row 3 is
-    //   drawn fenced onto the stage top and the hidden assertion goes red)
+    // roadmap-evidence: PRES-01 failure  (with the gate's lower bound widened, the live slab at row 0 is
+    //   drawn above the stage top and the hidden assertion goes red)
     negativeMutation: (p) => {
       const t = p.targets.find((x) => x.name === 'bacura');
       let patched = 0;
@@ -611,7 +619,8 @@ export const SCENARIOS = [
         const lhs = t.blocks[lt.inputs.OPERAND1[1]];
         const rhs = lt.inputs.OPERAND2[1];
         const isSlotX = lhs && lhs.opcode === 'data_itemoflist' && lhs.fields.LIST[0] === 'slot x';
-        const first = constants.render_view_first_row * constants.slot_units_per_cell;
+        const first =
+          (constants.render_view_first_row - constants.render_view_margin_rows) * constants.slot_units_per_cell;
         if (isSlotX && Array.isArray(rhs) && Number(rhs[1]) === first) {
           lt.inputs.OPERAND2 = [1, [4, '-99999']];
           patched += 1;
