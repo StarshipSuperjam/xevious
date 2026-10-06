@@ -1,0 +1,122 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Script layout measurement</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #fff; font: 14px sans-serif; }
+  #ws { position: absolute; inset: 0; visibility: hidden; }
+  #report { position: absolute; inset: 0; overflow: auto; padding: 12px; z-index: 10; background: #fff; }
+  pre { white-space: pre-wrap; }
+  textarea { width: 100%; height: 12em; }
+</style>
+</head>
+<body>
+<div id="ws"></div>
+<div id="report"><p id="status">loading</p></div>
+<script src="vertical.js"></script>
+<script src="scratch-vm.js"></script>
+<script>
+// Written into a folder by `tools/script_layout_measure.py prepare`; see that file for the steps.
+// Loads measure.sb3 the way the Scratch 3 editor (scratch-gui) does: the VM emits each sprite's
+// workspace XML and scratch-blocks renders it. Then, per sprite: did every block load, do any
+// scripts overlap or sit other than Clean up's 48 apart, and does every drawn block measure the
+// height tools/script_layout.py predicts (model.json).
+const GAP = 48;
+const HAT = 16;
+const SAMPLES = 'script-layout samples';
+const status = document.getElementById('status');
+const report = document.getElementById('report');
+window.measure = null;
+
+function line(text) {
+  const pre = document.createElement('pre');
+  pre.textContent = text;
+  report.appendChild(pre);
+}
+
+(async () => {
+  try {
+    const model = await fetch('model.json').then((r) => r.json());
+    const ws = Blockly.inject('ws', { media: 'media/', zoom: { startScale: 1 }, toolbox: '<xml></xml>' });
+    const vm = new VirtualMachine();
+    let lastXml = null;
+    vm.on('workspaceUpdate', (data) => { lastXml = data.xml; });
+    await vm.loadProject(await fetch('measure.sb3').then((r) => r.arrayBuffer()));
+    const out = {};
+    let problems = 0;
+    for (const target of vm.runtime.targets.filter((t) => t.isOriginal)) {
+      const name = target.getName();
+      lastXml = null;
+      vm.setEditingTarget(target.id);
+      if (lastXml === null) vm.emitWorkspaceUpdate();
+      let loadError = null;
+      try {
+        Blockly.Events.disable();
+        Blockly.Xml.clearWorkspaceAndLoadFromXml(Blockly.Xml.textToDom(lastXml), ws);
+      } catch (e) {
+        loadError = String((e && e.message) || e);
+      } finally {
+        Blockly.Events.enable();
+      }
+      // A shadow covered by another block is kept only as DOM, never drawn: compare the
+      // blocks that are, so a sprite that stopped loading partway shows as missing blocks.
+      const vmBlocks = Object.values(target.blocks._blocks).filter((b) => !b.shadow).length;
+      const drawn = ws.getAllBlocks(false);
+      const wsBlocks = drawn.filter((b) => !b.isShadow()).length;
+      // Only blocks stored in the file: the VM turns each compact input (a number, text, variable or
+      // message menu) into a shadow block with a fresh random id, which the model sizes as part of
+      // its parent's input instead.
+      const predicted = model[name] || {};
+      const blocks = {};
+      for (const b of drawn) if (b.id in predicted) blocks[b.id] = b.height;
+      const stacks = {};
+      const scripts = ws.getTopBlocks(false).map((b) => {
+        const xy = b.getRelativeToSurfaceXY();
+        stacks[b.id] = b.getHeightWidth().height;
+        return { id: b.id, y: xy.y, h: stacks[b.id] };
+      }).sort((a, b) => a.y - b.y);
+      const close = [];
+      const offGap = [];
+      for (let i = 1; i < scripts.length; i++) {
+        const gap = scripts[i].y - (scripts[i - 1].y + scripts[i - 1].h);
+        if (gap <= HAT) close.push([scripts[i - 1].id, scripts[i].id, gap]);
+        if (gap !== GAP) offGap.push([scripts[i - 1].id, scripts[i].id, gap]);
+      }
+      const mismatches = Object.entries(blocks)
+        .filter(([id, h]) => predicted[id] !== h)
+        .map(([id, h]) => [id, ws.getBlockById(id).type, 'measured', h, 'model', predicted[id]]);
+      out[name] = { loadError, vmBlocks, wsBlocks, scripts: scripts.length, close, offGap, mismatches, blocks, stacks };
+      const bad = loadError !== null || vmBlocks !== wsBlocks || close.length || offGap.length || mismatches.length;
+      if (bad) problems += 1;
+      line(`${bad ? 'PROBLEM' : 'ok'}  ${name}: ${scripts.length} scripts, ${wsBlocks}/${vmBlocks} blocks loaded`
+        + (loadError ? `, load error: ${loadError}` : '')
+        + (close.length ? `, overlapping: ${JSON.stringify(close)}` : '')
+        + (offGap.length ? `, gaps not ${GAP}: ${JSON.stringify(offGap)}` : '')
+        + (mismatches.length ? `, height differs from the model: ${JSON.stringify(mismatches)}` : ''));
+    }
+    window.measure = out;
+    const blockCount = Object.values(out).reduce((n, t) => n + Object.keys(t.blocks).length, 0);
+    status.textContent = `done: ${Object.keys(out).length} sprites, ${blockCount} drawn blocks, `
+      + `${problems} sprite(s) with a problem`;
+    if (out[SAMPLES]) {
+      const text = JSON.stringify({ blocks: out[SAMPLES].blocks, stacks: out[SAMPLES].stacks });
+      const p = document.createElement('p');
+      p.textContent = `Measurements of "${SAMPLES}": save as measured.json in this folder, then run write-fixture.`;
+      const area = document.createElement('textarea');
+      area.id = 'measured';
+      area.value = text;
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      link.download = 'measured.json';
+      link.textContent = 'Download measured.json';
+      report.append(p, link, area);
+    }
+  } catch (e) {
+    window.measureError = String((e && e.stack) || e);
+    status.textContent = 'error: ' + window.measureError;
+  }
+})();
+</script>
+</body>
+</html>

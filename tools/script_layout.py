@@ -7,6 +7,11 @@ block renderer does (scratch-blocks 1.3.0, `core/block_render_svg_vertical.js`) 
 stacks the scripts in one column with the gap the editor's own "Clean up Blocks" leaves
 (`core/workspace_svg.js` `cleanUp`).
 
+Scripts are placed in reading order: where the sprite starts running (green flag, then key
+presses), what it responds to (message receivers, grouped by message), clone starts, and
+last the custom-block definitions the rest call. Only positions follow this order; the
+order the runtime starts scripts in is the order of the blocks in the file, left as is.
+
 It knows nothing about any particular game: only block shapes. An opcode missing from
 SHAPES is refused rather than guessed, so a new kind of block can't quietly overlap.
 """
@@ -129,7 +134,10 @@ def _shape(block: dict[str, Any]) -> tuple[str, tuple[str, ...]]:
         return SHAPES[block["opcode"]]
     except KeyError:
         raise ValueError(
-            f"script_layout: no shape for opcode {block['opcode']!r}; add it to SHAPES"
+            f"script_layout: no shape for opcode {block['opcode']!r}. Add it to SHAPES in "
+            "tools/script_layout.py with one of the kinds described above that table; a kind "
+            "not yet in the table must first be measured in the editor "
+            "(tools/script_layout_measure.py)."
         ) from None
 
 
@@ -254,11 +262,40 @@ def top_level_ids(blocks: dict[str, Any]) -> list[str]:
     return ids
 
 
+# Where each kind of top-level script sits in the reading order; anything else goes last.
+_READING_GROUPS = (
+    "event_whenflagclicked",
+    "event_whenkeypressed",
+    "event_whenbroadcastreceived",
+    "control_start_as_clone",
+    "procedures_definition",
+)
+
+
+def reading_order(blocks: dict[str, Any]) -> list[str]:
+    """Top-level scripts grouped as the module docstring describes, generation order kept
+    within each group. Receivers of one message sit together, in the order each message
+    first appears."""
+    tops = top_level_ids(blocks)
+    message_rank: dict[str, int] = {}
+    keys = {}
+    for index, block_id in enumerate(tops):
+        block = blocks[block_id]
+        opcode = block["opcode"]
+        group = _READING_GROUPS.index(opcode) if opcode in _READING_GROUPS else len(_READING_GROUPS)
+        rank = 0
+        if opcode == "event_whenbroadcastreceived":
+            rank = message_rank.setdefault(block["fields"]["BROADCAST_OPTION"][0], len(message_rank))
+        keys[block_id] = (group, rank, index)
+    return sorted(tops, key=keys.__getitem__)
+
+
 def lay_out(blocks: dict[str, Any]) -> None:
-    """Place every top-level script in one column, in generation order, each one the
-    editor's Clean up gap below the last. Idempotent."""
+    """Place every top-level script in one column, in reading order, each one the editor's
+    Clean up gap below the last. Clean up itself keeps this order: it re-stacks scripts top
+    to bottom. Idempotent."""
     y = 0
-    for block_id in top_level_ids(blocks):
+    for block_id in reading_order(blocks):
         blocks[block_id]["x"] = 0
         blocks[block_id]["y"] = y
         y += stack_height(blocks, block_id) + MIN_BLOCK_Y

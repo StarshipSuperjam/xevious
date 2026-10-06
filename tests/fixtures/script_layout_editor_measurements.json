@@ -1,7 +1,7 @@
 {
  "renderer": "scratch-blocks 1.3.0 dist/web/vertical.js (the block renderer behind the Scratch 3 editor)",
  "loaded_through": "scratch-vm 5.0.300: loadProject, setEditingTarget, then the workspaceUpdate XML into Blockly.Xml.clearWorkspaceAndLoadFromXml, as scratch-gui does",
- "method": "The sample blocks below were installed as one sprite's scripts in an sb3 and opened in that renderer at scale 1. block_heights is each drawn block's `height` (scratch-blocks BlockSvg.height); stack_heights is each top-level block's getHeightWidth().height. A shadow covered by another block is not drawn, so it has no measurement.",
+ "method": "Measured with tools/script_layout_measure.py (its docstring has the steps): the sample blocks below, in a sprite of an sb3, opened in that renderer at scale 1. block_heights is each drawn block's `height` (scratch-blocks BlockSvg.height); stack_heights is each top-level block's getHeightWidth().height. A shadow covered by another block is not drawn, so it has no measurement.",
  "blocks": {
   "sample-001": {
    "opcode": "event_whenflagclicked",
@@ -667,7 +667,7 @@
    "shadow": false,
    "topLevel": true,
    "x": 0,
-   "y": 1424
+   "y": 1824
   },
   "sample-041": {
    "opcode": "control_if",
@@ -986,7 +986,7 @@
    "shadow": false,
    "topLevel": true,
    "x": 0,
-   "y": 2448
+   "y": 1424
   },
   "sample-062": {
    "opcode": "control_forever",

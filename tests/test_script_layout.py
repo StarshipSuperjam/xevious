@@ -63,12 +63,13 @@ class EditorMeasurementTests(unittest.TestCase):
         # kind needs only its SHAPES line. A new kind needs measuring first (the fixture's
         # `method` says how).
         measured = [self.blocks[block_id] for block_id in FIXTURE["block_heights"]]
+        unmeasured = "kinds with no editor measurement; add samples and re-measure (tools/script_layout_measure.py)"
         table_kinds = {kind for kind, _ in sl.SHAPES.values()}
-        self.assertEqual(table_kinds - {sl.SHAPES[b["opcode"]][0] for b in measured}, set())
-        self.assertEqual(sl.DRAWN_KINDS - {sl._kind(b) for b in measured}, set())
+        self.assertEqual(table_kinds - {sl.SHAPES[b["opcode"]][0] for b in measured}, set(), unmeasured)
+        self.assertEqual(sl.DRAWN_KINDS - {sl._kind(b) for b in measured}, set(), unmeasured)
         mouth_counts = {len(mouths) for kind, mouths in sl.SHAPES.values() if kind == "c"}
         self.assertEqual(mouth_counts - {len(sl.SHAPES[b["opcode"]][1]) for b in measured
-                                         if sl._kind(b) == "c"}, set())
+                                         if sl._kind(b) == "c"}, set(), unmeasured)
 
     def test_block_heights_match_the_editor(self) -> None:
         for block_id, height in FIXTURE["block_heights"].items():
@@ -150,9 +151,9 @@ class LayOutTests(unittest.TestCase):
         sl.lay_out(blocks)
         return blocks
 
-    def test_scripts_are_stacked_in_order_one_clean_up_gap_apart(self) -> None:
+    def test_scripts_are_stacked_in_reading_order_one_clean_up_gap_apart(self) -> None:
         blocks = self._laid_out_sample()
-        tops = sl.top_level_ids(blocks)
+        tops = sl.reading_order(blocks)
         self.assertEqual(blocks[tops[0]]["y"], 0)
         for upper, lower in zip(tops, tops[1:]):
             self.assertEqual(blocks[lower]["x"], 0)
@@ -163,7 +164,7 @@ class LayOutTests(unittest.TestCase):
 
     def test_with_editor_measured_heights_the_gap_is_exactly_clean_ups(self) -> None:
         blocks = self._laid_out_sample()
-        tops = sl.top_level_ids(blocks)
+        tops = sl.reading_order(blocks)
         for upper, lower in zip(tops, tops[1:]):
             drawn_bottom = blocks[upper]["y"] + FIXTURE["stack_heights"][upper]
             self.assertEqual(blocks[lower]["y"] - drawn_bottom, sl.MIN_BLOCK_Y)
@@ -179,10 +180,39 @@ class LayOutTests(unittest.TestCase):
         for block_id, block in blocks.items():
             self.assertEqual("x" in block, bool(block["topLevel"]), block_id)
 
+    def test_reading_order_groups_scripts_by_where_they_start(self) -> None:
+        def receiver(top_id: str, message: str) -> dict:
+            blocks = _stack("event_whenbroadcastreceived", top_id=top_id)
+            blocks[f"{top_id}0"]["fields"] = {"BROADCAST_OPTION": [message, f"id-{message}"]}
+            return blocks
+        blocks = {}
+        for part in (
+            _stack("procedures_definition", top_id="def"),
+            receiver("stopA", "stop"),
+            _stack("control_start_as_clone", top_id="clone"),
+            receiver("go", "go"),
+            _stack("operator_add", top_id="loose"),
+            _stack("event_whenkeypressed", top_id="key"),
+            receiver("stopB", "stop"),
+            _stack("event_whenflagclicked", top_id="flagA"),
+            _stack("event_whenflagclicked", top_id="flagB"),
+        ):
+            blocks.update(part)
+        self.assertEqual(sl.reading_order(blocks), [
+            "flagA0", "flagB0", "key0", "stopA0", "stopB0", "go0", "clone0", "def0", "loose0",
+        ])
+        # Positions follow the reading order; the file's block order, which is the order the
+        # runtime starts scripts in, is untouched.
+        before = list(blocks)
+        sl.lay_out(blocks)
+        self.assertEqual(list(blocks), before)
+        ys = [blocks[block_id]["y"] for block_id in sl.reading_order(blocks)]
+        self.assertEqual(ys, sorted(ys))
+
     def test_overlap_is_reported(self) -> None:
         blocks = self._laid_out_sample()
         self.assertEqual(_overlapping_scripts(blocks), [])
-        tops = sl.top_level_ids(blocks)
+        tops = sl.reading_order(blocks)
         upper, lower = tops[0], tops[1]
         bottom = blocks[upper]["y"] + sl.stack_height(blocks, upper)
         blocks[lower]["y"] = bottom - 8
@@ -201,6 +231,19 @@ class LayOutTests(unittest.TestCase):
 
 
 class ShippedProjectTests(unittest.TestCase):
+    def test_each_sprite_reads_from_where_it_starts(self) -> None:
+        for target in PROJECT["targets"]:
+            blocks = target["blocks"]
+            tops = sorted(sl.top_level_ids(blocks), key=lambda block_id: blocks[block_id]["y"])
+            if tops:
+                with self.subTest(target=target["name"]):
+                    self.assertNotEqual(blocks[tops[0]]["opcode"], "procedures_definition")
+
+    def test_no_receiver_hides_a_clone_before_deleting_it(self) -> None:
+        for target in PROJECT["targets"]:
+            with self.subTest(target=target["name"]):
+                self.assertEqual(_hidden_before_delete(target["blocks"]), [])
+
     def test_every_sprite_is_laid_out_by_the_model(self) -> None:
         for target in PROJECT["targets"]:
             with self.subTest(target=target["name"]):
@@ -209,6 +252,8 @@ class ShippedProjectTests(unittest.TestCase):
                 self.assertEqual(relaid, target["blocks"])
 
     def test_no_two_scripts_overlap(self) -> None:
+        # A tripwire for consistency with the model; the evidence that the editor draws no
+        # overlap is the model matching the measured heights above.
         for target in PROJECT["targets"]:
             with self.subTest(target=target["name"]):
                 self.assertEqual(_overlapping_scripts(target["blocks"]), [])
@@ -217,6 +262,24 @@ class ShippedProjectTests(unittest.TestCase):
         for target in PROJECT["targets"]:
             with self.subTest(target=target["name"]):
                 self.assertEqual(sl.blocks_under_caps(target["blocks"]), [])
+
+
+def _hidden_before_delete(blocks: dict) -> list[str]:
+    """`delete this clone` blocks in message receivers with a `hide` on the path that runs
+    before them. scratch-vm asks for a redraw when a visible clone is deleted, but neither
+    when one is hidden nor when a hidden one is deleted, so hiding first would change how
+    many passes the player runs in that frame. (Some clone-start scripts hide and then
+    delete by design; only the receivers were reordered for the editor.)"""
+    found = []
+    for block_id, block in blocks.items():
+        if isinstance(block, dict) and block["opcode"] == "control_delete_this_clone":
+            current, hidden = block_id, False
+            while blocks[current]["parent"]:
+                current = blocks[current]["parent"]  # the block before, or the one enclosing
+                hidden = hidden or blocks[current]["opcode"] == "looks_hide"
+            if hidden and blocks[current]["opcode"] == "event_whenbroadcastreceived":
+                found.append(block_id)
+    return found
 
 
 class GeneratorGuardTests(unittest.TestCase):
