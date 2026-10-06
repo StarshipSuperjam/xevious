@@ -301,6 +301,24 @@ class ReleaseMediaAudit(unittest.TestCase):
 CATALOG = ROOT / "docs" / "MECHANICS_CATALOG.md"
 MECHANICS = ROOT / "docs" / "mechanics"
 README = ROOT / "README.md"
+SPEC = ROOT / "docs" / "spec"
+# Wording that leaves a capability claim open. docs/spec/release.md states the rule itself, so it is not a
+# capability document and is not scanned.
+OPEN_UNCERTAINTY = re.compile(
+    r"\*Uncertain:?\*|recorded (?:as )?uncertain|recorded uncertainty|carries a recorded|uncertain in practical",
+    re.IGNORECASE,
+)
+
+
+def uncertainty_failures(docs: dict[str, str]) -> set[str]:
+    """docs/spec/release.md: every Uncertain marker in the capability documents is resolved against the source or
+    accepted as a recorded deviation — none is left open."""
+    failures = set()
+    for name, text in docs.items():
+        for number, line in enumerate(text.splitlines(), 1):
+            if OPEN_UNCERTAINTY.search(line):
+                failures.add(f"open-uncertainty:{name}:{number}")
+    return failures
 
 
 def catalog_failures(catalog: str, records: set[str]) -> set[str]:
@@ -358,6 +376,20 @@ class ReleaseCatalogAudit(unittest.TestCase):
         for expected, text in cases.items():
             with self.subTest(expected):
                 self.assertIn(expected, catalog_failures(text, records.get(expected, self.records)))
+
+    def test_no_uncertain_marker_is_left_open(self):
+        # roadmap-evidence: RELEASE-02 success  (the seven Uncertain markers the audit found are resolved against
+        #   the pinned source or accepted as recorded deviations; no capability document leaves one open)
+        docs = {path.name: path.read_text(encoding="utf-8") for path in SPEC.glob("*.md") if path.name != "release.md"}
+        self.assertGreater(len(docs), 10)
+        self.assertEqual(uncertainty_failures(docs), set())
+
+    def test_uncertainty_check_bites(self):
+        # roadmap-evidence: RELEASE-02 failure  (an open "*Uncertain:*" or "recorded uncertainty" line fails)
+        for marker in ("*Uncertain:* the re-arm path is not pinned.", "This carries a recorded uncertainty.",
+                       "a variant recorded as uncertain in practical reach"):
+            with self.subTest(marker):
+                self.assertEqual(uncertainty_failures({"x.md": "fine\n" + marker}), {"open-uncertainty:x.md:2"})
 
     def test_readme_carries_the_release(self):
         readme = README.read_text(encoding="utf-8")

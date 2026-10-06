@@ -148,10 +148,10 @@ under the Kapi mask (**no** fire suppression, unlike Terrazi's glide). `_dX`/`_Y
 lateral axes (`dir_delta_tbl` 2172, `set_solvalou_dXdY` 2147); the older "vertical acceleration toward
 the craft / horizontal deceleration" reading inverted **both** axes and the direction. A seven-code
 animation (0x20–0x26) advances every eight frames in forward order regardless of side, the eighth
-animation slot holding the last frame (`loc_2455` 3654–3665). Its initial fire-delay constant carries a
-recorded uncertainty: the reference's code and its own comment disagree (an unmasked double-add versus
-the commented 48–111 range), noted as a probable transcription slip in the reference; the build follows
-the commented range and records the deviation.
+animation slot holding the last frame (`loc_2455` 3654–3665). Its initial fire delay is an accepted
+deviation: the code adds 63 and then 48 to a random byte with no mask (3610–3613), so the timer can start
+anywhere in the byte's range, while the reference's own comment gives 48–111; the build follows the
+commented range (mechanics record 028, deviation 3).
 
 **Terrazi (AIR-06).** Aimed approach at 3 px/frame, firing under the Terrazi mask while distant; when it
 draws nearly level with the craft **laterally** (a narrow window on `_Y`, offset ~[−4, 3], derived — the
@@ -182,8 +182,9 @@ variant on a 1–64-frame fuse, the proximity variant when level with the craft 
 teleport-in — recorded as a correction to the catalog's older phrasing): drifts at 3 px/frame on a
 32–63-frame fuse (4010–4029). Shot in time, it dies normally and scores. Left alone, it detonates into a
 full 16-bullet 360° ring at 3 px/frame plus four Brag Sparios launched in the cardinal directions at
-2 px/frame (5075–5116), awards nothing, and vanishes without an explosion animation. (A stray "500"
-in the reference's comment has no code path; recorded uncertain.)
+2 px/frame (5075–5116), awards nothing, and vanishes without an explosion animation. (The comment above
+the handler reads 1,000/500: the Garu Zakato itself scores 1,000 (points index 48 at 4014), and 500 is
+what a Brag Spario it launches scores when shot (points index 33, `handle_09_Brag_Spario` 3080–3088).)
 
 **Sheonite (AIR-09).** The indestructible escort pair around the Andor Genesis encounter: born in the
 benign state, never hit-tested, started and ended by their schedule records. Each homes at 4 px/frame on

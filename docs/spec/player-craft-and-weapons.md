@@ -71,8 +71,11 @@ without stopping at the first hit (`handle_bombed_obj_and_award_points` 2597–2
 2629–2641). So a bomb dropped midway between two ground objects 16 pixels apart sideways, 8 pixels from
 each, destroys both. Bomb impact resolution and scoring are specified in
 [Scoring, lives, and game over](scoring-lives-and-game-over.md) and per ground family in
-[Ground objects](ground-objects.md). *Uncertain:* the code site that re-arms the bomb slot after
-detonation was not located; the one-bomb lockout itself is confirmed, the re-arm path is not yet pinned.
+[Ground objects](ground-objects.md). The bomb re-arms the frame after impact: `check_bomb_finished`
+(2502–2513) clears the bomb and its target to state 0, the next sprite-shadow update turns a cleared
+object into idle state 1 (`src/xevious_sub.68k` `sub_fn_31__update_sprite_shadow` 292–294, which
+runs the reference's platform shadow routine, where state 0 becomes 1), and
+`init_bombing` (2445–2447) starts a new bomb only from idle state 1.
 
 **Player death and respawn (PLY-02).** Each frame the craft is tested against 19 enemy bullets and 6
 flying enemies with one hit window (byte 0 bias 8 width 16, byte 1 bias 4 width 8 — the object within

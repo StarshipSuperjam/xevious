@@ -54,8 +54,9 @@ threshold can never exceed the score again, so every further award grants an ext
 (`check_for_extra_solvalou` 114–118 region).
 
 **Starting and bonus lives (ECO-03).** Starting craft come from a four-entry DIP-indexed table: 5, 2, 1,
-or 3 (`starting_solvalou_tbl` 1174–1175; the raw-index-to-physical-switch mapping is recorded as
-uncertain — the code exposes only the raw bits). Bonus lives use a first-threshold table pair and a
+or 3 (`starting_solvalou_tbl` 1174–1175), indexed by two raw DIP bits (411–416). The code names only
+the raw bits, not the physical switch positions; the build fixes raw index 3 (three craft) and depends
+on no switch mapping. Bonus lives use a first-threshold table pair and a
 repeat-increment table pair, selected by the lives setting and a three-bit bonus DIP field
 (`first_bonus_life_tbls` 1179–1199; `bonus_tbl_ptrs` 1854–1877) — every exact threshold and increment,
 per setting, is committed in [data/scores.json](data/scores.json) (first bonus 10,000–30,000 by
@@ -71,12 +72,14 @@ the low three bits of the inverted DIP switch byte, of which only bit 2 is part 
 needs the value 6: bit 2 set, so the bonus setting index must be odd, and bits 0–1 set to 1,0 from the
 neighbouring switch field, so it is not a bonus setting on its own. At the port's fixed bonus setting
 (index 0), bit 2 is clear, so the stop is unreachable in this build. Which pair of tables
-applies to which lives setting carries a recorded uncertainty, independently confirmed by two decoders:
-the reference's own two selection sites disagree — the game-start seeding applies an extra inversion the
-repeat-award path lacks, so they choose opposite tables for the same DIP setting (1854–1877 vs the init
-path near 419–425). This internal inconsistency may be the reference's acknowledged remaining bug; the
-build follows the repeat-award site's rule (the one that runs during play) and records the deviation,
-with arcade observation as the resolution path. The threshold check runs after every point award, on the score's top
+applies to which lives setting differs between the reference's own two selection sites:
+the game-start seeding applies an extra inversion the
+repeat-award path lacks, so they choose opposite tables for the same DIP setting (the first threshold
+near 419–425 with the inversion, the increment at 124–128 without it). The build follows the repeat-award
+site's rule (the one that runs during play) and records the deviation. At the build's fixed settings it
+changes nothing: both first-threshold tables give 20,000 at bonus setting 0, and only the repeat-award
+site chooses the increment (60,000 for three craft), so play sees 20,000, 60,000, then every 60,000 under
+either rule. The threshold check runs after every point award, on the score's top
 four digits.
 
 **HUD (ECO-02).** The screen shows the current player's score, the running high score, remaining craft,
