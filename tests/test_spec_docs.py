@@ -1409,6 +1409,7 @@ class ReleaseSoakWiring(unittest.TestCase):
     # roadmap-evidence: RELEASE-01 failure  (soak.js's negative fails a consume-less build inside area 1; this check
     #   refuses a soak missing a claim, run outside its job, unpaced, or with thresholds off the spec)
     SOAK = ROOT / "harness" / "soak.js"
+    HARNESS = ROOT / "harness" / "lib" / "harness.js"
     WORKFLOW = ROOT / ".github" / "workflows" / "xevious-project.yml"
     RELEASE_SPEC = SPEC / "release.md"
     CLAIMS = {
@@ -1447,11 +1448,15 @@ class ReleaseSoakWiring(unittest.TestCase):
             failures.add("campaign-not-to-the-loop")
         # Every soak VM is paced as the editor runs it, one pass of every thread per frame. Unpaced, a headless pump
         # runs a machine-dependent number of ticks, and the repeatability and reload comparisons drift with the CPU.
-        loads = re.findall(r"await (?:loadBuild|loadMutatedSource)\(", soak)
+        # The pacing lives in the shared harness (`paceLikeTheEditor`, harness/lib/harness.js); the soak loads the
+        # build once, through the paced `load`, and wraps every mutated build it loads.
+        mutated = soak.count("await loadMutatedSource(")
         if ("const load = async () => paceLikeTheEditor(await loadBuild());" not in soak
-                or "paceLikeTheEditor(await loadMutatedSource(" not in soak
-                or "vm.runtime.redrawRequested = true;" not in soak
-                or len(loads) != 2):
+                or soak.count("await loadBuild(") != 1
+                or mutated == 0
+                or soak.count("paceLikeTheEditor(await loadMutatedSource(") != mutated
+                or "paceLikeTheEditor," not in soak
+                or "vm.runtime.redrawRequested = true;" not in self.HARNESS.read_text(encoding="utf-8")):
             failures.add("unpaced")
         return failures
 
@@ -1480,6 +1485,9 @@ class ReleaseSoakWiring(unittest.TestCase):
         for expected, args in cases.items():
             with self.subTest(expected):
                 self.assertIn(expected, self._failures(*args))
+        # A mutated build loaded without the pacing wrapper is caught too.
+        unpaced_mutant = soak.replace("paceLikeTheEditor(await loadMutatedSource(", "(await loadMutatedSource(", 1)
+        self.assertIn("unpaced", self._failures(unpaced_mutant, workflow, spec, "soak.js"))
 
 
 if __name__ == "__main__":
