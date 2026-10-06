@@ -689,12 +689,15 @@ class GeneratedAreaClock(unittest.TestCase):
                 return params["count"]
             return 0
 
-        # GND: the three ground-placement scalars, re-decoded INDEPENDENTLY here — object_type
-        # (the ground dispatch discriminator), slot (0-15), sprite_y (0-255); (0, 0, 0) for every
-        # other handler. BOTH ground-placement handlers carry them at the same JSON locations:
-        # add_ground_object (the static + Grobda families) and GND-07 add_domogram_with_path (the
-        # Domogram). A mis-populated or misaligned ground column fails here, not at play.
+        # GND: the three placement scalars, re-decoded INDEPENDENTLY here — object_type (the dispatch
+        # discriminator), slot, sprite_y (0-255); (0, 0, 0) for every other handler. BOTH
+        # ground-placement handlers carry them at the same JSON locations: add_ground_object (the
+        # static + Grobda families) and GND-07 add_domogram_with_path (the Domogram), with the 0-15
+        # ground-band slot. AREA-02 add_object carries the type and the RAW arcade object slot (0,
+        # 0x3A or 0x3B) and no sprite_y. A mis-populated or misaligned column fails here, not at play.
         def expected_ground(record):
+            if record["handler"] == "add_object":
+                return record["object_type"], record["params"]["slot"], 0
             if record["handler"] not in ("add_ground_object", "add_domogram_with_path"):
                 return 0, 0, 0
             params = record.get("params", {})
@@ -878,6 +881,80 @@ class GeneratedAreaClock(unittest.TestCase):
                 )
         # there is at least one Domogram instance to prove the decode is exercised (108 in the reference).
         self.assertEqual(108, sum(1 for c in exp_counts if c), "all 108 Domogram instances decode a path")
+
+
+class AddObjectDispatch(unittest.TestCase):
+    """AREA-02 (area.add-object-dispatch #166): the schedule's 13 add_object records (sub_2_fb_0__type_only,
+    xevious_sub.68k:649-659) place the bonus flag, Torkan, Kapi, Terrazi and Garu Zakato. The arcade object pass
+    picks a written type up only from an idle slot (add_obj_handler, xevious_main.68k:4801-4815) before the formation
+    refill (main_fn_4, 5171-5186), so the built walk must place after the walk/bomb and before `spawn flying
+    enemies`; the build guard must refuse a record the placement step cannot handle."""
+
+    def _call_chain(self, blocks, proccode):
+        call = next(
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == proccode
+        )
+        # Walk the same stack: back while each parent's `next` is the block below it, then forward.
+        before, prev, cur = [], call, blocks[call]["parent"]
+        while cur and blocks[cur]["next"] == prev:
+            if blocks[cur]["opcode"] == "procedures_call":
+                before.append(blocks[cur]["mutation"]["proccode"])
+            prev, cur = cur, blocks[cur]["parent"]
+        after, cur = [], blocks[call]["next"]
+        while cur:
+            b = blocks[cur]
+            if b["opcode"] == "procedures_call":
+                after.append(b["mutation"]["proccode"])
+            cur = b["next"]
+        return before, after
+
+    def test_walk_places_after_bomb_before_formation_refill(self):
+        # roadmap-evidence: AREA-02 success  (the built walk places a pending add_object record after the walk
+        #   and bomb and before the formation refill, as the arcade object pass precedes main_fn_4)
+        blocks = _stage_blocks(json.loads(PROJECT_JSON.read_text()))
+        before, after = self._call_chain(blocks, "place pending object")
+        self.assertIn("advance bomb", before, "placement runs after the bomb (and so after the walk)")
+        self.assertIn("advance slots", before, "placement runs after the object walk")
+        self.assertIn("spawn flying enemies", after, "placement runs before the formation refill")
+
+    def test_every_schedule_record_is_placeable(self):
+        areas = json.loads((DATA / "area-schedules.json").read_text())["areas"]
+        placed = [
+            (r["object_type"], r["params"]["slot"])
+            for a in areas
+            for r in a["records"]
+            if r["handler"] == "add_object"
+        ]
+        self.assertEqual(13, len(placed), "the reference schedules carry 13 add_object records")
+        self.assertEqual(
+            {(0x54, 0x00), (0x0F, 0x3A), (0x10, 0x3A), (0x11, 0x3A), (0x11, 0x3B), (0x18, 0x3B)},
+            set(placed),
+        )
+        director._check_add_object_records()  # the committed data passes the build guard
+
+    def test_build_guard_refuses_unplaceable_records(self):
+        # roadmap-evidence: AREA-02 failure  (an add_object record the placement step cannot handle — an unbuilt
+        #   type, a wrong slot, or two records sharing one trigger row — stops the build instead of spawning wrong)
+        def guard(records):
+            original = director._load_spec_data
+            director._load_spec_data = lambda name: {"areas": [{"area": 1, "records": records}]}
+            try:
+                director._check_add_object_records()
+            finally:
+                director._load_spec_data = original
+
+        def rec(object_type, slot, row):
+            return {"handler": "add_object", "object_type": object_type, "params": {"slot": slot}, "scroll_row": row}
+
+        guard([rec(0x54, 0x00, 68), rec(0x18, 0x3B, 60)])  # distinct rows, placeable: accepted
+        with self.assertRaises(SystemExit):
+            guard([rec(0x0A, 0x3A, 68)])  # a Toroid is not an add_object type
+        with self.assertRaises(SystemExit):
+            guard([rec(0x18, 0x3A, 68)])  # the Garu lives only at 0x3B
+        with self.assertRaises(SystemExit):
+            guard([rec(0x54, 0x00, 68), rec(0x0F, 0x3A, 68)])  # one pending register per tick
 
 
 class AimingTables(unittest.TestCase):

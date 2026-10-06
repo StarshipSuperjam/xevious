@@ -1762,6 +1762,16 @@
       "name": "other score",
       "scope": "Stage"
     },
+    "pending-object-slot": {
+      "kind": "variable",
+      "name": "pending object slot",
+      "scope": "Stage"
+    },
+    "pending-object-type": {
+      "kind": "variable",
+      "name": "pending object type",
+      "scope": "Stage"
+    },
     "player-col": {
       "kind": "variable",
       "name": "player col",

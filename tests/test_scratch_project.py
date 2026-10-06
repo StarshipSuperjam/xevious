@@ -1255,6 +1255,10 @@ class ScratchProjectTests(unittest.TestCase):
             "garu det x",
             "garu det y",
             "garu det slot",
+            # AREA-02 (slice 21): the one-tick add_object register the schedule fills and `place pending object`
+            # consumes after the walk and bomb.
+            "pending object type",
+            "pending object slot",
             "player row",
             "player col",
             "player slot x",
@@ -1877,6 +1881,11 @@ class ScratchProjectTests(unittest.TestCase):
             # AREA-01 (slice 20): the terrain strips' state from the clock, called by the walk after the
             # ground objects move and at the end of every re-top. Writes only the terrain vars. Warp.
             director.UPDATE_TERRAIN_PROCCODE,
+            # AREA-02 (slice 21) area.add-object-dispatch: consumes the one-tick add_object register the schedule
+            # filled — places the flag or single flyer into its raw slot if it is still empty (running that type's
+            # existing init), else drops it — then clears the register. Called by the walk after the bomb, before
+            # the formation refill. Warp.
+            director.PLACE_PENDING_OBJECT_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -21505,7 +21514,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "612ff06a0c03fa17fc5619d7f2ca3973dda48f7a94b07b73f18255e6e675b3f6",
+            "7e0ae006a6436cd75931bcb1a792c0915321fd1aa9f98a21805249ca109d8b2d",
             build_hash,
         )
 

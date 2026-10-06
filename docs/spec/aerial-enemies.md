@@ -38,9 +38,9 @@ one-time re-aim it verified against the source, under the operator's guardrail a
 remaining families (Zoshi, Jara, the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) were
 each verified line-by-line against the reference by their own build slice (10–11), and this document was
 amended where it diverged, under the operator's acknowledgement; every family below is now checked ground.
-Known port gaps that remain are tracked as slice-21 leaves, not as unverified prose: the scheduled `add_object` spawns of Garu Zakato and the extra
-Torkan/Kapi/Terrazi (`area.add-object-dispatch`), and the remaining reference art
-(`presentation.reference-art`).
+The scheduled `add_object` spawns of Garu Zakato (in arcade object slot 0x3B) and the single
+Torkan/Kapi/Terrazi are built (`area.add-object-dispatch`, slice 21). The known port gap that remains is
+tracked as a slice-21 leaf, not as unverified prose: the remaining reference art (`presentation.reference-art`).
 
 ## Behavior
 

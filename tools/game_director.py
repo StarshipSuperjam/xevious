@@ -739,6 +739,10 @@ ADD_GROUND_OBJECT_HANDLER = "add_ground_object"
 # (object_type + params.slot + params.sprite_y), but it ALSO carries a scripted path (params.path = a list of
 # {duration, vector_index} steps, params.path_step_count = its length) the follower consumes.
 ADD_DOMOGRAM_HANDLER = "add_domogram_with_path"
+# AREA-02 (area.add-object-dispatch #166): the type-only spawn handler (arcade opcode 0, sub_2_fb_0__type_only
+# xevious_sub.68k:649-659: `move.b (-1,a0),(_TYPE,a5)` at obj slot byte3). It carries object_type + params.slot (the
+# RAW arcade object slot: 0 for the bonus flag, 0x3A/0x3B for the flying singles) and nothing else.
+ADD_OBJECT_HANDLER = "add_object"
 # AIR-11 (air.bacura #81): the two Bacura schedule handlers. `set_bacura_count` (arcade opcode 0x22,
 # sub_2_fn_6__set_bacura_inc_cnt $075D: `move.b (a0)+,(bacura_inc_cnt)`) sets the per-window increment
 # quota; `reset_bacura_count` (opcode 0x23, sub_2_fn_7__reset_num_bacura $05D8: `clr.b (num_bacura)`)
@@ -1818,10 +1822,10 @@ DEBUG_SPAWN_FAMILIES = (
     (BRAG_ZAKATO_RND_TYPE, BRAG_ZAKATO_RND_FORMATION_OFFSET, 1),
     (BRAG_ZAKATO_CLOSEY_TYPE, BRAG_ZAKATO_CLOSEY_FORMATION_OFFSET, 1),
     # AIR-08: the Garu Zakato is NOT in the flying type table (its only arcade spawn is the area
-    # `add_object` schedule, not yet consumed by the port — a documented follow-up). So it cannot come in
+    # `add_object` schedule into obj 0x3B, areas 9/10/14 — `place pending object`). So it cannot come in
     # through the formation spawner: its count is 0 (the spawner brings in nothing) and a dedicated
-    # direct-stamp branch in this proc stamps it into the first flying slot instead. Offset is immaterial
-    # at count 0.
+    # direct-stamp branch in this proc stamps it into its own slot (GARU_ZAKATO_SLOT) instead. Offset is
+    # immaterial at count 0.
     (GARU_ZAKATO_TYPE, 0, 0),
     # AIR-11: the Bacura is not a flying-pool type at all — it lives in its own reserved band (17-32) and
     # is spawned live by the area schedule. Like the Garu it has no formation-table run, so its count is 0
@@ -2079,8 +2083,8 @@ DEBUG_GROUND_FAMILIES = (
     # SEC-02 (secrets.bonus-flag #91): a single hidden Bonus Flag the operator can bomb to reveal (+1,000) and
     # then collect by flying the craft over it (extra craft or 10,000 by the cabinet DIP). Its own "flag" shape
     # draws the lateral column from the SHARED random stream (gen_rnd_spriteY), unlike the fixed-column single
-    # shape, so the seeded-placement behaviour is exercised. The full add_object schedule path is a documented
-    # follow-up (like the Garu Zakato) — the debug key is the flag's playtest path this slice.
+    # shape, so the seeded-placement behaviour is exercised. Its natural spawn is the add_object schedule (areas
+    # 1/3/5/7, `place pending object`), which seeds through the same shared `_ground_seed_flag`.
     (BONUS_FLAG_TYPE, "flag"),
     # SEC-03 (secrets.hidden-credit #93): a single hidden Credit the operator can bomb to score the minimum 10
     # points and watch the ~2 s original two-line credit overlay appear, then time out. It is an invisible
@@ -2811,6 +2815,32 @@ GARU_ZAKATO_CLONE_SLOT_ID = "garu-zakato-clone-slot"  # sprite-local: which flyi
 GARU_DET_X_ID = "garu-det-x"  # the detonating Garu's scroll-axis position, copied into its spawns
 GARU_DET_Y_ID = "garu-det-y"  # the detonating Garu's lateral position, copied into its spawns
 GARU_DET_SLOT_ID = "garu-det-slot"  # the detonating Garu's own flying slot (to compute adjacency + free it)
+# AIR-08: the Garu Zakato's fixed object slot. Its only arcade spawn is the add_object schedule into obj 0x3B, and
+# init_garu_zakato_explosion (xevious_main.68k:5084-5103) reads the Garu at obj_tbl+_OBJSIZE*0x3B and clobbers the 4
+# objects after it (0x3C-0x3F) — so the port's slot-relative detonation lands its Sparios in exactly those slots.
+GARU_ZAKATO_SLOT = FLYING_SLOTS[0] + 1  # 0x3B -> Scratch 60
+
+# AREA-02 (area.add-object-dispatch #166) add_object dispatch. The arcade sub CPU writes the record's _TYPE into its
+# object slot (sub_2_fb_0__type_only xevious_sub.68k:649-659); the main CPU's object pass picks it up that same frame
+# ONLY if the slot is idle (add_obj_handler, xevious_main.68k:4801-4815 — an idle slot's handler IS the pickup
+# check), and the type's init runs on the next frame. A busy slot keeps running its own handler, which clears _TYPE
+# when it frees, so a record that lands on a busy slot is LOST — never queued. The port models this as a one-tick
+# pending register: the schedule branch records the (type, slot) only if the slot is empty at schedule time (else
+# drops it), and `place pending object` — after the walk and bomb, before `spawn flying enemies` (the arcade's
+# object pass runs before main_fn_4's formation refill) — runs that type's existing init, so its first update is
+# the next tick. One register suffices: no two add_object records share an area's trigger row (guarded at build).
+PENDING_OBJECT_TYPE_ID = "pending-object-type"  # 0 = nothing pending
+PENDING_OBJECT_SLOT_ID = "pending-object-slot"  # 1-based Scratch slot = raw arcade object slot + 1
+PLACE_PENDING_OBJECT_PROCCODE = "place pending object"
+# The five types the area schedules place by add_object, each with the raw arcade object slots its records use
+# (the build guard rejects any record outside this table, so an unbuilt type or slot is never silently placed).
+ADD_OBJECT_SLOTS = {
+    BONUS_FLAG_TYPE: {0x00},  # areas 1/3/5/7 (handle_54 gen_rnd_spriteY, craft-excluding draw)
+    TORKAN_TYPE: {0x3A},  # area 3 (handle_0F gen_random_Y_store_obj)
+    KAPI_TYPE: {0x3A},  # area 7 (handle_10 gen_random_Y_store_obj)
+    TERRAZI_TYPE: {0x3A, 0x3B},  # 0x3B in area 7, 0x3A in area 11 (handle_11 gen_rnd_spriteY, craft-excluding)
+    GARU_ZAKATO_TYPE: {GARU_ZAKATO_SLOT - 1},  # 0x3B, areas 9/10/14 (handle_18 gen_random_Y_store_obj)
+}
 
 # AIR-11 (air.bacura #81) renderer constants. Unlike the flying families, the Bacura draws one persistent
 # clone per BACURA-BAND slot (17-32), each a pure per-tick function of its slot: a SINGLE static costume
@@ -3048,12 +3078,16 @@ def _schedule_arg(record: dict) -> int:
 
 
 def _ground_scalars(record: dict) -> tuple[int, int, int]:
-    # GND: the three runtime-readable scalars a ground-placement record needs, pre-decoded from the opaque
-    # JSON payload (Scratch cannot parse JSON at runtime) — object_type (the ground dispatch discriminator),
-    # slot (0-15), sprite_y (0-255). BOTH ground placement handlers carry them at the same JSON locations:
-    # add_ground_object (the static + Grobda families) and GND-07 add_domogram_with_path (the Domogram, which
-    # additionally carries a scripted path decoded by _load_domogram_paths). Every other handler needs none ->
-    # (0, 0, 0); those fillers are inert because the ground columns are read only under those two handlers.
+    # GND: the three runtime-readable scalars a placement record needs, pre-decoded from the opaque JSON payload
+    # (Scratch cannot parse JSON at runtime) — object_type (the dispatch discriminator), slot, sprite_y (0-255).
+    # BOTH ground placement handlers carry them at the same JSON locations: add_ground_object (the static +
+    # Grobda families) and GND-07 add_domogram_with_path (the Domogram, which additionally carries a scripted
+    # path decoded by _load_domogram_paths); for those the slot is the 0-15 ground-band offset. AREA-02 (#166)
+    # add_object reuses the type + slot columns with the RAW arcade object slot (0, 0x3A or 0x3B) and no sprite_y
+    # (-> 0). Every other handler needs none -> (0, 0, 0); those fillers are inert because the columns are read
+    # only under these three handlers.
+    if record["handler"] == ADD_OBJECT_HANDLER:
+        return record["object_type"], record["params"]["slot"], 0
     if record["handler"] not in (ADD_GROUND_OBJECT_HANDLER, ADD_DOMOGRAM_HANDLER):
         return 0, 0, 0
     params = record.get("params", {})
@@ -8083,9 +8117,8 @@ def install_garu_zakato_detonate(blocks: Blocks) -> None:
     # at 0x3B) at the Garu's cell with the cardinal velocities from brag_spario_dX/dY_tbl; then FREE the
     # Garu slot (the arcade clr TYPE/STATE — no self-burst, no score). The final restore of `slot index`
     # to the Garu's own slot both frees it AND restores the advance-slots loop cursor. CONTRACT: the Garu
-    # occupies the FIRST flying slot (its only spawner, the debug key, stamps it there), so its 4
-    # successors lie in the flying band; the natural add_object spawn (deferred follow-up) must preserve
-    # that placement. DEVIATION: the 4 Sparios update once on the tick they spawn (the walk reaches their
+    # occupies GARU_ZAKATO_SLOT (0x3B — the add_object schedule and the debug key both place it there), so
+    # its 4 successors are the arcade's 0x3C-0x3F, the last 4 flying slots. DEVIATION: the 4 Sparios update once on the tick they spawn (the walk reaches their
     # higher slot indices later this same pass) — a one-tick head start, recorded in the mechanics note.
     definition = _install_warp_proc(blocks, GARU_ZAKATO_DETONATE_PROCCODE)
     gslot = lambda: variable("garu det slot", GARU_DET_SLOT_ID)
@@ -8674,8 +8707,7 @@ def install_spawn_flying(blocks: Blocks) -> None:
     # AIR-08: both Brag Zakato variants (rnd 0x16 / closeY 0x17) run the SAME shared teleport-in init
     # (they differ only in the update's fan trigger). One OR branch, as the dispatch ORs them. The Garu
     # Zakato has NO formation entry — it is absent from the flying type table (its only arcade spawn is
-    # the area add_object schedule, not yet consumed by the port) — so it has no spawn-flying branch; the
-    # debug key stamps it directly for playtesting (a documented deferred follow-up for natural spawn).
+    # the area add_object schedule, placed by `place pending object`) — so it has no spawn-flying branch.
     spawn_brag_zakato = blocks.if_reporter(
         blocks.op_or(
             blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BRAG_ZAKATO_RND_TYPE)),
@@ -8687,6 +8719,70 @@ def install_spawn_flying(blocks: Blocks) -> None:
     empty_gate = blocks.if_reporter(empty, [bounds_gate])
     blocks.substack(loop, [set_slot, empty_gate, blocks.change_var("spawn cursor", SPAWN_CURSOR_ID, 1)])
     blocks.chain(definition, [set_i, loop])
+
+
+def _check_add_object_records() -> None:
+    # AREA-02 (#166) build guard over the committed schedules: every add_object record names a type + raw slot the
+    # placement step handles (ADD_OBJECT_SLOTS), and no two add_object records in one area share a trigger row —
+    # the pending register holds ONE record per tick, so a same-row pair would silently lose the first.
+    areas = _load_spec_data("area-schedules.json")["areas"]
+    for area in areas:
+        rows: set[int] = set()
+        for record in area["records"]:
+            if record["handler"] != ADD_OBJECT_HANDLER:
+                continue
+            object_type, slot = record["object_type"], record["params"]["slot"]
+            if slot not in ADD_OBJECT_SLOTS.get(object_type, set()):
+                raise SystemExit(
+                    f"area {area['area']} add_object type {object_type:#x} slot {slot:#x} is not placeable"
+                )
+            if record["scroll_row"] in rows:
+                raise SystemExit(
+                    f"area {area['area']} has two add_object records at row {record['scroll_row']}"
+                )
+            rows.add(record["scroll_row"])
+
+
+def install_place_pending_object(blocks: Blocks) -> None:
+    # AREA-02 (area.add-object-dispatch #166): consume the one-tick add_object pending register (see
+    # ADD_OBJECT_SLOTS for the arcade pickup this models). Runs after the walk and bomb, before the formation
+    # refill, so a placed single owns its slot before `spawn flying enemies` looks for empty ones (the arcade object
+    # pass runs before main_fn_4). Re-checks the slot is still empty — nothing between the schedule and here
+    # fills 0x00/0x3A/0x3B in real play, but a placement must never clobber a live object. Each type runs its
+    # EXISTING init (the same proc the formation spawner or the debug key calls), so the first update is the next
+    # tick, as the arcade's init runs the frame after pickup. The register is cleared every time.
+    _check_add_object_records()
+    definition = _install_warp_proc(blocks, PLACE_PENDING_OBJECT_PROCCODE)
+    pending = lambda: variable("pending object type", PENDING_OBJECT_TYPE_ID)
+    flying_inits = [
+        blocks.if_reporter(
+            blocks.op_eq(pending(), number(object_type)),
+            [blocks.call_proc(proccode, warp=True)],
+        )
+        for object_type, proccode in (
+            (TORKAN_TYPE, INIT_TORKAN_PROCCODE),
+            (KAPI_TYPE, INIT_KAPI_PROCCODE),
+            (TERRAZI_TYPE, INIT_TERRAZI_PROCCODE),
+            (GARU_ZAKATO_TYPE, INIT_GARU_ZAKATO_PROCCODE),
+        )
+    ]
+    place = [
+        blocks.set_var("slot index", SLOT_INDEX_ID, variable("pending object slot", PENDING_OBJECT_SLOT_ID)),
+        blocks.if_reporter(
+            blocks.op_eq(_cur_item(blocks, "slot type", SLOT_TYPE_ID), number(0)),
+            [
+                # The flying inits stamp `walk type` as the slot's type (the Garu stamps its own constant).
+                blocks.set_var("walk type", WALK_TYPE_ID, pending()),
+                blocks.if_reporter(
+                    blocks.op_eq(pending(), number(BONUS_FLAG_TYPE)), _ground_seed_flag(blocks)
+                ),
+                *flying_inits,
+            ],
+        ),
+        blocks.set_var("pending object type", PENDING_OBJECT_TYPE_ID, number(0)),
+    ]
+    gate = blocks.if_reporter(blocks.op_gt(pending(), number(0)), place)
+    blocks.chain(definition, [gate])
 
 
 def install_debug_spawn_wave(blocks: Blocks) -> None:
@@ -8777,19 +8873,17 @@ def install_debug_spawn_wave(blocks: Blocks) -> None:
         ),
     )
     # AIR-08: the Garu Zakato is not in the flying type table, so the formation spawner (which runs right
-    # after this) cannot bring it in — its DEBUG_SPAWN_FAMILIES count is 0. Stamp it directly into the
-    # first flying slot instead (INIT_GARU_ZAKATO draws its own random lateral column), so holding T shows
-    # a solo Garu that flies straight and detonates. Guarded on its family index; runs on the fresh spawn
-    # only, before the index advances. This is the same standing reachability tool the base slow/closeY
-    # Zakato lean on (debug-key-only until later areas are wired); the natural add_object spawn (areas
-    # 9/10/14) is a documented follow-up.
+    # after this) cannot bring it in — its DEBUG_SPAWN_FAMILIES count is 0. Stamp it directly into its own
+    # slot instead (GARU_ZAKATO_SLOT, 0x3B, where the add_object schedule places it; INIT_GARU_ZAKATO draws its
+    # own random lateral column), so holding T shows a solo Garu that flies straight and detonates. Guarded on
+    # its family index; runs on the fresh spawn only, before the index advances.
     garu_debug_index = next(
         index for index, (family_type, _offset, _count) in enumerate(DEBUG_SPAWN_FAMILIES) if family_type == GARU_ZAKATO_TYPE
     )
     garu_stamp = blocks.if_reporter(
         blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(garu_debug_index)),
         [
-            blocks.set_var("slot index", SLOT_INDEX_ID, number(FLYING_SLOTS[0])),
+            blocks.set_var("slot index", SLOT_INDEX_ID, number(GARU_ZAKATO_SLOT)),
             blocks.call_proc(INIT_GARU_ZAKATO_PROCCODE, warp=True),
         ],
     )
@@ -9796,6 +9890,36 @@ def _ground_seed_andor(blocks: Blocks, *, base: int, port_fire_mask) -> list[str
     return seed
 
 
+def _ground_seed_flag(blocks: Blocks) -> list[str]:
+    # SEC-02 (secrets.bonus-flag #91): the Bonus Flag spawns through the arcade `add_object` path, not
+    # `add_ground_object`, so it has NO fixed lateral column. handle_54_Bonus_Flag ($1F5C) inits it via
+    # gen_rnd_spriteY — a craft-excluding random lateral, exactly _draw_spawn_column(exclude_craft=True) —
+    # then CODE=0 (invisible) and points to the reveal on the next tick. The port models it as a single
+    # ground slot that scrolls hidden until a bomb reveals+scores it (shared ground detector) and is then
+    # collected by fly-over (`update bonus flag`). Seed the slot at `slot index` (the caller sets it — the walk has
+    # finished when either caller runs) through the SAME bounded random-lateral draw the flying spawners use, then
+    # — ONLY if the draw accepted a column (`spawn found`) — stamp the slot ACTIVE + HIDDEN phase, x=0 (top of
+    # field, scrolled DOWN by `advance ground`), the 1,000-pt value the shared detector scores at reveal, timer
+    # zeroed. Shared by the add_object placement (AREA-02 #166, the flag's only natural spawn) and the debug G key;
+    # an exhausted draw (SPAWN_DRAW_ATTEMPTS, the recorded bounded-draw port necessity) stamps nothing.
+    reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=True)
+    return [
+        *reset,
+        draw_loop,
+        blocks.if_reporter(
+            blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
+            [
+                _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(BONUS_FLAG_TYPE)),
+                _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+                _set_cur_item(blocks, "slot x", SLOT_X_ID, number(0)),
+                _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(FLAG_HIDDEN_PHASE)),
+                _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(BONUS_FLAG_PTS)),
+                _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            ],
+        ),
+    ]
+
+
 def _debug_ground_seed(blocks: Blocks, family_type: int, shape: str) -> list[str]:
     # DEBUG (tracked for removal #119): build ONE ground family's spawn from fixed debug constants — the band
     # base slot and a central lateral column (DEBUG_GROUND_SPRITE_Y) — through the SAME shared seed builders the
@@ -9851,33 +9975,9 @@ def _debug_ground_seed(blocks: Blocks, family_type: int, shape: str) -> list[str
             ),
         ]
     if shape == "flag":
-        # SEC-02 (secrets.bonus-flag #91): the Bonus Flag spawns through the arcade `add_object` path, not
-        # `add_ground_object`, so it has NO fixed lateral column. handle_54_Bonus_Flag ($1F5C) inits it via
-        # gen_rnd_spriteY — a craft-excluding random lateral, exactly _draw_spawn_column(exclude_craft=True) —
-        # then CODE=0 (invisible) and points to the reveal on the next tick. The port models it as a single
-        # ground slot that scrolls hidden until a bomb reveals+scores it (shared ground detector) and is then
-        # collected by fly-over (`update bonus flag`). Seed it here through the SAME bounded random-lateral draw
-        # the flying spawners use (writing `slot y` at `slot index`), then — ONLY if the draw accepted a column
-        # (`spawn found`, so a rejected/exhausted draw leaves the band empty to retry next tick) — stamp the
-        # slot ACTIVE + HIDDEN phase, x=0 (top of field, scrolled DOWN by `advance ground`), the 1,000-pt value
-        # the shared detector scores at reveal, timer zeroed. `slot index` is set here because _draw_spawn_column
-        # and the stamp both address the current slot; the walk has already finished when the debug spawn runs.
-        reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=True)
         return [
             blocks.set_var("slot index", SLOT_INDEX_ID, number(base)),
-            *reset,
-            draw_loop,
-            blocks.if_reporter(
-                blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
-                [
-                    _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(family_type)),
-                    _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
-                    _set_cur_item(blocks, "slot x", SLOT_X_ID, number(0)),
-                    _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(FLAG_HIDDEN_PHASE)),
-                    _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(BONUS_FLAG_PTS)),
-                    _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
-                ],
-            ),
+            *_ground_seed_flag(blocks),
         ]
     if shape == "andor":
         # BOSS-01 (andor.lifecycle #94): the whole 15-part composite arms at once into the ground band, so unlike
@@ -10267,14 +10367,32 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         ),
         [blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(1))],
     )
-    # ENGINE-TODO: the remaining spawn handler dispatch (add_object for the non-boss scheduled spawns) lands with
-    # the later enemy slices. The DIF/FORM handlers (raise, adjust, set/reset formation, the 8 fire masks,
-    # ground-stop), add_ground_object (the built static + Grobda ground families), add_domogram_with_path
-    # (GND-07), the Sheonite escort pair and the Andor Genesis lifecycle (start/end) are wired above. All eight
-    # fire masks — fire_mask_andor_genesis (op 78) among them — are stored into their Stage vars by `mask_branches`
-    # and now genuinely consumed: the Andor arm captures op 78's var into each gun port's `slot fire mask`, driving
-    # the boss fire-permission gate (slice 16). Any handler still without a branch advances the cursor and counts
-    # the fire only.
+    # AREA-02 (area.add-object-dispatch #166): add_object writes its type into one raw arcade object slot (Scratch
+    # slot = raw + 1). The arcade object pass picks the type up only if that slot is idle, and a busy slot's own
+    # handler clears _TYPE when it frees, so the record is LOST on a busy slot (see ADD_OBJECT_SLOTS). Here only the
+    # idle test runs: an empty slot records the one-tick pending register, which `place pending object` consumes
+    # after the walk; a busy slot drops the record. The cursor advances either way, so no record is replayed.
+    def add_object_target_slot() -> str:
+        return blocks.op_add(number(1), ground_slot_at_cursor())
+
+    add_object_branch = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(handler_at_cursor(), text(ADD_OBJECT_HANDLER)),
+            blocks.op_eq(
+                blocks.list_item("slot type", SLOT_TYPE_ID, add_object_target_slot()), number(0)
+            ),
+        ),
+        [
+            blocks.set_var_expr("pending object type", PENDING_OBJECT_TYPE_ID, ground_type_at_cursor()),
+            blocks.set_var_expr("pending object slot", PENDING_OBJECT_SLOT_ID, add_object_target_slot()),
+        ],
+    )
+    # Every schedule handler is now wired: the DIF/FORM handlers (raise, adjust, set/reset formation, the 8 fire
+    # masks, ground-stop), add_ground_object (the static + Grobda ground families), add_domogram_with_path (GND-07),
+    # the Bacura count pair, the Sheonite escort pair, the Andor Genesis lifecycle (start/end) and add_object. All
+    # eight fire masks — fire_mask_andor_genesis (op 78) among them — are stored into their Stage vars by
+    # `mask_branches` and consumed: the Andor arm captures op 78's var into each gun port's `slot fire mask`, driving
+    # the boss fire-permission gate (slice 16).
     blocks.substack(
         loop,
         [
@@ -10292,6 +10410,7 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             sheonite_end_branch,
             andor_start_branch,
             andor_end_branch,
+            add_object_branch,
             blocks.change_var("schedule fired", SCHEDULE_FIRED_ID, 1),
             blocks.change_var("schedule cursor", SCHEDULE_CURSOR_ID, 1),
         ],
@@ -10851,6 +10970,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_cull_slot(blocks)
     install_advance_slots(blocks)
     install_spawn_flying(blocks)
+    install_place_pending_object(blocks)
     install_debug_spawn_wave(blocks)  # DEBUG / temporary (tracked for removal)
     install_debug_ground_spawn(blocks)  # DEBUG / temporary (tracked for removal, #119)
     install_debug_pause(blocks)  # DEBUG / temporary (tracked for removal, #119)
@@ -11479,6 +11599,9 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         # WPN-04: arm/fly the bomb AFTER the terrain has scrolled this tick, so the landing
         # compare sees the same-tick ground positions (handle_bombing runs late in the frame).
         blocks.call_proc(ADVANCE_BOMB_PROCCODE, warp=True),
+        # AREA-02 (#166): place this tick's add_object record (recorded by ADVANCE_AREA above) once the walk and
+        # bomb have run, before the formation refill below — the arcade object pass precedes main_fn_4.
+        blocks.call_proc(PLACE_PENDING_OBJECT_PROCCODE, warp=True),
         # DEBUG (temporary, tracked for removal #119): while G is held, cycle one built GROUND family
         # into the band. Placed after the ground walk (ADVANCE_SLOTS) so the field-empty gate reads the
         # fully-settled post-cull band, and outside the ADVANCE_AREA -> ADVANCE_SLOTS pair the area clock
@@ -11554,6 +11677,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             # bomb/target/crosshair are already zeroed by `clear slots` above.
             blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(0)),
             blocks.set_var("bomb dx", BOMB_DX_ID, number(0)),
+            # AREA-02 (#166): drop any add_object record still pending (the field it targeted was just cleared).
+            blocks.set_var("pending object type", PENDING_OBJECT_TYPE_ID, number(0)),
             # CAB-05: the crosshair's on-target flash starts each scope unlit.
             blocks.set_var("crosshair lit", CROSSHAIR_LIT_ID, number(0)),
             # SEC-03 (secrets.hidden-credit #93): lower the credit overlay signal on every reset scope, so a
@@ -16216,6 +16341,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         GARU_DET_X_ID,
         GARU_DET_Y_ID,
         GARU_DET_SLOT_ID,
+        # AREA-02 (#166): the one-tick add_object pending register (type + target slot).
+        PENDING_OBJECT_TYPE_ID,
+        PENDING_OBJECT_SLOT_ID,
         PLAYER_ROW_ID,
         PLAYER_COL_ID,
         PLAYER_SLOT_X_ID,
@@ -16428,6 +16556,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         GARU_DET_X_ID: ["garu det x", 0],
         GARU_DET_Y_ID: ["garu det y", 0],
         GARU_DET_SLOT_ID: ["garu det slot", 0],
+        # AREA-02 (#166): the add_object pending register — type 0 means nothing pending.
+        PENDING_OBJECT_TYPE_ID: ["pending object type", 0],
+        PENDING_OBJECT_SLOT_ID: ["pending object slot", 0],
         PLAYER_ROW_ID: ["player row", 0],
         PLAYER_COL_ID: ["player col", 0],
         PLAYER_SLOT_X_ID: ["player slot x", 0],

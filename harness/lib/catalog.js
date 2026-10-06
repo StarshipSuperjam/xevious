@@ -3816,10 +3816,10 @@ export const SCENARIOS = [
         put('slot-type', js, 0);
         put('slot-state', js, 0);
       }
-      // The Garu must occupy the FIRST flying slot (FLYING_SLOTS[0] == JS 58, Scratch slot-index 59) so its
-      // 4 successors — the slots the detonation writes (gslot+1..+4 == JS 59..62) — stay in-band; its only
-      // spawner (the debug key) stamps it there. This adjacency is the arcade's obj 0x3C-0x3F clobber.
-      const garu = 58;
+      // The Garu occupies its own arcade slot 0x3B (GARU_ZAKATO_SLOT == JS 59, Scratch slot-index 60) — where the
+      // add_object schedule places it — so its 4 successors, the slots the detonation writes (gslot+1..+4 == JS
+      // 60..63), are the last 4 flying slots: the arcade's obj 0x3C-0x3F clobber (xevious_main.68k:5084-5103).
+      const garu = 59;
       const gx = 11 * 256;
       const gy = 9 * 256;
       put('slot-type', garu, 24); // GARU_ZAKATO_TYPE
@@ -3849,8 +3849,8 @@ export const SCENARIOS = [
       }
       const ringExpected = [];
       for (let a = 0; a < 32; a += 2) ringExpected.push(`${aimDx48[a]},${aimDy48[a]}`);
-      // The 4 Sparios land in the adjacent slots garu+1..garu+4 (JS 59..62).
-      const sparios = [59, 60, 61, 62].map((js) => ({
+      // The 4 Sparios land in the adjacent slots garu+1..garu+4 (JS 60..63, the arcade's 0x3C-0x3F).
+      const sparios = [60, 61, 62, 63].map((js) => ({
         type: readVar(vm, 'slot-type')[js],
         state: readVar(vm, 'slot-state')[js],
         dx: readVar(vm, 'slot-dx')[js],
@@ -3893,7 +3893,7 @@ export const SCENARIOS = [
       assert.equal(obs.garuState, 0, 'the detonating Garu clears its slot state');
       assert.equal(
         obs.slotIndex,
-        59,
+        60,
         "detonate restores the walk cursor (slot index) to the Garu's slot so the ordered walk resumes correctly",
       );
       assert.equal(obs.scoreDelta, 0, 'a Garu that detonates on its fuse awards NOTHING (it was not shot)');
@@ -5436,6 +5436,10 @@ export const SCENARIOS = [
             // reveals the ~2s credit overlay), so seeing one in a slot is in scope. Its bomb-to-reveal / hold /
             // min-score behaviour is proved by the dedicated hidden-credit-* scenarios; here we only assert it
             // is not treated as unhandled leakage.
+          } else if (t === 84) {
+            // AREA-02 (area.add-object-dispatch #166, slice 21): the hidden Bonus Flag (0x54) now spawns from the
+            // area 1/3 add_object records into obj slot 0, so seeing one in the band is in scope. Its placement is
+            // proved by add-object-places-idle-drops-busy; here we only assert it is not unhandled leakage.
           } else {
             onlyHandledTypes = false;
           }
@@ -5476,6 +5480,123 @@ export const SCENARIOS = [
     // object is ever stamped → barraSeen / logramSeen fail.
     negativeMutation: (p) =>
       mutate.changeEqualsOperand(p, 'Stage', 'add_ground_object', '__never__'),
+  },
+  {
+    // AREA-02 (area.add-object-dispatch #166): the schedule's 13 add_object records write their type into one raw
+    // arcade object slot (sub_2_fb_0__type_only, xevious_sub.68k:649-659); the main CPU picks it up only from an
+    // idle slot (add_obj_handler, xevious_main.68k:4801-4815), and a busy slot's handler clears _TYPE when it frees,
+    // so the record is lost, never queued. Each record is fired from the real schedule (frozen walk, the area clock
+    // and `place pending object` driven by hand, the garu-node pattern), first onto an empty field, then the area-3
+    // Torkan again with a Toroid already in obj 0x3A.
+    key: 'add-object-places-idle-drops-busy',
+    behavior:
+      'Every add_object record places its object when its slot is idle — the hidden bonus flag in ground slot 0, or a Torkan, Kapi, Terrazi or Garu Zakato in flying slot 0x3A/0x3B — and is dropped, never queued, when that slot is busy',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const handlers = readVar(vm, 'area-schedule-handler').map(String);
+      const rows = readVar(vm, 'area-schedule-trigger-row').map(Number);
+      const gslot = readVar(vm, 'area-schedule-ground-slot').map(Number);
+      const gtype = readVar(vm, 'area-schedule-ground-type').map(Number);
+      const starts = readVar(vm, 'area-schedule-start').map(Number);
+      const ends = readVar(vm, 'area-schedule-end').map(Number);
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const clearField = () => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        for (const s of FLYING_SLOT_INDICES) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        writeVar(vm, 'pending-object-type', 0);
+      };
+      // Fire the record at `cursor` from the real schedule: two ticks before its row, then tick the area clock
+      // until the cursor passes it, and read the pending register it left.
+      const fire = (area, cursor) => {
+        const C0 = 256 * (rows[cursor - 1] + 1) + 32;
+        writeVar(vm, 'area-number', area);
+        writeVar(vm, 'area-progress', (((constants.area_counter_init - C0) % 65536) + 65536) % 65536);
+        writeVar(vm, 'area-schedule-cursor', cursor);
+        for (let t = 0; t < 8; t += 1) {
+          callProc(vm, 'Stage', 'advance area');
+          step(vm, 2);
+          if (Number(readVar(vm, 'area-schedule-cursor')) > cursor) {
+            return {
+              type: Number(readVar(vm, 'pending-object-type')),
+              slot: Number(readVar(vm, 'pending-object-slot')),
+            };
+          }
+        }
+        return null;
+      };
+      // The placement proc's random-lateral draw loops, so pump until it has cleared the register.
+      const place = () => {
+        callProc(vm, 'Stage', 'place pending object');
+        step(vm, 2);
+        for (let i = 0; i < 60 && Number(readVar(vm, 'pending-object-type')) !== 0; i += 1) step(vm, 1);
+        return Number(readVar(vm, 'pending-object-type'));
+      };
+      const sample = (js) => ({
+        slotType: Number(readVar(vm, 'slot-type')[js]),
+        slotState: Number(readVar(vm, 'slot-state')[js]),
+        slotFlag: Number(readVar(vm, 'slot-flag')[js]),
+        slotPts: Number(readVar(vm, 'slot-pts')[js]),
+        slotX: Number(readVar(vm, 'slot-x')[js]),
+      });
+      const placed = [];
+      let torkan = null;
+      for (let area = 1; area <= 16; area += 1) {
+        for (let i = starts[area - 1]; i <= ends[area - 1]; i += 1) {
+          if (handlers[i - 1] !== 'add_object') continue;
+          if (gtype[i - 1] === 15) torkan = { area, cursor: i };
+          clearField();
+          const pending = fire(area, i);
+          const pendingAfter = place();
+          // Scratch slot = raw arcade slot + 1, so the JS index is the raw slot itself.
+          placed.push({ area, type: gtype[i - 1], raw: gslot[i - 1], pending, pendingAfter, ...sample(gslot[i - 1]) });
+          // A record left pending already fails; stop rather than burn the full pump bound on every other record.
+          if (pendingAfter !== 0) return { placed, busy: null };
+        }
+      }
+      assert.ok(torkan, 'precondition: a Torkan add_object record exists');
+      clearField();
+      put('slot-type', 58, 10); // a live Toroid already in obj 0x3A
+      put('slot-state', 58, 1);
+      const busyPending = fire(torkan.area, torkan.cursor);
+      const busyAfter = place();
+      return { placed, busy: { pending: busyPending, pendingAfter: busyAfter, ...sample(58) } };
+    },
+    assert(obs) {
+      for (const p of obs.placed) {
+        const at = `area ${p.area} type ${p.type} slot ${p.raw}`;
+        assert.ok(p.pending, `${at}: the record fired`);
+        assert.deepEqual(p.pending, { type: p.type, slot: p.raw + 1 }, `${at}: an idle slot records the pending object`);
+        assert.equal(p.pendingAfter, 0, `${at}: placement clears the register`);
+        assert.equal(p.slotType, p.type, `${at}: the object is placed in its own slot`);
+        assert.equal(p.slotState, 1, `${at}: the placed object is ACTIVE`);
+        if (p.type === 84) {
+          assert.equal(p.slotFlag, 0, `${at}: the flag starts hidden`);
+          assert.equal(p.slotPts, 17, `${at}: the flag scores 1,000 at reveal`);
+          assert.equal(p.slotX, 0, `${at}: the flag enters at the top of the field`);
+        }
+      }
+      const kinds = new Set(obs.placed.map((p) => `${p.type}@${p.raw}`));
+      for (const k of ['84@0', '15@58', '16@58', '17@58', '17@59', '24@59']) {
+        assert.ok(kinds.has(k), `the schedule places ${k}`);
+      }
+      assert.equal(obs.placed.length, 13, 'all 13 add_object records were fired');
+      assert.ok(obs.busy.pending, 'the busy-slot record still fired (the cursor advanced)');
+      assert.equal(obs.busy.pending.type, 0, 'a record that lands on a busy slot is dropped, not held pending');
+      assert.equal(obs.busy.slotType, 10, 'the busy slot keeps its live Toroid');
+      assert.equal(obs.busy.pendingAfter, 0, 'nothing is queued for later');
+    },
+    // Empty `place pending object`: the records are recorded but never placed, so every slot stays empty.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'place pending object'),
   },
   {
     key: 'ground-object-scrolls-with-terrain',

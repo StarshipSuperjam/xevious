@@ -100,7 +100,7 @@
   procs, reusing `compute aim`, the 32-tier aim tables, the shared `emit radiating bullet`, the shared
   `explode toroid tick`, `init brag spario` and the family move/cull), the Brag OR-branch and Garu branch in
   `install_advance_slots`, the Brag OR-branch in `install_spawn_flying` (and the **absence** of a Garu one — the
-  Garu has no formation entry), the Garu debug-key stamp into the first flying slot, `garu_zakato_blocks` for the
+  Garu has no formation entry), the Garu debug-key stamp into the second flying slot (obj `0x3B`, since slice 21), `garu_zakato_blocks` for the
   render, and the `BRAG_ZAKATO_*` / `GARU_*` tuning constants in `tools/game_director.py`; the structural
   contract `_air08_failures` and its per-clause negatives (`test_special_pairs_slice_authoring_present` /
   `test_special_pairs_slice_negative_fixtures`) in `tests/test_scratch_project.py`, whose clauses pin the two
@@ -143,17 +143,17 @@
   burst) — the same explicit-phase mapping recorded for Zakato. (4) **Fixed-adjacency detonation with a one-tick
   Sparios head start.** The arcade writes the 4 Brag Sparios into the 4 objects **immediately after** the Garu
   (obj `0x3C`-`0x3F` after `0x3B`); the port reproduces that adjacency by writing into `gslot+1 … gslot+4` in the
-  6-slot flying pool, which requires the Garu to occupy the first flying slot — its only current spawner (the
-  debug key) stamps it there. Because those higher slot indices are reached **later in the same** `advance slots`
-  pass, the 4 Sparios update once on the tick they spawn — a **one-tick head start** (recorded here; the natural
-  add_object spawn that would place a Garu at an arbitrary slot is a deferred follow-up, see (6)). (5) **No enemy
+  6-slot flying pool. Since slice 21 the Garu occupies the **second** flying slot, arcade obj `0x3B`, as the
+  arcade places it, so `gslot+1 … gslot+4` is exactly obj `0x3C`-`0x3F` (both the schedule's add_object records
+  and the debug key stamp it there; see [record 056](056-release-fidelity.md) (1)). Because those higher slot
+  indices are reached **later in the same** `advance slots` pass, the 4 Sparios update once on the tick they
+  spawn — a **one-tick head start**. (5) **No enemy
   scroll.** The port has no background-scroll term for flying slots, so the arcade's scroll-during-flight renders
   as pure `slot dx`/`slot dy` motion — the same "no enemy scroll" deviation class recorded for every flying
-  family. (6) **Garu natural-spawn reachability deferred.** In the arcade the Garu Zakato is scheduled by the
-  area `add_object` records (areas 9/10/14), a spawn source the port has not yet built (the schedule-consumer
-  seam is dormant); until it lands, the Garu is reachable for playtest via the **debug key** (which stamps a solo
-  Garu into the first flying slot), and the two Brag variants arrive through the normal formation waves. Recorded
-  so a reviewer does not read the Garu's absence from natural play as a build gap. (7) **Garu art deferred.** The
+  family. (6) **Garu natural spawn — resolved in slice 21.** In the arcade the Garu Zakato is scheduled by the
+  area `add_object` records (areas 9/10/14). That spawn source now exists ([record 056](056-release-fidelity.md)
+  (1)): the Garu appears in natural play in those areas, in obj `0x3B`, and is dropped if that slot is busy. The
+  two Brag variants still arrive through the normal formation waves. (7) **Garu art deferred.** The
   Garu draws the Zakato body frame as a documented stand-in (see License status); the motion, points, fuse and
   detonation are unaffected.
 - [x] No assembly or other source code was copied into the Scratch project.
