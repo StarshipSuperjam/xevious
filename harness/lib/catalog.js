@@ -25,6 +25,7 @@ import {
   cloneReports,
   constants,
   variable,
+  trapStageVar,
 } from './harness.js';
 import { reachPlaying, reachPlaying2P, stateOf, insertCoin, loadArtifact } from './build.js';
 import * as mutate from './mutate.js';
@@ -112,30 +113,6 @@ function seedCraftHit(vm, enemySlot = 63) {
   put('slot-dx', enemySlot, 0);
   put('slot-dy', enemySlot, 0);
   put('slot-flag', enemySlot, 0);
-}
-
-// #158 (slice 21): call `onSet(value)` on every write to a Stage variable (set or change), synchronously inside
-// the writing block. One headless pump runs many walk ticks, so a whole 44-tick death window can pass inside one
-// step; trapping the walk's own counter observes every tick of it. Returns a release that restores the plain
-// variable with its current value.
-function trapStageVar(vm, id, onSet) {
-  const stage = vm.runtime.getTargetForStage();
-  const { name } = variable(id);
-  const v = Object.values(stage.variables).find((x) => x.name === name);
-  if (!v) throw new Error(`harness: no Stage variable '${name}' to trap`);
-  let val = v.value;
-  Object.defineProperty(v, 'value', {
-    configurable: true,
-    enumerable: true,
-    get: () => val,
-    set: (x) => {
-      val = x;
-      onSet(x);
-    },
-  });
-  return () => {
-    Object.defineProperty(v, 'value', { configurable: true, enumerable: true, writable: true, value: val });
-  };
 }
 
 // CAB-01 (slice 17): green-flag and step past the title hold to the first attract demo (playing with the

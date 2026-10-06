@@ -1395,5 +1395,92 @@ class DifficultyAndFormations(unittest.TestCase):
         self.assertGreater(adjusts, 0, "the DIF-02 adjust contribution must be exercised")
 
 
+
+class ReleaseSoakWiring(unittest.TestCase):
+    # RELEASE-01 (release.full-soak, StarshipSuperjam/xevious#105, slice 21). The soak itself is a long headless run
+    # over the shipped build, `harness/soak.js`, in its own CI job (`runtime-soak`); it is the live proof, and its
+    # last test is its own negative (a build that skips the schedule consume fails inside area 1). This class holds
+    # the wiring that makes that proof mean what docs/spec/release.md says: the job runs the file, the scenario net
+    # leaves it out, each of the spec's claims has its test, every run is paced as the editor runs it, and the soak's
+    # thresholds are the spec's numbers.
+    # roadmap-evidence: RELEASE-01 success  (harness/soak.js in the runtime-soak job, paced as the editor runs it: the
+    #   campaign 1->16->7 with every schedule consumed, the clone envelope and baselines, repeatability, stop and
+    #   reload; this wiring check)
+    # roadmap-evidence: RELEASE-01 failure  (soak.js's negative fails a consume-less build inside area 1; this check
+    #   refuses a soak missing a claim, run outside its job, unpaced, or with thresholds off the spec)
+    SOAK = ROOT / "harness" / "soak.js"
+    WORKFLOW = ROOT / ".github" / "workflows" / "xevious-project.yml"
+    RELEASE_SPEC = SPEC / "release.md"
+    CLAIMS = {
+        "campaign": "test('campaign: areas 1 to 16 and the loop into 7",
+        "repeatability": "test('repeatability:",
+        "deaths-and-game-over": "test('envelope: deaths and the game over return",
+        "cabinet-envelope": "test('envelope: the title, attract, initials entry and a two-player game",
+        "stop-and-reload": "test('stop and reload:",
+        "negative": "test('negative:",
+    }
+
+    @staticmethod
+    def _job(workflow: str, name: str) -> str:
+        match = re.search(rf"^  {re.escape(name)}:\n((?:    .*\n|\s*\n)*)", workflow, re.MULTILINE)
+        return match.group(1) if match else ""
+
+    def _failures(self, soak: str, workflow: str, spec: str, soak_name: str = "soak.js") -> set[str]:
+        failures = set()
+        # node --test with no arguments picks *.test.js (and the other default patterns); the soak must not be one.
+        if re.search(r"(^|[.\-_])test\.[cm]?js$|^test-", soak_name):
+            failures.add("picked-by-scenario-net")
+        job = self._job(workflow, "runtime-soak")
+        if not re.search(rf"working-directory: harness\n\s+run: node --test {re.escape(soak_name)}\n", job):
+            failures.add("not-run-by-ci")
+        for claim, opening in self.CLAIMS.items():
+            if opening not in soak:
+                failures.add(f"missing-{claim}")
+        limit = re.search(r"Scratch allows (\d+) clones", spec)
+        headroom = re.search(r"the peak stays at least (\d+) clones under that limit", spec)
+        if not (limit and re.search(rf"^const CLONE_LIMIT = {limit.group(1)};", soak, re.MULTILINE)):
+            failures.add("clone-limit-off-spec")
+        if not (headroom and re.search(rf"^const HEADROOM = {headroom.group(1)};", soak, re.MULTILINE)):
+            failures.add("headroom-off-spec")
+        # The campaign must end on the loop from area 16 back into area 7.
+        if "'15->16', '16->7']" not in soak or not re.search(r"^const AREA_CHANGES = 16;", soak, re.MULTILINE):
+            failures.add("campaign-not-to-the-loop")
+        # Every soak VM is paced as the editor runs it, one pass of every thread per frame. Unpaced, a headless pump
+        # runs a machine-dependent number of ticks, and the repeatability and reload comparisons drift with the CPU.
+        loads = re.findall(r"await (?:loadBuild|loadMutatedSource)\(", soak)
+        if ("const load = async () => paceLikeTheEditor(await loadBuild());" not in soak
+                or "paceLikeTheEditor(await loadMutatedSource(" not in soak
+                or "vm.runtime.redrawRequested = true;" not in soak
+                or len(loads) != 2):
+            failures.add("unpaced")
+        return failures
+
+    def _texts(self):
+        return (
+            self.SOAK.read_text(encoding="utf-8"),
+            self.WORKFLOW.read_text(encoding="utf-8"),
+            self.RELEASE_SPEC.read_text(encoding="utf-8"),
+        )
+
+    def test_soak_is_wired_to_the_release_spec(self):
+        self.assertEqual(self._failures(*self._texts()), set())
+
+    def test_wiring_check_bites(self):
+        soak, workflow, spec = self._texts()
+        cases = {
+            "picked-by-scenario-net": (soak, workflow.replace("node --test soak.js", "node --test soak.test.js"), spec, "soak.test.js"),
+            "not-run-by-ci": (soak, workflow.replace("run: node --test soak.js", "run: node --test"), spec, "soak.js"),
+            "missing-stop-and-reload": (soak.replace("test('stop and reload:", "test('reload:"), workflow, spec, "soak.js"),
+            "missing-negative": (soak.replace("test('negative:", "test('mutation:"), workflow, spec, "soak.js"),
+            "headroom-off-spec": (soak.replace("const HEADROOM = 50;", "const HEADROOM = 20;"), workflow, spec, "soak.js"),
+            "clone-limit-off-spec": (soak, workflow, spec.replace("Scratch allows 300 clones", "Scratch allows 400 clones"), "soak.js"),
+            "campaign-not-to-the-loop": (soak.replace("const AREA_CHANGES = 16;", "const AREA_CHANGES = 15;"), workflow, spec, "soak.js"),
+            "unpaced": (soak.replace("const vm = await load();", "const vm = await loadBuild();", 1), workflow, spec, "soak.js"),
+        }
+        for expected, args in cases.items():
+            with self.subTest(expected):
+                self.assertIn(expected, self._failures(*args))
+
+
 if __name__ == "__main__":
     unittest.main()
