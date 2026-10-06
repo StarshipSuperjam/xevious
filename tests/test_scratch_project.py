@@ -408,7 +408,9 @@ class ScratchProjectTests(unittest.TestCase):
         # draws. 454 - 8 = 446.
         # + the slice-21 title logo's 10 tile layers on the proof pen (the sheet itself is the same reference-art
         # library sheet, re-rendered taller) + the START SPACE KEY hint re-rendered as attract text. 446 + 11 = 457.
-        self.assertEqual(457, len(assets))
+        # - slice 21 (#31): the two-row banner replaces the two "GAME OVER PLAYER n" PNGs with GAME OVER (new) and
+        # PLAYER 1 / PLAYER 2, which are byte-identical to the initials-entry tags and dedup. 457 - 2 + 1 = 456.
+        self.assertEqual(456, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -1348,6 +1350,9 @@ class ScratchProjectTests(unittest.TestCase):
             # Slice 21 (presentation.reference-art): `title tick`, the title hold's frame count that the logo
             # outline's flash and the sparkle read. Zeroed on every title entry; transient machinery.
             "title tick",
+            # Slice 21 (#31): `hud flash frames`, the frames the real game's paced holds off the play screen add to
+            # the 1UP flash clock. A free-running count; transient machinery.
+            "hud flash frames",
             # CAB-05 (slice 20): audio machinery. `coin sound` is the poll-to-loop coin-sound latch, `audio muted`
             # the last volume the attract mute applied (-1 unknown), `keep sounds` the death-complete handler's
             # one-transition stop-all skip, `death cue playing` the death cue's own stop-all skip while it sounds,
@@ -16349,18 +16354,35 @@ class ScratchProjectTests(unittest.TestCase):
                         yield from walk_body(inner[1])
                 cursor = node["next"]
 
-        # A flashing "1UP" is a loop whose body both shows and hides (the hide may be
-        # nested inside a gate — see the attract-gate guard below).
-        def flash_loop_body():
+        # A flashing "1UP" is the 1UP role's keep-alive loop whose body both shows and hides (the hide may be
+        # nested inside a gate — see the attract-gate guard below). Slice 21: the digit loops show and hide too
+        # (leading-zero blanking), so the loop is found through the `hud role == HUD_ROLE_LABEL_1UP` dispatch.
+        def role_branch(role: int):
             for b in blocks.values():
-                if b["opcode"] not in ("control_repeat_until", "control_repeat"):
+                if b["opcode"] != "control_if":
                     continue
+                cond = b["inputs"].get("CONDITION")
+                eq = blocks.get(cond[1]) if isinstance(cond, list) and len(cond) > 1 else None
+                if (
+                    eq is not None
+                    and eq["opcode"] == "operator_equals"
+                    and refs(eq["inputs"].get("OPERAND1"), director.HUD_ROLE_ID)
+                    and eq["inputs"].get("OPERAND2") == [1, [4, role]]
+                ):
+                    inner = b["inputs"].get("SUBSTACK")
+                    return inner[1] if isinstance(inner, list) and len(inner) > 1 else None
+            return None
+
+        def flash_loop_body():
+            cursor = role_branch(director.HUD_ROLE_LABEL_1UP)
+            while cursor:
+                b = blocks[cursor]
                 substack = b["inputs"].get("SUBSTACK")
-                if not substack:
-                    continue
-                body = list(walk_body(substack[1]))
-                if {"looks_show", "looks_hide"} <= {n["opcode"] for n in body}:
-                    return substack[1], body
+                if b["opcode"] == "control_repeat_until" and substack:
+                    body = list(walk_body(substack[1]))
+                    if {"looks_show", "looks_hide"} <= {n["opcode"] for n in body}:
+                        return substack[1], body
+                cursor = b["next"]
             return None
 
         if flash_loop_body() is None:
@@ -16421,6 +16443,179 @@ class ScratchProjectTests(unittest.TestCase):
         if not flash_hide_attract_gated():
             failures.add("flash-1up-attract-gated")
 
+        # Slice 21 (#31): the flash's cadence and clock. The arcade blanks the active label while bit 4 of its frame
+        # counter is set (sub_fn_6__display_1UP_2UP / flash_1up_2up, xevious_sub.68k 737-775): 16 frames each way,
+        # 8 port ticks, all through a real game. The clone copies `tick` + `hud flash frames` into `hud flash clock`
+        # (never counting it) and blanks while floor(clock / 8) mod 2 == 1, on any screen but the best five; the
+        # real game's three paced holds off the play screen (two-player banner, last-death forest wait, initials
+        # entry) each count their frames into `hud flash frames`. The loop holds no `wait`: scratch-vm ends the frame
+        # at every wait it starts, which would pace the Stage's collapsing holds in the out-of-play HUD states.
+        # roadmap-evidence: PRES-02 success  (PRES-02.hud-yellow: the 1UP flash runs on the arcade's 16-frame bit-4 clock)
+        def flash_clock_cadence() -> bool:
+            found = flash_loop_body()
+            if found is None:
+                return False
+            _start, body = found
+
+            def sums_both(value) -> bool:
+                linked = isinstance(value, list) and len(value) > 1 and isinstance(value[1], str)
+                add = blocks.get(value[1]) if linked else None
+                operands = [] if add is None else [add["inputs"].get("NUM1"), add["inputs"].get("NUM2")]
+                return (
+                    add is not None
+                    and add["opcode"] == "operator_add"
+                    and any(refs(o, director.TICK_ID) for o in operands)
+                    and any(refs(o, director.HUD_FLASH_FRAMES_ID) for o in operands)
+                )
+
+            reads_tick = any(
+                n["opcode"] == "data_setvariableto"
+                and n["fields"].get("VARIABLE", [None, None])[1] == director.HUD_FLASH_CLOCK_ID
+                and sums_both(n["inputs"].get("VALUE"))
+                for n in body
+            )
+            unpaced = not any(n["opcode"] == "control_wait" for n in body)
+
+            def is_not_scores_gate(n: dict) -> bool:
+                cond = n["inputs"].get("CONDITION")
+                neg = blocks.get(cond[1]) if isinstance(cond, list) and len(cond) > 1 else None
+                operand = (neg or {}).get("inputs", {}).get("OPERAND")
+                eq = blocks.get(operand[1]) if isinstance(operand, list) and len(operand) > 1 else None
+                return (
+                    neg is not None
+                    and neg["opcode"] == "operator_not"
+                    and eq is not None
+                    and eq["opcode"] == "operator_equals"
+                    and refs(eq["inputs"].get("OPERAND1"), director.STATE_ID)
+                    and str((eq["inputs"].get("OPERAND2") or [None, [None, None]])[1][1])
+                    == director.ATTRACT_SCORES_STATE
+                )
+
+            play_gated = any(
+                n["opcode"] == "control_if"
+                and is_not_scores_gate(n)
+                and any(
+                    m["opcode"] == "looks_hide"
+                    for m in walk_body((n["inputs"].get("SUBSTACK") or [None, None])[1] or "")
+                )
+                for n in body
+            )
+            half = any(
+                b["opcode"] == "operator_divide"
+                and refs(b["inputs"].get("NUM1"), director.HUD_FLASH_CLOCK_ID)
+                and b["inputs"].get("NUM2") == [1, [4, director.HUD_FLASH_HALF_TICKS]]
+                for b in blocks.values()
+            )
+            return reads_tick and unpaced and play_gated and half and director.HUD_FLASH_HALF_TICKS == 8
+
+        if not flash_clock_cadence():
+            failures.add("flash-1up-clock")
+
+        # ...and each of the real game's paced holds off the play screen counts its frames into `hud flash frames`:
+        # a chain holding both its `wait 0` and `change hud flash frames by 1` — the banner hold
+        # (BANNER_HOLD_TICKS), the last death's forest wait (FOREST_WAIT_TICKS) and the initials-entry countdown.
+        every_block = {
+            bid: b for t in project["targets"] for bid, b in t["blocks"].items() if isinstance(b, dict)
+        }
+
+        def chain(start) -> list:
+            out, cursor = [], start
+            while cursor and cursor in every_block:
+                out.append(every_block[cursor])
+                cursor = every_block[cursor].get("next")
+            return out
+
+        def counts_frames(nodes: list) -> bool:
+            return any(n["opcode"] == "control_wait" for n in nodes) and any(
+                n["opcode"] == "data_changevariableby"
+                and n["fields"].get("VARIABLE", [None, None])[1] == director.HUD_FLASH_FRAMES_ID
+                and n["inputs"].get("VALUE") == [1, [4, 1]]
+                for n in nodes
+            )
+
+        def repeat_counted(times: int) -> bool:
+            return any(
+                b["opcode"] == "control_repeat"
+                and _num_operand(b["inputs"].get("TIMES")) == times
+                and counts_frames(chain((b["inputs"].get("SUBSTACK") or [None, None])[1]))
+                for b in every_block.values()
+            )
+
+        entry_counted = any(
+            counts_frames(chain((b["inputs"].get("SUBSTACK2") or [None, None])[1]))
+            and any(
+                n["opcode"] == "data_changevariableby"
+                and n["fields"].get("VARIABLE", [None, None])[1] == director.ENTRY_TIMER_ID
+                for n in chain((b["inputs"].get("SUBSTACK2") or [None, None])[1])
+            )
+            for b in every_block.values()
+            if b["opcode"] == "control_if_else"
+        )
+        for label, ok in (
+            ("flash-frames:banner", repeat_counted(director.BANNER_HOLD_TICKS)),
+            ("flash-frames:forest-wait", repeat_counted(director.FOREST_WAIT_TICKS)),
+            ("flash-frames:entry", entry_counted),
+        ):
+            if not ok:
+                failures.add(label)
+
+        # Slice 21 (#31): leading zeros are blank (display_score / display_bcd_value, xevious_main.68k 1904-1977):
+        # each digit loop shows its cell iff place < 2 or value >= 10^place, i.e.
+        # if_else(<place < 2> or <not <value < divisor>>) [show] [hide], for all three score rows.
+        def blanks_leading_zeros(var_id: str) -> bool:
+            for lt in blocks.values():
+                if not (
+                    lt["opcode"] == "operator_lt"
+                    and refs(lt["inputs"].get("OPERAND1"), var_id)
+                    and refs(lt["inputs"].get("OPERAND2"), director.HUD_DIVISOR_ID)
+                ):
+                    continue
+                neg = blocks.get(lt.get("parent")) or {}
+                either = blocks.get(neg.get("parent")) or {}
+                branch = blocks.get(either.get("parent")) or {}
+                if neg.get("opcode") != "operator_not" or either.get("opcode") != "operator_or":
+                    continue
+                place = blocks.get((either["inputs"].get("OPERAND1") or [None, None])[1]) or {}
+                if not (
+                    place.get("opcode") == "operator_lt"
+                    and refs(place["inputs"].get("OPERAND1"), director.HUD_PLACE_ID)
+                    and place["inputs"].get("OPERAND2") == [1, [4, 2]]
+                ):
+                    continue
+                if branch.get("opcode") != "control_if_else":
+                    continue
+                then = branch["inputs"].get("SUBSTACK") or [None, None]
+                other = branch["inputs"].get("SUBSTACK2") or [None, None]
+                if (blocks.get(then[1]) or {}).get("opcode") == "looks_show" and (
+                    blocks.get(other[1]) or {}
+                ).get("opcode") == "looks_hide":
+                    return True
+            return False
+
+        # roadmap-evidence: PRES-02 success  (PRES-02.hud-yellow: score, high-score and other-score digits blank their leading zeros)
+        for var_id in (director.SCORE_ID, director.HIGH_SCORE_ID, director.OTHER_SCORE_ID):
+            if not blanks_leading_zeros(var_id):
+                failures.add("hud-leading-zeros-blank")
+
+        # Slice 21 (#31): the two-player banner is two rows, as display_game_over_player_1_2 (845-855) writes it —
+        # a GAME OVER clone and a PLAYER n clone, each dispatched by its own role, the player line wearing
+        # banner-player-<banner player + 1>.
+        # roadmap-evidence: PRES-02 success  (PRES-02.hud-yellow: the elimination banner is two rows: GAME OVER over PLAYER n)
+        game_over_row = role_branch(director.HUD_ROLE_BANNER)
+        player_row = role_branch(director.HUD_ROLE_BANNER_PLAYER)
+        wears_game_over = game_over_row is not None and any(
+            n["opcode"] == "looks_costume"
+            and n["fields"].get("COSTUME", [None])[0] == director.HUD_BANNER_GAME_OVER_COSTUME
+            for n in blocks.values()
+        )
+        player_join = any(
+            b["opcode"] == "operator_join"
+            and b["inputs"].get("STRING1") == [1, [10, director.HUD_BANNER_COSTUME_PREFIX]]
+            for b in blocks.values()
+        )
+        if not (wears_game_over and player_row is not None and player_join):
+            failures.add("hud-banner-two-rows")
+
         # Regression guard for the "header flashes then vanishes" bug: a clone's keep-alive
         # `repeat until` must LOOP while the HUD is visible and stop only on return to
         # title/boot, so its condition is "state is title or boot" (operator_or) — never the
@@ -16457,6 +16652,7 @@ class ScratchProjectTests(unittest.TestCase):
             director.HUD_LIFE_INDEX_ID,
             director.HUD_LIFE_COUNT_ID,
             director.HUD_IS_CLONE_ID,
+            director.HUD_FLASH_CLOCK_ID,
         }
         writes = {
             b["fields"].get("VARIABLE", [None, None])[1]
@@ -16621,48 +16817,150 @@ class ScratchProjectTests(unittest.TestCase):
                         yield from walk_body(blocks, inner[1])
                 cursor = node["next"]
 
+        def role_loop_nodes(blocks: dict, role: int) -> list:
+            # The nodes of `role`'s keep-alive loop body, found through the `hud role == role` dispatch.
+            for b in blocks.values():
+                if b["opcode"] != "control_if":
+                    continue
+                cond = b["inputs"].get("CONDITION")
+                eq = blocks.get(cond[1]) if isinstance(cond, list) and len(cond) > 1 else None
+                if not (
+                    eq is not None
+                    and eq["opcode"] == "operator_equals"
+                    and refs(eq["inputs"].get("OPERAND1"), director.HUD_ROLE_ID)
+                    and eq["inputs"].get("OPERAND2") == [1, [4, role]]
+                ):
+                    continue
+                cursor = b["inputs"]["SUBSTACK"][1]
+                while cursor:
+                    node = blocks[cursor]
+                    if node["opcode"] == "control_repeat_until" and node["inputs"].get("SUBSTACK"):
+                        return list(walk_body(blocks, node["inputs"]["SUBSTACK"][1]))
+                    cursor = node["next"]
+            return []
+
         def break_flash(p: dict) -> None:
-            blocks = hud_blocks(p)
-            for b in list(blocks.values()):
-                if b["opcode"] not in ("control_repeat_until", "control_repeat"):
-                    continue
-                substack = b["inputs"].get("SUBSTACK")
-                if not substack:
-                    continue
-                nodes = list(walk_body(blocks, substack[1]))
-                if {"looks_show", "looks_hide"} <= {n["opcode"] for n in nodes}:
-                    for node in nodes:
-                        if node["opcode"] == "looks_hide":
-                            node["opcode"] = "looks_show"
+            for node in role_loop_nodes(hud_blocks(p), director.HUD_ROLE_LABEL_1UP):
+                if node["opcode"] == "looks_hide":
+                    node["opcode"] = "looks_show"
 
         def break_flash_gate(p: dict) -> None:
             # Ungate the flash's hide: neutralise the `attract == 0` condition so the
             # attract demo would flash the 1UP/2UP indicator like a real game.
             blocks = hud_blocks(p)
-            for b in list(blocks.values()):
-                if b["opcode"] not in ("control_repeat_until", "control_repeat"):
+            for node in role_loop_nodes(blocks, director.HUD_ROLE_LABEL_1UP):
+                if node["opcode"] != "control_if":
                     continue
-                substack = b["inputs"].get("SUBSTACK")
-                if not substack:
+                cond = node["inputs"].get("CONDITION")
+                if not (isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)):
                     continue
-                nodes = list(walk_body(blocks, substack[1]))
-                if not ({"looks_show", "looks_hide"} <= {n["opcode"] for n in nodes}):
+                eq = blocks.get(cond[1])
+                if eq is None or eq["opcode"] != "operator_equals":
                     continue
-                for node in nodes:
-                    if node["opcode"] != "control_if":
-                        continue
-                    cond = node["inputs"].get("CONDITION")
-                    if not (
-                        isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)
-                    ):
-                        continue
-                    eq = blocks.get(cond[1])
-                    if eq is None or eq["opcode"] != "operator_equals":
-                        continue
-                    for slot in ("OPERAND1", "OPERAND2"):
-                        if refs(eq["inputs"].get(slot), director.ATTRACT_ID):
-                            eq["inputs"][slot] = [1, [4, 0]]
-                return
+                for slot in ("OPERAND1", "OPERAND2"):
+                    if refs(eq["inputs"].get(slot), director.ATTRACT_ID):
+                        eq["inputs"][slot] = [1, [4, 0]]
+
+        def break_flash_half(p: dict) -> None:
+            # Back to the old project-defined 15-tick cadence.
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_divide" and refs(
+                    b["inputs"].get("NUM1"), director.HUD_FLASH_CLOCK_ID
+                ):
+                    b["inputs"]["NUM2"] = [1, [4, 15]]
+
+        def break_flash_clock_source(p: dict) -> None:
+            # The clock stops reading the walk's tick during play.
+            for b in hud_blocks(p).values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.HUD_FLASH_CLOCK_ID
+                ):
+                    b["inputs"]["VALUE"] = [1, [10, "0"]]
+
+        def break_flash_paced(p: dict) -> None:
+            # A `wait 0` back in the 1UP loop, after the clock copy (the frame-pacing regression).
+            blocks = hud_blocks(p)
+            for bid, b in list(blocks.items()):
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.HUD_FLASH_CLOCK_ID
+                    and b["parent"]
+                    and blocks[b["parent"]]["opcode"] == "control_repeat_until"
+                ):
+                    wid = bid + "-wait"
+                    blocks[wid] = {
+                        "opcode": "control_wait",
+                        "next": b["next"],
+                        "parent": bid,
+                        "inputs": {"DURATION": [1, [5, "0"]]},
+                        "fields": {},
+                        "shadow": False,
+                        "topLevel": False,
+                    }
+                    if b["next"]:
+                        blocks[b["next"]]["parent"] = wid
+                    b["next"] = wid
+
+        def break_flash_play_gate(p: dict) -> None:
+            # The blank no longer spares the best five (the arcade's `is_real_game` is clear there).
+            blocks = hud_blocks(p)
+            for b in blocks.values():
+                if (
+                    b["opcode"] == "operator_equals"
+                    and refs(b["inputs"].get("OPERAND1"), director.STATE_ID)
+                    and str((b["inputs"].get("OPERAND2") or [None, [None, None]])[1][1])
+                    == director.ATTRACT_SCORES_STATE
+                    and blocks.get(b["parent"] or "", {}).get("opcode") == "operator_not"
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [10, "ready"]]
+
+        def break_flash_frames(times):
+            # The hold no longer counts its frames into `hud flash frames` (the 1UP label freezes through it).
+            def corrupt(p: dict) -> None:
+                every = {bid: b for t in p["targets"] for bid, b in t["blocks"].items() if isinstance(b, dict)}
+                hit = 0
+                for b in every.values():
+                    if times is None:
+                        if b["opcode"] != "control_if_else":
+                            continue
+                        start = (b["inputs"].get("SUBSTACK2") or [None, None])[1]
+                    else:
+                        if b["opcode"] != "control_repeat" or _num_operand(b["inputs"].get("TIMES")) != times:
+                            continue
+                        start = (b["inputs"].get("SUBSTACK") or [None, None])[1]
+                    cursor = start
+                    while cursor and cursor in every:
+                        n = every[cursor]
+                        if (
+                            n["opcode"] == "data_changevariableby"
+                            and n["fields"].get("VARIABLE", [None, None])[1] == director.HUD_FLASH_FRAMES_ID
+                        ):
+                            n["fields"]["VARIABLE"] = ["tick", director.TICK_ID]
+                            hit += 1
+                        cursor = n.get("next")
+                assert hit, times
+
+            return corrupt
+
+        def break_leading_zeros(p: dict) -> None:
+            # Every place counts as "always shown" (place < 7), so the leading zeros come back.
+            blocks = hud_blocks(p)
+            for b in blocks.values():
+                if (
+                    b["opcode"] == "operator_lt"
+                    and refs(b["inputs"].get("OPERAND1"), director.HUD_PLACE_ID)
+                    and b["inputs"].get("OPERAND2") == [1, [4, 2]]
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, 7]]
+
+        def break_banner_rows(p: dict) -> None:
+            # Misnumber the banner's PLAYER-line role in the clone dispatch, so only one row ever draws.
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_equals" and refs(
+                    b["inputs"].get("OPERAND1"), director.HUD_ROLE_ID
+                ) and b["inputs"].get("OPERAND2") == [1, [4, director.HUD_ROLE_BANNER_PLAYER]]:
+                    b["inputs"]["OPERAND2"] = [1, [4, 99]]
 
         def break_write_only_local(p: dict) -> None:
             blocks = hud_blocks(p)
@@ -16770,6 +17068,16 @@ class ScratchProjectTests(unittest.TestCase):
             ("flashing-1up", break_flash),
             # roadmap-evidence: CAB-01 failure
             ("flash-1up-attract-gated", break_flash_gate),
+            # roadmap-evidence: PRES-02 failure  (PRES-02.hud-yellow: the 1UP flash off the 16-frame clock, leading zeros drawn, or a one-row banner)
+            ("flash-1up-clock", break_flash_half),
+            ("flash-1up-clock", break_flash_clock_source),
+            ("flash-1up-clock", break_flash_paced),
+            ("flash-1up-clock", break_flash_play_gate),
+            ("flash-frames:banner", break_flash_frames(director.BANNER_HOLD_TICKS)),
+            ("flash-frames:forest-wait", break_flash_frames(director.FOREST_WAIT_TICKS)),
+            ("flash-frames:entry", break_flash_frames(None)),
+            ("hud-leading-zeros-blank", break_leading_zeros),
+            ("hud-banner-two-rows", break_banner_rows),
             ("hud-writes-only-local", break_write_only_local),
             ("hud-life-spawn-loop-capped", break_life_spawn_loop_cap),
             ("hud-life-count-capped", break_life_count_cap),
@@ -19202,6 +19510,109 @@ class ScratchProjectTests(unittest.TestCase):
             if name not in label_switch_names:
                 failures.add(f"label-switch-missing:{name}")
 
+        # Slice 21 (#31): the prompts' timing. INSERT COIN shows while bit 4 of the frame counter is set
+        # (display_insert_coin_flashing, xevious_main.68k 857-877) — 16 frames each way, 8 port ticks — on the title
+        # (its clock `title tick`) and in the demo (the walk's `tick`, its own clone); PUSH START BUTTON is drawn
+        # once and stays (display_push_start_button 815-826). The flash is
+        # if_else(<floor(clock / 8) mod 2 = 1>) [show] [hide].
+        def refs_var(spec, var_id: str) -> bool:
+            return (
+                isinstance(spec, list)
+                and len(spec) >= 2
+                and isinstance(spec[1], list)
+                and len(spec[1]) >= 3
+                and spec[1][0] == 12
+                and spec[1][2] == var_id
+            )
+
+        def shows_then_hides(branch: dict) -> bool:
+            then = branch["inputs"].get("SUBSTACK") or [None, None]
+            other = branch["inputs"].get("SUBSTACK2") or [None, None]
+            return (blocks.get(then[1]) or {}).get("opcode") == "looks_show" and (
+                blocks.get(other[1]) or {}
+            ).get("opcode") == "looks_hide"
+
+        def flashes_on(clock_id: str) -> bool:
+            for div in blocks.values():
+                if not (
+                    div["opcode"] == "operator_divide"
+                    and refs_var(div["inputs"].get("NUM1"), clock_id)
+                    and div["inputs"].get("NUM2") == [1, [4, director.ATTRACT_INSERT_COIN_HALF_TICKS]]
+                ):
+                    continue
+                floor = blocks.get(div.get("parent")) or {}
+                mod = blocks.get(floor.get("parent")) or {}
+                eq = blocks.get(mod.get("parent")) or {}
+                branch = blocks.get(eq.get("parent")) or {}
+                if (
+                    floor.get("opcode") == "operator_mathop"
+                    and mod.get("opcode") == "operator_mod"
+                    and mod["inputs"].get("NUM2") == [1, [4, 2]]
+                    and eq.get("opcode") == "operator_equals"
+                    and eq["inputs"].get("OPERAND2") == [1, [4, 1]]
+                    and branch.get("opcode") == "control_if_else"
+                    and shows_then_hides(branch)
+                ):
+                    return True
+            return False
+
+        # roadmap-evidence: PRES-02 success  (PRES-02.hud-yellow: INSERT COIN flashes on the 16-frame clock on the title and in the demo; PUSH START is steady; the best five blanks leading zeros)
+        if not flashes_on(director.TITLE_TICK_ID) or director.ATTRACT_INSERT_COIN_HALF_TICKS != 8:
+            failures.add("insert-coin-title-flash")
+        if not (role_dispatch(director.ATTRACT_ROLE_DEMO_INSERT_COIN) and flashes_on(director.TICK_ID)):
+            failures.add("insert-coin-demo-flash")
+        steady = False
+        for b in blocks.values():
+            sub = b["inputs"].get("SUBSTACK") if b["opcode"] == "control_if" else None
+            if not (isinstance(sub, list) and len(sub) > 1 and isinstance(sub[1], str)):
+                continue
+            chain, cursor = [], sub[1]
+            while cursor:
+                chain.append(blocks[cursor])
+                cursor = blocks[cursor]["next"]
+            menus = {
+                (blocks.get((n["inputs"].get("COSTUME") or [None, None])[1]) or {})
+                .get("fields", {})
+                .get("COSTUME", [None])[0]
+                for n in chain
+                if n["opcode"] == "looks_switchcostumeto"
+            }
+            if "push-start" in menus:
+                opcodes = {n["opcode"] for n in chain}
+                steady = "looks_show" in opcodes and "looks_hide" not in opcodes
+        if not steady:
+            failures.add("push-start-steady")
+
+        # The best-five score cells blank their leading zeros like the HUD (display_high_score_table 1475-1542
+        # writes each score with display_score): if_else(<place < 2> or <not <table[row] < divisor>>) [show] [hide].
+        table_blank = False
+        for lt in blocks.values():
+            operand = (lt["inputs"].get("OPERAND1") or [None, None])[1] if lt["opcode"] == "operator_lt" else None
+            item = blocks.get(operand) if isinstance(operand, str) else None
+            if not (
+                item is not None
+                and item["opcode"] == "data_itemoflist"
+                and item["fields"].get("LIST", [None, None])[1] == director.HIGH_SCORE_TABLE_ID
+                and refs_var(lt["inputs"].get("OPERAND2"), director.ATTRACT_DISPLAY_DIVISOR_ID)
+            ):
+                continue
+            neg = blocks.get(lt.get("parent")) or {}
+            either = blocks.get(neg.get("parent")) or {}
+            branch = blocks.get(either.get("parent")) or {}
+            place = blocks.get((either.get("inputs", {}).get("OPERAND1") or [None, None])[1]) or {}
+            if (
+                neg.get("opcode") == "operator_not"
+                and either.get("opcode") == "operator_or"
+                and place.get("opcode") == "operator_lt"
+                and refs_var(place["inputs"].get("OPERAND1"), director.ATTRACT_DISPLAY_PLACE_ID)
+                and place["inputs"].get("OPERAND2") == [1, [4, 2]]
+                and branch.get("opcode") == "control_if_else"
+                and shows_then_hides(branch)
+            ):
+                table_blank = True
+        if not table_blank:
+            failures.add("table-score-leading-zeros")
+
         return failures
 
     def test_attract_display_wiring_present(self) -> None:
@@ -19282,6 +19693,40 @@ class ScratchProjectTests(unittest.TestCase):
             ss = next(t for t in p["targets"] if t.get("name") == "start_screen")
             ss["costumes"] = [c for c in ss["costumes"] if c["name"] != "glyph/A"]
 
+        def refs_var(spec, var_id: str) -> bool:
+            return isinstance(spec, list) and isinstance(spec[1], list) and spec[1][-1] == var_id
+
+        def slow_flash(clock_id: str):
+            # The INSERT COIN flash back on the old project-defined 15-tick hold.
+            def corrupt(p: dict) -> None:
+                for b in ss_blocks(p).values():
+                    if b["opcode"] == "operator_divide" and refs_var(b["inputs"].get("NUM1"), clock_id):
+                        b["inputs"]["NUM2"] = [1, [4, 15]]
+
+            return corrupt
+
+        def flash_push_start(p: dict) -> None:
+            # PUSH START hides again (the old flashing prompt).
+            blocks = ss_blocks(p)
+            for b in blocks.values():
+                if b["opcode"] == "looks_costume" and b["fields"].get("COSTUME", [None])[0] == "push-start":
+                    switch = blocks[b["parent"]]
+                    cursor = switch["next"]
+                    while cursor:
+                        if blocks[cursor]["opcode"] == "looks_show":
+                            blocks[cursor]["opcode"] = "looks_hide"
+                        cursor = blocks[cursor]["next"]
+
+        def table_leading_zeros(p: dict) -> None:
+            # Every best-five place counts as "always shown" (place < 7), so the leading zeros come back.
+            for b in ss_blocks(p).values():
+                if (
+                    b["opcode"] == "operator_lt"
+                    and refs_var(b["inputs"].get("OPERAND1"), director.ATTRACT_DISPLAY_PLACE_ID)
+                    and b["inputs"].get("OPERAND2") == [1, [4, 2]]
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, 7]]
+
         for label, mutate_fn in (
             ("attract-spawns-clones", break_spawn),
             ("attract-clone-handler", break_handler),
@@ -19289,6 +19734,11 @@ class ScratchProjectTests(unittest.TestCase):
             ("credit-digit-costume-expr", break_digit_expr),
             ("table-name-glyph-expr", break_glyph_expr),
             ("costume-missing:glyph/A", drop_glyph_costume),
+            # roadmap-evidence: PRES-02 failure  (PRES-02.hud-yellow: INSERT COIN off the 16-frame clock on the title or in the demo, a flashing PUSH START, or best-five leading zeros drawn)
+            ("insert-coin-title-flash", slow_flash(director.TITLE_TICK_ID)),
+            ("insert-coin-demo-flash", slow_flash(director.TICK_ID)),
+            ("push-start-steady", flash_push_start),
+            ("table-score-leading-zeros", table_leading_zeros),
         ):
             project = load_source(scratch.SOURCE_DIR)
             mutate_fn(project)
@@ -21654,7 +22104,9 @@ class ScratchProjectTests(unittest.TestCase):
             | run(0x0500, range(3))  # 2UP
             | run(0x1200, [0, 1, 2, 3, 5, 6, 7, 8, 9])  # HIGH SCORE (display_high_score_text 1821-1831)
             | run(0x1118, [0, 1, 2, 3, 5, 6, 7, 8])  # GAME OVER (display_game_over 838-843)
-            | {(cell(0x1118)[0] + 85, cell(0x1118)[1])}  # the 18-char banner's centre, starting on the GAME OVER cell
+            | {(cell(0x1118)[0] + 40, cell(0x1118)[1])}  # the banner's GAME OVER line, centred on its 9-char run
+            # the banner's player line, centred on the arcade's 10-char run (display_game_over_player_1_2 845-855)
+            | {(cell(0x121A)[0] + 45, cell(0x121A)[1])}
         )
 
         def as_num(value):
@@ -22882,7 +23334,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "ca618342fd9a73e196e4cc450d6f87ba9390c3822a50093a267fbcaaf17d86d6",
+            "c5eac1999013e8466cf5e3bd0e131aeac92671aa0d6d32109876fd8d5796e1a3",
             build_hash,
         )
 

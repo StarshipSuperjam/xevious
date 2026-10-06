@@ -33,7 +33,9 @@ class HudGlyphsTests(unittest.TestCase):
         # + the 6 slice-20 PRES-01 best-five costumes on start_screen (the header and the ordinal ranks
         # 1ST..5TH, ATTRACT_TABLE_LABELS); PUSH START became PUSH START BUTTON in place. 81 + 6 = 87.
         # + the slice-21 "START SPACE KEY" title hint, re-rendered through the same pipeline. 87 + 1 = 88.
-        self.assertEqual(88, count)
+        # + slice 21 (#31): the banner is two rows, so its 2 "GAME OVER PLAYER n" costumes become 3 (GAME OVER,
+        # PLAYER 1, PLAYER 2). 88 + 1 = 89.
+        self.assertEqual(89, count)
 
     def test_rendering_is_byte_deterministic(self) -> None:
         first_glyphs = hg.render_glyphs(self.manifest)
@@ -121,7 +123,7 @@ class HudGlyphsTests(unittest.TestCase):
         # media-only commit, populated from the ECO-02 HUD-render commit on) are
         # game_director.py's territory — see tests/test_scratch_project.py instead.
         self.assertEqual("don't rotate", hud["rotationStyle"])
-        # CAB-03 (slice 18): the two "GAME OVER PLAYER n" banner costumes are appended to the HUD
+        # CAB-03 (slice 18; two rows since slice 21): the three banner costumes are appended to the HUD
         # target AFTER the fixed COSTUME_ORDER glyphs (so the per-glyph indices never shift), in
         # BANNER_LABELS order — the game_director banner clone switches to them by name.
         self.assertEqual(

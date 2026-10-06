@@ -352,6 +352,12 @@ HUD_DIVISOR_ID = "hud-divisor"
 HUD_LIFE_INDEX_ID = "hud-life-index"
 HUD_LIFE_COUNT_ID = "hud-life-count"
 HUD_IS_CLONE_ID = "hud-is-clone"
+# Slice 21 (#31): the 1UP label's flash clock, in port ticks (see HUD_FLASH_HALF_TICKS).
+HUD_FLASH_CLOCK_ID = "hud-flash-clock"
+# Slice 21 (#31): the frames the real game spends in its paced holds off the play screen (the two-player banner,
+# the last death's forest wait, initials entry), one a frame. The 1UP clock is `tick` plus this, so the label keeps
+# flashing where the walk is off (Stage global: the forest wait runs in solv_death).
+HUD_FLASH_FRAMES_ID = "hud-flash-frames"
 # Role tags snapshotted into each clone at creation (the blaster clone-slot idiom): which of the
 # five clone kinds this clone is. 0 (unset) never matches any role, so it also doubles as the
 # original sprite's permanent "I am not a clone" marker for `hud is clone` gating.
@@ -361,7 +367,7 @@ HUD_ROLE_LIFE = 3
 HUD_ROLE_LABEL_1UP = 4
 HUD_ROLE_LABEL_HIGH_SCORE = 5
 HUD_ROLE_GAME_OVER_GLYPH = 6  # ECO-04: the "GAME OVER" text, distinct from every other role
-HUD_ROLE_BANNER = 7  # CAB-03: the "GAME OVER PLAYER n" two-player elimination banner, gated on `banner player`
+HUD_ROLE_BANNER = 7  # CAB-03: the GAME OVER line of the two-player elimination banner, gated on `banner player`
 # ECO-02 two-player HUD (slice 18). The PRIMARY group (score digits + the flashing LABEL_1UP) always shows the
 # ACTIVE player: its digits read the live `score`, and its label's leading glyph is `digit/(curr player + 1)`, so
 # it reads "1UP" when player 1 is active and "2UP" when player 2 is. The SECONDARY group is spawned ONLY in a
@@ -374,6 +380,7 @@ HUD_ROLE_BANNER = 7  # CAB-03: the "GAME OVER PLAYER n" two-player elimination b
 # player always 0 -> a flashing "1UP" over the live score) is byte-identical to before this slice.
 HUD_ROLE_OTHER_SCORE_DIGIT = 8  # ECO-02: a secondary score-row digit reading `other score` (two-player only)
 HUD_ROLE_LABEL_2UP = 9  # ECO-02: the secondary (other-player) steady nUP label (two-player only)
+HUD_ROLE_BANNER_PLAYER = 10  # CAB-03 (slice 21): the banner's PLAYER n line, on its own row under GAME OVER
 HUD_DIGIT_PLACES = 7  # 0 (units) .. 6 (millions) — SCORE_CAP (9,999,990) is 7 BCD digits
 # PRES-01 (docs/mechanics/054): the HUD sits on the arcade's text layer, exactly where the arcade writes it.
 # A text offset is MSB = 31 - col, LSB = row (display_char, xevious_main.68k 1912-1923); each 8-px cell is
@@ -426,7 +433,11 @@ TEXT_COSTUME_COLUMN_UNITS = 10
 HUD_GLYPH_SIZE = round(100 * HUD_TEXT_PITCH / TEXT_COSTUME_COLUMN_UNITS)
 HUD_LIFE_SIZE = 62.5
 HUD_BANNER_SIZE = HUD_GLYPH_SIZE
-HUD_1UP_FLASH_HOLD_TICKS = 15  # project-defined flash cadence, no reference basis
+# Slice 21 (#31): the 1UP and INSERT COIN flash. The arcade blanks the active nUP label while bit 4 of its frame
+# counter is set, in a real game only (sub_fn_6__display_1UP_2UP / flash_1up_2up, xevious_sub.68k 737-775), and
+# shows INSERT COIN while the same bit is set (display_insert_coin_flashing, xevious_main.68k 857-877): 16 frames
+# each way, so 8 port ticks. A clock c (port ticks) is in the flash's "set" half when floor(c / 8) mod 2 == 1.
+HUD_FLASH_HALF_TICKS = 8
 # (glyph costume, slot) pairs — slot spacing leaves a gap for the untyped space in "HIGH SCORE".
 HUD_1UP_LABEL = (("digit/1", 0), ("glyph/U", 1), ("glyph/P", 2))
 # "HIGH SCORE" renders in the yellow hs/* costume set (arcade fidelity: that one HUD label is
@@ -445,18 +456,19 @@ HUD_GAME_OVER_LABEL = (
     ("glyph/G", 0), ("glyph/A", 1), ("glyph/M", 2), ("glyph/E", 3),
     ("glyph/O", 5), ("glyph/V", 6), ("glyph/E", 7), ("glyph/R", 8),
 )
-# CAB-03: the two-player "GAME OVER PLAYER n" banner is a single WHOLE-STRING costume (rendered by
-# tools/hud_glyphs.py render_banner_costumes on the same credited HUD font sheet; the 18-char line uses that
-# module's SHEET_TEXT_RECTS, which has every glyph, and its credit downscale so the line stays on the 480-wide
-# stage). One banner clone (HUD_ROLE_BANNER) switches to the costume for the eliminated player and shows it,
-# centered on the field, while `banner player` is set; unlike the per-glyph GAME OVER row above it needs no
-# slot table. Costume names by player index: 0 -> "game-over-player-1", 1 -> "game-over-player-2".
-HUD_BANNER_COSTUME_PREFIX = "game-over-player-"
-# The 18-character banner starts on the GAME OVER cell (col 14, row 24) and so ends on col 31, the last visible
-# column; the clone sits at the line's centre (col 22.5). The arcade writes "PLAYER ONE/TWO" on its own row 26
-# (display_game_over_player_1_2 845-855); the port's one-line banner is its slice-18 simplification.
-HUD_BANNER_X = text_cell_x(22.5)
+# CAB-03: the two-player elimination banner, two rows as the arcade writes it (display_game_over_player_1_2,
+# xevious_main.68k 845-855): "GAME OVER" from offset 0x1118 (col 14, row 24, nine characters), then the player's
+# line from 0x121A (col 13, row 26, a ten-character run). Each row is a whole-string costume (rendered by
+# tools/hud_glyphs.py render_banner_costumes on the credited HUD font sheet) worn by its own clone, placed at the
+# run's centre: GAME OVER at col 18; the player line, the port's eight-letter "PLAYER n", centred on the arcade's
+# ten-character run at col 17.5. Both show while `banner player` names a player; the player line wears
+# "banner-player-<banner player + 1>".
+HUD_BANNER_GAME_OVER_COSTUME = "banner-game-over"
+HUD_BANNER_COSTUME_PREFIX = "banner-player-"
+HUD_BANNER_X = text_cell_x(14 + (9 - 1) / 2)
 HUD_BANNER_Y = text_cell_y(24)
+HUD_BANNER_PLAYER_X = text_cell_x(13 + (10 - 1) / 2)
+HUD_BANNER_PLAYER_Y = text_cell_y(26)
 HUD_SPAWN_CRAFT_PROCCODE = "hud spawn craft"
 
 # ECO-01 scoring path (docs/spec/scoring-lives-and-game-over.md). Every award routes through
@@ -1258,7 +1270,7 @@ ATTRACT_DISPLAY_ROW_ID = "attract-display-row"  # CAB-04: a table cell's best-fi
 ATTRACT_DISPLAY_CHAR_ID = "attract-display-char"  # CAB-04: a name cell's current letter, cached per tick
 ATTRACT_ROLE_CREDIT_LABEL = 1  # the static "CREDIT" word
 ATTRACT_ROLE_CREDIT_DIGIT = 2  # one credit-counter digit (reads `credits`); place 0 = units
-ATTRACT_ROLE_PROMPT = 3  # flashing PUSH START (credits>=1) / INSERT COIN (credits==0)
+ATTRACT_ROLE_PROMPT = 3  # steady PUSH START (credits>=1) / flashing INSERT COIN (credits==0)
 # CAB-04 (slice 19): the LIVE best-five table. Role 4 (the single pre-baked `best-five` costume) is
 # retired — an arbitrary live table and typed names cannot be pre-rendered, so each cell is its own
 # per-glyph clone (the HUD score-digit idiom), reading the two Stage lists. Three cell roles, one per
@@ -1339,7 +1351,12 @@ ATTRACT_PUSH_START_X = text_run_x(10, 17)
 ATTRACT_PUSH_START_Y = text_cell_y(23)
 ATTRACT_INSERT_COIN_X = text_run_x(13, 11)
 ATTRACT_INSERT_COIN_Y = text_cell_y(28)
-ATTRACT_PROMPT_FLASH_HOLD_TICKS = 15  # project-defined flash cadence (matches the HUD 1UP flash)
+# Slice 21 (#31): INSERT COIN shows while bit 4 of the frame counter is set and is wiped while it is clear
+# (display_insert_coin_flashing, xevious_main.68k 857-877), 16 frames each way — the HUD_FLASH_HALF_TICKS clock,
+# shown when floor(clock / 8) mod 2 == 1. It flashes on the title and in the demo (flash_insert_coin_and_check_
+# credits, attract_mode_title_screen 1217-1296 and attract_mode_gameplay 1298-1328), not on the best five
+# (attract_mode_high_score_table 1336-1345, check_credits only). PUSH START BUTTON is drawn once and stays (coined_up 377-388, display_push_start_button 815-826), so it does not flash.
+ATTRACT_INSERT_COIN_HALF_TICKS = HUD_FLASH_HALF_TICKS
 # CAB-04 (slice 19): the live best-five grid, in the arcade's layout (display_high_score_table 1475-1541): the five
 # rows on text rows 24, 26, .., 32 under a header on row 21, with the title logo above (flash_logo_and_high_score_
 # table 1464-1469). The arcade writes the 3-letter ordinal at col 6, the seven score digits from col 11, and the
@@ -1362,6 +1379,7 @@ ATTRACT_ROLE_TABLE_HEADER = 14  # the best-five header (static)
 ATTRACT_ROLE_LOGO_OUTLINE = 15  # slice 21: the logo's outline (title and best five)
 ATTRACT_ROLE_SPARKLE = 16  # slice 21: the title sparkle
 ATTRACT_ROLE_START_HINT = 17  # slice 21: the START SPACE KEY hint (title)
+ATTRACT_ROLE_DEMO_INSERT_COIN = 18  # slice 21: the demo's flashing INSERT COIN
 TITLE_TICK_ID = "cabinet-title-tick"  # slice 21: ticks since the title began, counted by the Stage title hold
 ATTRACT_COSTUME_TABLE_HEADER = "best-five-header"
 ATTRACT_TABLE_HEADER_CHARS = 16  # the port's "BEST FIVE PILOTS"
@@ -11256,6 +11274,22 @@ def install_resolve_hit(blocks: Blocks) -> None:
     )
 
 
+def _real_game_hold(blocks: Blocks, frames: int) -> str:
+    """`hold_frames` for a real game's paced holds off the play screen: one `wait 0` per frame, and one count
+    into `hud flash frames`, so the 1UP label flashes through the hold as the arcade's does (flash_1up_2up runs
+    every frame while `is_real_game`, xevious_sub.68k 737-775). Only for holds outside `playing` (see
+    `hold_frames`)."""
+    block_id = blocks.add("control_repeat", inputs={"TIMES": number(frames)})
+    blocks.substack(
+        block_id,
+        [
+            blocks.add("control_wait", inputs={"DURATION": number(0)}),
+            blocks.change_var("hud flash frames", HUD_FLASH_FRAMES_ID, 1),
+        ],
+    )
+    return block_id
+
+
 def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("stage")
     install_transition_procedure(blocks)
@@ -11675,7 +11709,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             blocks.set_var(
                 "banner player", BANNER_PLAYER_ID, variable("curr player", CURR_PLAYER_ID)
             ),
-            blocks.hold_frames(BANNER_HOLD_TICKS),
+            _real_game_hold(blocks, BANNER_HOLD_TICKS),
             blocks.set_var("banner player", BANNER_PLAYER_ID, number(BANNER_PLAYER_NONE)),
         ],
     )
@@ -11844,6 +11878,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.change_var("entry timer", ENTRY_TIMER_ID, -1),
             blocks.add("control_wait", inputs={"DURATION": number(0)}),
+            # Slice 21 (#31): one frame of initials entry for the 1UP flash (see `_real_game_hold`).
+            blocks.change_var("hud flash frames", HUD_FLASH_FRAMES_ID, 1),
         ],
         name="SUBSTACK2",
     )
@@ -12784,13 +12820,20 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         ]
     entry = blocks.if_state(HIGH_SCORE_ENTRY_STATE, entry_body)
     # Slice 21: the demo shows the yellow logo over the play field for its whole run (attract_mode_gameplay 1319:
-    # display_xevious_logo_yellow, on the text layer, so above the sprites). A real game (attract 0) shows none.
+    # display_xevious_logo_yellow, on the text layer, so above the sprites), and flashes INSERT COIN (1328:
+    # flash_insert_coin_and_check_credits each frame), one clone that places itself. A real game (attract 0)
+    # shows neither.
     demo = blocks.if_state(
         "playing",
         [
             blocks.if_reporter(
                 blocks.op_eq(variable("attract", ATTRACT_ID), number(1)),
                 [
+                    blocks.set_var(
+                        "attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_DEMO_INSERT_COIN)
+                    ),
+                    blocks.go(ATTRACT_INSERT_COIN_X, ATTRACT_INSERT_COIN_Y),
+                    blocks.create_clone(),
                     blocks.switch_costume(TITLE_LOGO_YELLOW_COSTUME),
                     blocks.go(TITLE_LOGO_X, TITLE_LOGO_Y),
                     blocks.to_front(),
@@ -12867,8 +12910,20 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         [blocks.switch_costume(ATTRACT_COSTUME_TABLE_HEADER), blocks.to_front(), blocks.show()],
     )
 
-    # Prompt: PUSH START when there is a credit to spend, INSERT COIN otherwise, flashing while in title.
-    # The costume is re-picked each cycle so it flips live the tick a coin banks the first credit.
+    # Prompt: PUSH START when there is a credit to spend, INSERT COIN otherwise, re-picked every pass so it flips
+    # live the tick a coin banks the first credit. Slice 21 (#31): PUSH START is steady; INSERT COIN flashes on
+    # the title's own clock, `title tick` (counted by the Stage title hold once a frame, and only read here, so a
+    # loop that spins several times a frame cannot drift it), shown while floor(title tick / 8) mod 2 == 1
+    # (ATTRACT_INSERT_COIN_HALF_TICKS).
+    def insert_coin_shown(clock: Any) -> str:
+        return blocks.op_eq(
+            blocks.op_mod(
+                blocks.op_floor(blocks.op_div(clock, number(ATTRACT_INSERT_COIN_HALF_TICKS))),
+                number(2),
+            ),
+            number(1),
+        )
+
     prompt_tick = blocks.add("control_repeat_until")
     blocks.blocks[prompt_tick]["inputs"]["CONDITION"] = [2, blocks.not_state(prompt_tick, "title")]
     has_credit = blocks.if_reporter(
@@ -12876,6 +12931,7 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.switch_costume(ATTRACT_COSTUME_PUSH_START),
             blocks.go(ATTRACT_PUSH_START_X, ATTRACT_PUSH_START_Y),
+            blocks.show(),
         ],
     )
     no_credit = blocks.if_reporter(
@@ -12883,23 +12939,46 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.switch_costume(ATTRACT_COSTUME_INSERT_COIN),
             blocks.go(ATTRACT_INSERT_COIN_X, ATTRACT_INSERT_COIN_Y),
+            _if_else(
+                blocks,
+                insert_coin_shown(variable("title tick", TITLE_TICK_ID)),
+                [blocks.show()],
+                [blocks.hide()],
+            ),
         ],
     )
-    blocks.substack(
-        prompt_tick,
-        [
-            has_credit,
-            no_credit,
-            blocks.to_front(),
-            blocks.show(),
-            blocks.hold_ticks(ATTRACT_PROMPT_FLASH_HOLD_TICKS),
-            blocks.hide(),
-            blocks.hold_ticks(ATTRACT_PROMPT_FLASH_HOLD_TICKS),
-        ],
-    )
+    blocks.substack(prompt_tick, [has_credit, no_credit])
     prompt_role = blocks.if_var_equals(
         "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_PROMPT,
-        [prompt_tick, blocks.hide(), blocks.add("control_delete_this_clone")],
+        [blocks.to_front(), prompt_tick, blocks.hide(), blocks.add("control_delete_this_clone")],
+    )
+    # The demo's INSERT COIN: placed by the original, it flashes on the walk's `tick` (read, never counted) for as
+    # long as the demo plays; a coin ends the demo, and the transition's clone-clear (common_stop) retires it.
+    demo_coin_tick = blocks.add("control_repeat_until")
+    blocks.blocks[demo_coin_tick]["inputs"]["CONDITION"] = [
+        2,
+        blocks.not_state(demo_coin_tick, "playing"),
+    ]
+    blocks.substack(
+        demo_coin_tick,
+        [
+            _if_else(
+                blocks,
+                insert_coin_shown(variable("tick", TICK_ID)),
+                [blocks.show()],
+                [blocks.hide()],
+            )
+        ],
+    )
+    demo_coin_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_DEMO_INSERT_COIN,
+        [
+            blocks.switch_costume(ATTRACT_COSTUME_INSERT_COIN),
+            blocks.to_front(),
+            demo_coin_tick,
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ],
     )
 
     # CAB-04: the three LIVE best-five cell roles. Each cell re-reads the Stage lists every tick while in
@@ -12934,8 +13013,10 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         ],
     )
 
-    # Score digit: digit = floor(table[row] / 10^place) mod 10, shown as digit/<d> (leading-zero preserving,
-    # matching the HUD score row). 10^place is computed once at clone start into `attract divisor`.
+    # Score digit: digit = floor(table[row] / 10^place) mod 10, worn as digit/<d>. 10^place is computed once at
+    # clone start into `attract divisor`. Slice 21 (#31): the table writes each score with display_score
+    # (display_high_score_table 1475-1542), so its leading zeros are blank exactly as on the HUD score row: the
+    # units and tens always show, and place p >= 2 only while the score is at least 10^p.
     set_score_divisor = blocks.set_var("attract divisor", ATTRACT_DISPLAY_DIVISOR_ID, number(1))
     score_divisor_loop = blocks.add(
         "control_repeat", inputs={"TIMES": variable("attract place", ATTRACT_DISPLAY_PLACE_ID)}
@@ -12965,8 +13046,24 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         ),
         number(10),
     )
+    score_shown = blocks.op_or(
+        blocks.op_lt(variable("attract place", ATTRACT_DISPLAY_PLACE_ID), number(2)),
+        blocks.op_not(
+            blocks.op_lt(
+                blocks.list_item(
+                    "high score table",
+                    HIGH_SCORE_TABLE_ID,
+                    variable("attract row", ATTRACT_DISPLAY_ROW_ID),
+                ),
+                variable("attract divisor", ATTRACT_DISPLAY_DIVISOR_ID),
+            )
+        ),
+    )
     score_tick = table_tick(
-        [blocks.switch_costume_expr(blocks.op_join(text(ATTRACT_DIGIT_PREFIX), score_digit_expr))]
+        [
+            blocks.switch_costume_expr(blocks.op_join(text(ATTRACT_DIGIT_PREFIX), score_digit_expr)),
+            _if_else(blocks, score_shown, [blocks.show()], [blocks.hide()]),
+        ]
     )
     table_score_role = blocks.if_var_equals(
         "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_TABLE_SCORE,
@@ -12974,7 +13071,6 @@ def title_blocks() -> dict[str, dict[str, Any]]:
             set_score_divisor,
             score_divisor_loop,
             blocks.to_front(),
-            blocks.show(),
             score_tick,
             blocks.hide(),
             blocks.add("control_delete_this_clone"),
@@ -13356,6 +13452,7 @@ def title_blocks() -> dict[str, dict[str, Any]]:
             logo_outline_role,
             sparkle_role,
             start_hint_role,
+            demo_coin_role,
         ],
     )
     return blocks.blocks
@@ -13423,7 +13520,7 @@ def death_blocks() -> dict[str, dict[str, Any]]:
     # window's end), so it gets no wait, as in the arcade (1326-1334).
     final_wait = blocks.if_reporter(
         blocks.op_eq(variable("craft", LIVES_ID), number(0)),
-        [*_forest_terrain(blocks), blocks.hold_frames(FOREST_WAIT_TICKS)],
+        [*_forest_terrain(blocks), _real_game_hold(blocks, FOREST_WAIT_TICKS)],
     )
     death_body = [
         blocks.hide(),
@@ -14088,10 +14185,10 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             blocks.create_clone(),
         ]
     spawn_body.append(blocks.if_state("game-over", game_over_body))
-    # CAB-03 (slice 18): the two-player "GAME OVER PLAYER n" elimination banner clone — spawned ONLY in a
-    # two-player game. `banner player` is never raised in a one-player game, so gating the spawn on `two player`
-    # keeps the one-player HUD (and its clone census) byte-identical while giving a two-player game the single
-    # extra clone. One clone, centered on the field; it shows itself only while `banner player` names a player.
+    # CAB-03 (slice 18): the two-player elimination banner — spawned ONLY in a two-player game. `banner player`
+    # is never raised in a one-player game, so gating the spawn on `two player` keeps the one-player HUD (and its
+    # clone census) byte-identical. Two clones, one per row (slice 21): the GAME OVER line and the PLAYER n line;
+    # each shows itself only while `banner player` names a player.
     spawn_body.append(
         blocks.if_var_equals(
             "two player",
@@ -14100,6 +14197,9 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             [
                 blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_BANNER)),
                 blocks.go(HUD_BANNER_X, HUD_BANNER_Y),
+                blocks.create_clone(),
+                blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_BANNER_PLAYER)),
+                blocks.go(HUD_BANNER_PLAYER_X, HUD_BANNER_PLAYER_Y),
                 blocks.create_clone(),
             ],
         )
@@ -14167,8 +14267,12 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
                 )
             ],
         )
-        # Every tick while HUD-visible: digit = floor(value / 10^place) mod 10, shown as
-        # leading-zero-preserving digit/D (deterministic integer math, arcade-faithful).
+        # Every tick while HUD-visible: digit = floor(value / 10^place) mod 10, worn as digit/D
+        # (deterministic integer math). Slice 21 (#31): leading zeros are blank, as the arcade
+        # draws a score (display_score / display_bcd_value, xevious_main.68k 1904-1977: up to five
+        # leading zero digits are written as spaces, and the sixth digit and the trailing 0 always
+        # show, so a score of 0 reads "00"). So the units and tens always show, and place p >= 2
+        # shows only while value >= 10^p; interior zeros show.
         # Update every tick while the HUD is visible; stop (fall through to hide+delete) only
         # when the state returns to title/boot. `repeat until` halts when its condition is TRUE,
         # so the condition is "we have LEFT to title/boot" — not its negation.
@@ -14184,14 +14288,25 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             number(10),
         )
         name_expr = blocks.op_join(text("digit/"), digit_expr)
-        blocks.substack(tick_loop, [blocks.switch_costume_expr(name_expr)])
+        shown = blocks.op_or(
+            blocks.op_lt(variable("hud place", HUD_PLACE_ID), number(2)),
+            blocks.op_not(
+                blocks.op_lt(variable(var_name, var_id), variable("hud divisor", HUD_DIVISOR_ID))
+            ),
+        )
+        blocks.substack(
+            tick_loop,
+            [
+                blocks.switch_costume_expr(name_expr),
+                _if_else(blocks, shown, [blocks.show()], [blocks.hide()]),
+            ],
+        )
         return [
-            # Compute 10^place while still hidden, then show and update the costume every tick
-            # (the first iteration sets the right digit before the frame renders — no flash).
+            # Compute 10^place while still hidden, then update the costume and visibility every tick
+            # (the first iteration sets both before the frame renders — no flash).
             set_divisor,
             divisor_loop,
             blocks.to_front(),
-            blocks.show(),
             tick_loop,
             blocks.hide(),
             blocks.add("control_delete_this_clone"),
@@ -14229,28 +14344,45 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             blocks.show(),
         ],
     )
-    # 1UP: flashes (show/hide, held HUD_1UP_FLASH_HOLD_TICKS each way) for as long as the
-    # HUD is visible, epoch/state-safe via the same title/boot guard as the digit loops.
-    # CAB-01 (slice 17): the blank half of the flash is gated on `attract==0` (a real game).
-    # The arcade `flash_1up_2up` (src/xevious_sub.68k 769-776) does `and.b (is_real_game),d3`
-    # before deciding to write the "   " blank string, so a CLEARED flag (the attract demo)
-    # skips the blank and the 1UP/2UP shows steady; only a real game flashes it. In the port a
-    # demo is `playing` with attract==1, so gating the `hide` on attract==0 keeps the demo's
-    # indicator steady while a real game (attract==0) still flashes. `show` always runs, so a
-    # demo clone is never left hidden.
+    # 1UP: flashes for as long as the HUD is visible, epoch/state-safe via the same title/boot guard as the
+    # digit loops. Slice 21 (#31): the arcade blanks the active label while bit 4 of its frame counter is set —
+    # 16 frames shown, 16 blank (sub_fn_6__display_1UP_2UP / flash_1up_2up, xevious_sub.68k 737-775) — and only
+    # in a real game: `and.b (is_real_game),d3` clears the blank in the attract demo, so the demo's label is
+    # steady (CAB-01, slice 17). The port's clock is `tick` (the walk, in play) plus `hud flash frames` (the
+    # real game's paced holds off the play screen: the two-player banner, the last death's forest wait, initials
+    # entry — `_real_game_hold`), copied into the clone each pass. It is read, never counted here: scratch-vm ends
+    # the frame at every `wait` it starts, so a wait in this always-running loop would pace the Stage's collapsing
+    # holds. The label is blank while floor(clock / 8) mod 2 == 1 and attract == 0, on any screen but the best
+    # five (the arcade clears `is_real_game` on its return to attract, main 349). The collapsing beats (READY, the
+    # game-over hold) run inside one frame, so the clock stands still across them (record 056 deviation 14).
     flash_loop = blocks.add("control_repeat_until")
     flash_condition = blocks.either_state(flash_loop, "title", "boot")
     blocks.blocks[flash_loop]["inputs"]["CONDITION"] = [2, flash_condition]
+    flash_clock = lambda: variable("hud flash clock", HUD_FLASH_CLOCK_ID)
+    flash_source = lambda: blocks.op_add(
+        variable("tick", TICK_ID), variable("hud flash frames", HUD_FLASH_FRAMES_ID)
+    )
+    flash_blank = blocks.op_eq(
+        blocks.op_mod(
+            blocks.op_floor(blocks.op_div(flash_clock(), number(HUD_FLASH_HALF_TICKS))), number(2)
+        ),
+        number(1),
+    )
+    real_game_screen = blocks.add("control_if")
+    blocks.blocks[real_game_screen]["inputs"]["CONDITION"] = [
+        2,
+        blocks.not_state(real_game_screen, ATTRACT_SCORES_STATE),
+    ]
+    blocks.substack(real_game_screen, [blocks.if_reporter(flash_blank, [blocks.hide()])])
     blocks.substack(
         flash_loop,
         [
-            blocks.hold_ticks(HUD_1UP_FLASH_HOLD_TICKS),
+            blocks.set_var_expr("hud flash clock", HUD_FLASH_CLOCK_ID, flash_source()),
+            blocks.show(),
             blocks.if_reporter(
                 blocks.op_eq(variable("attract", ATTRACT_ID), number(0)),
-                [blocks.hide()],
+                [real_game_screen],
             ),
-            blocks.hold_ticks(HUD_1UP_FLASH_HOLD_TICKS),
-            blocks.show(),
         ],
     )
     label_1up_role = blocks.if_var_equals(
@@ -14258,8 +14390,8 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         HUD_ROLE_ID,
         HUD_ROLE_LABEL_1UP,
         [
+            blocks.set_var_expr("hud flash clock", HUD_FLASH_CLOCK_ID, flash_source()),
             blocks.to_front(),
-            blocks.show(),
             flash_loop,
             blocks.hide(),
             blocks.add("control_delete_this_clone"),
@@ -14289,41 +14421,48 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         HUD_ROLE_GAME_OVER_GLYPH,
         [blocks.to_front(), blocks.show()],
     )
-    # CAB-03: the two-player elimination banner. Unlike the static GAME OVER glyphs, this clone re-reads
-    # `banner player` every tick while the HUD is visible (the digit-loop idiom) so the handoff banner appears
-    # the instant the death handler raises it and vanishes when it is lowered. With no player named it hides;
-    # otherwise it switches to that player's "GAME OVER PLAYER n" whole-string costume (n = banner player + 1)
-    # and shows in front. common_stop's clone-clear retires it on the next transition, so — like the flashing
-    # 1UP label — it hides + deletes itself only when the state returns to title/boot.
-    banner_tick = blocks.add("control_repeat_until")
-    banner_stop = blocks.either_state(banner_tick, "title", "boot")
-    blocks.blocks[banner_tick]["inputs"]["CONDITION"] = [2, banner_stop]
-    banner_visible = blocks.add("control_if_else")
-    banner_none = blocks.op_eq(
-        variable("banner player", BANNER_PLAYER_ID), number(BANNER_PLAYER_NONE)
-    )
-    blocks.blocks[banner_none]["parent"] = banner_visible
-    blocks.blocks[banner_visible]["inputs"]["CONDITION"] = [2, banner_none]
-    blocks.substack(banner_visible, [blocks.hide()])
-    banner_name = blocks.op_join(
-        text(HUD_BANNER_COSTUME_PREFIX),
-        blocks.op_add(variable("banner player", BANNER_PLAYER_ID), number(1)),
-    )
-    blocks.substack(
-        banner_visible,
-        [blocks.switch_costume_expr(banner_name), blocks.to_front(), blocks.show()],
-        name="SUBSTACK2",
-    )
-    blocks.substack(banner_tick, [banner_visible])
-    banner_role = blocks.if_var_equals(
-        "hud role",
-        HUD_ROLE_ID,
-        HUD_ROLE_BANNER,
-        [
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(HUD_BANNER_SIZE)}),
+    # CAB-03: the two-player elimination banner, one clone per row. Unlike the static GAME OVER glyphs, each
+    # re-reads `banner player` every tick while the HUD is visible (the digit-loop idiom) so the handoff banner
+    # appears the instant the death handler raises it and vanishes when it is lowered. With no player named it
+    # hides; otherwise the GAME OVER line shows, and the player line switches to that player's costume
+    # (banner-player-<banner player + 1>) and shows, both in front. common_stop's clone-clear retires them on the
+    # next transition, so — like the flashing 1UP label — they hide + delete themselves only when the state
+    # returns to title/boot.
+    def banner_row_role(role: int, shown_body: list[str]) -> str:
+        banner_tick = blocks.add("control_repeat_until")
+        banner_stop = blocks.either_state(banner_tick, "title", "boot")
+        blocks.blocks[banner_tick]["inputs"]["CONDITION"] = [2, banner_stop]
+        banner_none = blocks.op_eq(
+            variable("banner player", BANNER_PLAYER_ID), number(BANNER_PLAYER_NONE)
+        )
+        blocks.substack(
             banner_tick,
-            blocks.hide(),
-            blocks.add("control_delete_this_clone"),
+            [_if_else(blocks, banner_none, [blocks.hide()], [*shown_body, blocks.to_front(), blocks.show()])],
+        )
+        return blocks.if_var_equals(
+            "hud role",
+            HUD_ROLE_ID,
+            role,
+            [
+                blocks.add("looks_setsizeto", inputs={"SIZE": number(HUD_BANNER_SIZE)}),
+                banner_tick,
+                blocks.hide(),
+                blocks.add("control_delete_this_clone"),
+            ],
+        )
+
+    banner_role = banner_row_role(
+        HUD_ROLE_BANNER, [blocks.switch_costume(HUD_BANNER_GAME_OVER_COSTUME)]
+    )
+    banner_player_role = banner_row_role(
+        HUD_ROLE_BANNER_PLAYER,
+        [
+            blocks.switch_costume_expr(
+                blocks.op_join(
+                    text(HUD_BANNER_COSTUME_PREFIX),
+                    blocks.op_add(variable("banner player", BANNER_PLAYER_ID), number(1)),
+                )
+            )
         ],
     )
     blocks.chain(
@@ -14339,6 +14478,7 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             label_2up_role,
             game_over_glyph_role,
             banner_role,
+            banner_player_role,
         ],
     )
 
@@ -17106,6 +17246,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         ATTRACT_EPOCH_ID,
         ATTRACT_STAGE_ID,
         TITLE_TICK_ID,
+        HUD_FLASH_FRAMES_ID,
         # CAB-05 (slice 20): the audio machinery (coin-sound latch, attract mute, death-cue keep and playing latch,
         # Andor drone).
         COIN_SOUND_ID,
@@ -17330,6 +17471,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         ATTRACT_EPOCH_ID: ["attract epoch", 0],
         ATTRACT_STAGE_ID: ["attract stage", 0],
         TITLE_TICK_ID: ["title tick", 0],
+        HUD_FLASH_FRAMES_ID: ["hud flash frames", 0],
         COIN_SOUND_ID: ["coin sound", 0],
         AUDIO_MUTED_ID: ["audio muted", -1],
         KEEP_SOUNDS_ID: ["keep sounds", 0],
@@ -17653,6 +17795,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 HUD_LIFE_INDEX_ID: ["hud life index", 0],
                 HUD_LIFE_COUNT_ID: ["hud life count", 0],
                 HUD_IS_CLONE_ID: ["hud is clone", 0],
+                HUD_FLASH_CLOCK_ID: ["hud flash clock", 0],
             }
         elif target["name"] == TOROID_TARGET:
             # AIR-01: the only toroid state is sprite-local — which flying slot each clone renders,

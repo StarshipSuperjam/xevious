@@ -187,17 +187,19 @@ ATTRACT_SELECTOR_LABELS = (
     ("select-1p", "1 PLAYER"),
     ("select-2p", "2 PLAYERS"),
 )
-# CAB-03 (cabinet.two-player, slice 18): the two "GAME OVER PLAYER n" elimination-banner costumes. Unlike the
-# labels above these attach to the HUD target (not start_screen) — the banner shows on the game field during a
-# two-player handoff, where the HUD is the during-play overlay (game_director's HUD banner clone, gated on
-# `banner player`, switches to the matching costume). Same credited sheet + compositor; rendered at the shared
-# SMALL_TEXT_GEOM cell (slice-18 playtest scale correction) so the banner matches the plain GAME OVER
-# screen and the 18-char line stays on the 480-wide stage. All glyphs (G A M E O V R P L Y, space, and 1/2) are
-# already in SHEET_TEXT_RECTS. The wording is arcade-faithful English UI text, set in the credited font like
-# every other port string.
+# CAB-03 (cabinet.two-player, slice 18): the two-player elimination-banner costumes. Unlike the labels above these
+# attach to the HUD target (not start_screen) — the banner shows on the game field during a two-player handoff,
+# where the HUD is the during-play overlay (game_director's two HUD banner clones, gated on `banner player`).
+# Slice 21 (#31): the banner is two rows, as the arcade writes it (display_game_over_player_1_2, xevious_main.68k
+# 845-855): "GAME OVER" on row 24 and the player line on row 26, so it is three costumes — the GAME OVER line and
+# one player line per player. The names avoid start_screen's `entry-player-*` tags. Same credited sheet +
+# compositor, at the shared SMALL_TEXT_GEOM cell. All glyphs are in SHEET_TEXT_RECTS. The player line is the
+# port's own wording ("PLAYER 1"), not a transcription of the arcade's string, set in the credited font like every
+# other port string.
 BANNER_LABELS = (
-    ("game-over-player-1", "GAME OVER PLAYER 1"),
-    ("game-over-player-2", "GAME OVER PLAYER 2"),
+    ("banner-game-over", "GAME OVER"),
+    ("banner-player-1", "PLAYER 1"),
+    ("banner-player-2", "PLAYER 2"),
 )
 BANNER_COSTUME_NAMES = frozenset(name for name, _text in BANNER_LABELS)
 # CAB-04 (cabinet.high-scores, slice 19): the initials-entry screen headers + PLAYER-n tags, rendered from
@@ -692,15 +694,14 @@ def render_attract_costumes(sheet: se.Image, threshold: int) -> list[CreditOutpu
 
 
 def render_banner_costumes(sheet: se.Image, threshold: int) -> list[CreditOutput]:
-    """The CAB-03 "GAME OVER PLAYER n" elimination-banner costumes, in the Xevious HUD font.
+    """The CAB-03 two-player elimination-banner costumes, in the Xevious HUD font.
 
-    Two whole-string costumes (BANNER_LABELS) composited by the same sheet compositor as the
-    attract text. Playtest correction (slice 18): rendered at the shared SMALL_TEXT_GEOM cell,
-    matching the plain GAME OVER screen's per-glyph HUD scale, rather than the larger
-    credit downscale that towered over it; the 18-char line still fits the 480 px stage. These
+    Three whole-string costumes (BANNER_LABELS: the GAME OVER line and one player line per
+    player) composited by the same sheet compositor as the attract text, at the shared
+    SMALL_TEXT_GEOM cell that matches the plain GAME OVER screen's per-glyph HUD scale. These
     attach to the HUD target (not start_screen): the banner shows on the game field during a
-    two-player handoff, where game_director's HUD banner clone — gated on `banner player` —
-    switches to the matching costume for BANNER_HOLD_TICKS."""
+    two-player handoff, where game_director's two HUD banner clones — gated on `banner player` —
+    show the GAME OVER line and the eliminated player's line for BANNER_HOLD_TICKS."""
     return [
         render_sheet_text_costume(sheet, threshold, name, (text,), **SMALL_TEXT_GEOM)
         for name, text in BANNER_LABELS
@@ -782,9 +783,9 @@ def _overlay_banner_record(manifest: dict, output: CreditOutput) -> dict:
             f"SHEET_TEXT_RECTS, laid out on the {SHEET_SMALL_CELL}px monospace cell and "
             f"{SHEET_SMALL_DOWNSCALE}x nearest-neighbor decimated (slice-18 playtest scale "
             f"correction to match the plain GAME OVER screen), white ink on transparent, "
-            f"bitmapResolution {TEXT_BITMAP_RESOLUTION}. Costume on the hud target: the game_director banner clone "
-            f"switches to it during a two-player handoff. The WORDING ({label}) is arcade-faithful "
-            "English UI text set in the credited font — not arcade art and not transcribed ROM text."
+            f"bitmapResolution {TEXT_BITMAP_RESOLUTION}. Costume on the hud target: a game_director banner clone "
+            f"shows it during a two-player handoff. The WORDING ({label}) is the port's own English UI "
+            "text set in the credited font — not arcade art and not transcribed ROM text."
         ),
     }
 

@@ -1652,6 +1652,16 @@
       "name": "hud divisor",
       "scope": "hud"
     },
+    "hud-flash-clock": {
+      "kind": "variable",
+      "name": "hud flash clock",
+      "scope": "hud"
+    },
+    "hud-flash-frames": {
+      "kind": "variable",
+      "name": "hud flash frames",
+      "scope": "Stage"
+    },
     "hud-is-clone": {
       "kind": "variable",
       "name": "hud is clone",

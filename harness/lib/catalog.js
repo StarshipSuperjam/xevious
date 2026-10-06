@@ -10453,6 +10453,263 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'banner player', -1),
   },
   {
+    // Slice 21 (#31): the banner is two rows, as the arcade draws it (display_game_over_player_1_2, xevious_main
+    // 845-855): GAME OVER on row 24 and the player line on row 26 under it. With `banner player` raised the GAME
+    // OVER clone (HUD role 7) and the player clone (role 10) both show, the player clone naming the player; lowered,
+    // both hide.
+    // roadmap-evidence: CAB-03 success  (the elimination banner draws GAME OVER and the player line on two rows)
+    key: 'two-player-banner-rows',
+    behavior: 'The two-player elimination banner draws GAME OVER on one row and PLAYER n on the row under it',
+    playtestStep: 5,
+    async drive(vm) {
+      const roleName = variable('hud-role').name;
+      const row = (role) => {
+        const c = cloneReports(vm, 'hud', [roleName]).find((r) => Number(r.vars[roleName]) === role);
+        return c ? { costume: c.costume, visible: c.visible } : null;
+      };
+      assert.ok(reachPlaying2P(vm), 'precondition: a two-player game reaches playing');
+      step(vm, 2);
+      writeVar(vm, 'cabinet-banner-player', 1);
+      step(vm, 2);
+      const raised = { gameOver: row(7), player: row(10) };
+      writeVar(vm, 'cabinet-banner-player', -1);
+      step(vm, 2);
+      return { raised, lowered: { gameOver: row(7), player: row(10) } };
+    },
+    assert(obs) {
+      assert.ok(obs.raised.gameOver && obs.raised.gameOver.visible, 'the GAME OVER row shows while the banner is raised');
+      assert.equal(obs.raised.gameOver.costume, 'banner-game-over', 'the first row reads GAME OVER');
+      assert.ok(obs.raised.player && obs.raised.player.visible, 'the player row shows while the banner is raised');
+      assert.equal(obs.raised.player.costume, 'banner-player-2', 'the second row names player 2');
+      assert.equal(obs.lowered.gameOver.visible, false, 'the GAME OVER row hides when the banner is lowered');
+      assert.equal(obs.lowered.player.visible, false, 'the player row hides when the banner is lowered');
+    },
+    // Re-key the player row's role dispatch (role 10 -> 99): that clone never runs its banner loop, so the second
+    // row never shows.
+    // roadmap-evidence: CAB-03 failure  (a banner without its player row is caught)
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'hud', 'hud role', 10, 99),
+  },
+  {
+    // Slice 21 (#31): the score rows blank their leading zeros as the arcade's display_score does (xevious_main
+    // 1904-1977): the units and tens always show, and place p >= 2 shows only once the score reaches 10^p. A
+    // zero score reads "00"; interior zeros stay.
+    // roadmap-evidence: ECO-02 success  (the HUD score row blanks its leading zeros and keeps interior ones)
+    key: 'hud-leading-zeros-blank',
+    behavior: 'The HUD score row shows "00" for a zero score and blanks every leading zero, keeping the interior zeros',
+    playtestStep: 6,
+    async drive(vm) {
+      const roleName = variable('hud-role').name;
+      const placeName = variable('hud-place').name;
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const read = (value) => {
+        writeVar(vm, 'eco-score', value);
+        step(vm, 2);
+        const shown = [];
+        for (const r of cloneReports(vm, 'hud', [roleName, placeName])) {
+          if (Number(r.vars[roleName]) !== 1 || !r.visible) continue;
+          shown.push([Number(r.vars[placeName]), r.costume]);
+        }
+        return shown.sort((a, b) => a[0] - b[0]);
+      };
+      return { zero: read(0), mid: read(1230), interior: read(100005) };
+    },
+    assert(obs) {
+      const digits = (n, width) => [...String(n).padStart(width, '0')].reverse().map((d, p) => [p, `digit/${d}`]);
+      assert.deepEqual(obs.zero, digits(0, 2), 'a zero score shows only the units and tens, "00"');
+      assert.deepEqual(obs.mid, digits(1230, 4), '1230 shows four digits, no leading zeros');
+      assert.deepEqual(obs.interior, digits(100005, 6), '100005 shows six digits, its interior zeros kept');
+    },
+    // Every place counts as "always shown" (`hud place < 2` -> `< 7`): the leading zeros come back.
+    // roadmap-evidence: ECO-02 failure  (leading zeros drawn on the score row are caught)
+    negativeMutation: (p) => mutate.changeLessThanLiteral(p, 'hud', 2, 7),
+  },
+  {
+    // Slice 21 (#31): the active player's nUP flashes on bit 4 of the frame counter, 16 frames each way, and only
+    // in a real game (sub_fn_6__display_1UP_2UP / flash_1up_2up, xevious_sub.68k 737-775). The port reads the walk's
+    // `tick` (8 ticks = 16 frames) into each label clone's own clock and blanks the label while
+    // floor(clock / 8) mod 2 == 1. In a demo the label stays lit.
+    // roadmap-evidence: ECO-02 success  (the 1UP label flashes on the 16-frame clock in a real game and is steady in a demo)
+    key: 'hud-1up-flash-clock',
+    behavior: 'The 1UP label flashes 16 frames on and 16 off on the game clock in a real game, and stays lit in a demo',
+    playtestStep: 6,
+    async drive(vm) {
+      const roleName = variable('hud-role').name;
+      const clockName = variable('hud-flash-clock').name;
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const labels = () =>
+        cloneReports(vm, 'hud', [roleName, clockName]).filter((r) => Number(r.vars[roleName]) === 4);
+      const real = [];
+      for (let i = 0; i < 30; i += 1) {
+        step(vm, 1);
+        const tick = Number(readVar(vm, 'tick')) + Number(readVar(vm, 'hud-flash-frames'));
+        for (const r of labels()) real.push({ tick, clock: Number(r.vars[clockName]), visible: r.visible });
+      }
+      writeVar(vm, 'cabinet-attract', 1);
+      step(vm, 2);
+      const demo = [];
+      for (let i = 0; i < 8; i += 1) {
+        step(vm, 1);
+        for (const r of labels()) demo.push(r.visible);
+      }
+      return { real, demo, stateAfter: state(vm) };
+    },
+    assert(obs) {
+      assert.ok(obs.real.length >= 30, 'the 1UP label clones were sampled');
+      for (const s of obs.real) {
+        const blank = Math.floor(s.clock / 8) % 2 === 1;
+        assert.equal(s.visible, !blank, `clock ${s.clock}: the label is ${s.visible ? 'lit' : 'blank'}`);
+        assert.ok(Math.abs(s.tick - s.clock) <= 2, `the label's clock ${s.clock} follows the game tick ${s.tick}`);
+      }
+      const seen = new Set(obs.real.map((s) => s.visible));
+      assert.deepEqual([...seen].sort(), [false, true], 'the label was seen both lit and blank');
+      assert.equal(obs.stateAfter, 'playing', 'the demo sample stayed in play');
+      assert.ok(obs.demo.length > 0 && obs.demo.every(Boolean), 'the label stays lit in a demo');
+    },
+    // Hold the label's clock at 0: it never reaches a blank half, so the label never flashes.
+    // roadmap-evidence: ECO-02 failure  (a 1UP label that never flashes is caught)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'hud', 'hud flash clock', 0),
+  },
+  {
+    // Slice 21 (#31): the arcade flashes the 1UP label every frame of a real game (flash_1up_2up, sub 737-775,
+    // gated only on `is_real_game`), so it keeps flashing off the play screen. The walk is off in the last death's
+    // forest wait, so that paced hold counts its own frames into `hud flash frames`, which the label's clock adds
+    // to `tick`.
+    // roadmap-evidence: ECO-02 success  (the 1UP label keeps flashing through the last death's forest wait)
+    key: 'hud-1up-flash-forest-wait',
+    behavior: 'The 1UP label keeps flashing 16 frames on and 16 off through the forest wait after the last death',
+    playtestStep: 6,
+    async drive(vm) {
+      const roleName = variable('hud-role').name;
+      const clockName = variable('hud-flash-clock').name;
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'invuln', 0);
+      writeVar(vm, 'eco-craft', 1);
+      seedCraftHit(vm);
+      const labels = () =>
+        cloneReports(vm, 'hud', [roleName, clockName]).filter((r) => Number(r.vars[roleName]) === 4);
+      // One frame per pump while not playing (the hold is paced), so each pump in player-dead is one frame.
+      const wait = [];
+      let entered = false;
+      for (let t = 0; t < 240; t += 1) {
+        step(vm, 1);
+        if (state(vm) !== 'player-dead') {
+          if (entered) break;
+          continue;
+        }
+        entered = true;
+        const frames = Number(readVar(vm, 'hud-flash-frames'));
+        for (const r of labels()) wait.push({ frames, clock: Number(r.vars[clockName]), visible: r.visible });
+      }
+      return { wait, next: state(vm) };
+    },
+    assert(obs) {
+      assert.ok(obs.wait.length >= 30, `the 1UP label was sampled through the wait (${obs.wait.length} samples)`);
+      for (const s of obs.wait) {
+        const blank = Math.floor(s.clock / 8) % 2 === 1;
+        assert.equal(s.visible, !blank, `clock ${s.clock}: the label is ${s.visible ? 'lit' : 'blank'}`);
+      }
+      const frames = obs.wait.map((s) => s.frames);
+      assert.ok(
+        Math.max(...frames) - Math.min(...frames) >= 30,
+        `the wait counts its frames (${Math.min(...frames)} to ${Math.max(...frames)})`,
+      );
+      const seen = new Set(obs.wait.map((s) => s.visible));
+      assert.deepEqual([...seen].sort(), [false, true], 'the label was seen both lit and blank during the wait');
+      assert.notEqual(obs.next, 'player-dead', 'the wait ended');
+    },
+    // The forest wait stops counting its frames: the label's clock stands still and the label stops flashing.
+    // roadmap-evidence: ECO-02 failure  (a 1UP label frozen through the forest wait is caught)
+    negativeMutation: (p) => {
+      const t = p.targets.find((x) => x.name === 'solv_death');
+      let patched = 0;
+      for (const b of Object.values(t.blocks)) {
+        if (b.opcode === 'data_changevariableby' && b.fields.VARIABLE && b.fields.VARIABLE[1] === 'hud-flash-frames') {
+          b.inputs.VALUE = [1, [4, '0']];
+          patched += 1;
+        }
+      }
+      if (!patched) throw new Error("mutate: no 'change hud flash frames' block on solv_death");
+    },
+  },
+  {
+    // Slice 21 (#31): INSERT COIN shows while bit 4 of the frame counter is set (display_insert_coin_flashing,
+    // xevious_main 857-877), 16 frames each way, on the title (1217-1296) and in the demo (1298-1328); the port
+    // reads `title tick` on the title and the walk's `tick` in the demo. PUSH START BUTTON, once a coin is in, is
+    // drawn once and stays (display_push_start_button 815-826). Title samples accept the clock's count or the one
+    // before it: a pump can end after the Stage counts but before the clone redraws.
+    // roadmap-evidence: CAB-01 success  (INSERT COIN flashes on the 16-frame clock on the title and in the demo; PUSH START is steady)
+    key: 'attract-insert-coin-flash',
+    behavior:
+      'INSERT COIN flashes 16 frames on and 16 off on the title and in the demo; once a coin is in, PUSH START BUTTON stays lit',
+    playtestStep: 1,
+    async drive(vm) {
+      const roleOf = (c) => Object.values(c.variables).find((v) => v.name === 'attract role').value;
+      const clone = (role) =>
+        vm.runtime.targets.find(
+          (t) => !t.isOriginal && t.sprite && t.sprite.name === 'start_screen' && roleOf(t) === role,
+        );
+      const look = (c) => (c ? { costume: c.sprite.costumes[c.currentCostume].name, visible: c.visible } : null);
+      vm.greenFlag();
+      step(vm, 1);
+      writeVar(vm, 'invuln', 1); // the demo craft must live long enough for its INSERT COIN to be sampled
+      const title = [];
+      while (state(vm) === 'title' && title.length < 60) {
+        step(vm, 1);
+        title.push({ n: Number(readVar(vm, 'cabinet-title-tick')), ...look(clone(3)) });
+      }
+      let t = 0;
+      while (!(state(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1) && t < 600) {
+        step(vm, 1);
+        t += 1;
+      }
+      const demo = [];
+      for (let i = 0; i < 20 && state(vm) === 'playing'; i += 1) {
+        step(vm, 1);
+        demo.push({ tick: Number(readVar(vm, 'tick')), ...look(clone(18)) });
+      }
+      insertCoin(vm, 1);
+      let w = 0;
+      while (state(vm) !== 'title' && w < 40) {
+        step(vm, 1);
+        w += 1;
+      }
+      const credited = [];
+      for (let i = 0; i < 40; i += 1) {
+        step(vm, 1);
+        credited.push(look(clone(3)));
+      }
+      return { title, demo, credited };
+    },
+    assert(obs) {
+      const shown = (k) => Math.floor(k / 8) % 2 === 1;
+      assert.ok(obs.title.length >= 40, 'the title prompt was sampled');
+      for (const s of obs.title) {
+        assert.equal(s.costume, 'insert-coin', 'with no credit the title prompt reads INSERT COIN');
+        assert.ok(
+          [s.n, Math.max(0, s.n - 1)].some((k) => shown(k) === s.visible),
+          `title tick ${s.n}: INSERT COIN is ${s.visible ? 'lit' : 'blank'}`,
+        );
+      }
+      assert.deepEqual([...new Set(obs.title.map((s) => s.visible))].sort(), [false, true], 'the title INSERT COIN flashed');
+      assert.ok(obs.demo.length >= 10, 'the demo INSERT COIN was sampled');
+      for (const s of obs.demo) {
+        assert.equal(s.costume, 'insert-coin', 'the demo shows INSERT COIN');
+        assert.ok(
+          [s.tick, s.tick - 1].some((k) => shown(k) === s.visible),
+          `demo tick ${s.tick}: INSERT COIN is ${s.visible ? 'lit' : 'blank'}`,
+        );
+      }
+      assert.deepEqual([...new Set(obs.demo.map((s) => s.visible))].sort(), [false, true], 'the demo INSERT COIN flashed');
+      for (const s of obs.credited) {
+        assert.ok(s && s.costume === 'push-start' && s.visible, 'with a credit PUSH START BUTTON stays lit');
+      }
+    },
+    // The flash back on the old project-defined 15-tick hold (`clock / 8` -> `clock / 15`): the samples fall off the
+    // 16-frame phase.
+    // roadmap-evidence: CAB-01 failure  (an INSERT COIN flash off the 16-frame clock is caught)
+    negativeMutation: (p) => mutate.changeDivideLiteral(p, 'start_screen', 8, 15),
+  },
+  {
     key: 'two-player-hud-render',
     behavior:
       'A two-player game draws the active player\'s nUP label AND the other player\'s steady nUP label plus their frozen second score row, each nUP label reading the correct player number; a one-player game draws only the single 1UP label and no second row',

@@ -309,6 +309,25 @@ export function insertBroadcastBeforeTransition(project, spriteName, destination
   });
 }
 
+/**
+ * Rewrite the literal right-hand side of every `operator_lt` whose OPERAND2 is `fromValue` on a sprite. Used to
+ * move the HUD's "always shown" digit places (`hud place < 2`) so the leading zeros come back.
+ */
+export function changeLessThanLiteral(project, spriteName, fromValue, toValue) {
+  const t = target(project, spriteName);
+  let patched = 0;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (b.opcode !== 'operator_lt' || !b.inputs.OPERAND2) continue;
+    const shadow = b.inputs.OPERAND2[1];
+    if (Array.isArray(shadow) && shadow[0] !== 12 && String(shadow[1]) === String(fromValue)) {
+      b.inputs.OPERAND2 = [1, [4, String(toValue)]];
+      patched += 1;
+    }
+  }
+  if (!patched) throw new Error(`mutate: no 'operator_lt < ${fromValue}' on ${spriteName}`);
+}
+
 export function changeDivideLiteral(project, spriteName, fromValue, toValue) {
   const t = target(project, spriteName);
   let patched = 0;
