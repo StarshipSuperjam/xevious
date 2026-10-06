@@ -59,8 +59,18 @@ uncertain — the code exposes only the raw bits). Bonus lives use a first-thres
 repeat-increment table pair, selected by the lives setting and a three-bit bonus DIP field
 (`first_bonus_life_tbls` 1179–1199; `bonus_tbl_ptrs` 1854–1877) — every exact threshold and increment,
 per setting, is committed in [data/scores.json](data/scores.json) (first bonus 10,000–30,000 by
-setting, then every 40,000–100,000); one setting is a sentinel that disables bonus lives, and one
-setting stops after the second bonus life (`check_for_extra_solvalou` 109–183). Which pair of tables
+setting, then increments of 40,000–100,000); one setting is a sentinel that disables bonus lives, and one
+setting stops after the second bonus life (`check_for_extra_solvalou` 109–183). After each bonus life the
+threshold advances: a threshold below the increment is replaced by the increment, otherwise the increment
+is added (`check_for_extra_solvalou` 149–155, `update_next_bonus_life_Ks` 181–183). So the default setting
+gives 20,000, then 60,000, then every 60,000 after that (120,000, 180,000 …), not 20,000 then 80,000. The add
+is a four-digit BCD add of the thousands whose carry is dropped (163–171), so the threshold wraps:
+9,960,000 + 60,000 becomes 20,000, and every award then grants a craft until the threshold climbs back past
+the score (at the cap it never can, which is the cap quirk above). The stop-after-two test (156–162) reads
+the low three bits of the inverted DIP switch byte, of which only bit 2 is part of the bonus setting, and
+needs the value 6: bit 2 set, so the bonus setting index must be odd, and bits 0–1 set to 1,0 from the
+neighbouring switch field, so it is not a bonus setting on its own. At the port's fixed bonus setting
+(index 0), bit 2 is clear, so the stop is unreachable in this build. Which pair of tables
 applies to which lives setting carries a recorded uncertainty, independently confirmed by two decoders:
 the reference's own two selection sites disagree — the game-start seeding applies an extra inversion the
 repeat-award path lacks, so they choose opposite tables for the same DIP setting (1854–1877 vs the init

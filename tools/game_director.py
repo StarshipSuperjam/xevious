@@ -469,6 +469,9 @@ HIGH_SCORE_ID = "eco-high-score"
 # The debug scoring fixture below sets it this slice so the economy is operator-verifiable.
 AWARD_VALUE_ID = "eco-award-value"
 SCORE_CAP = 9_999_990  # set_score_to_9999990: three BCD bytes, x10 implicit
+# next_bonus_life_Ks is a four-digit BCD thousands word; its add (check_for_extra_solvalou 163-171)
+# drops the carry out of the top digit, so the threshold in points wraps modulo 10,000,000.
+BONUS_THRESHOLD_WRAP = 10_000_000
 HIGH_SCORE_START = 40_000  # top default best-five entry (high_score_defaults[0])
 CHECK_BONUS_PROCCODE = "check bonus life"
 # The 22 object point values in table order (docs/spec/data/scores.json master_value_table,
@@ -10985,13 +10988,33 @@ def install_check_bonus_life(blocks: Blocks) -> None:
     )
     at_or_past = blocks.add("operator_not", inputs={"OPERAND": [2, below]})
     blocks.blocks[below]["parent"] = at_or_past
-    advance = blocks.set_var_expr(
-        "next bonus",
-        NEXT_BONUS_ID,
-        blocks.op_add(
-            variable("next bonus", NEXT_BONUS_ID),
-            blocks.list_item("repeat bonus 123", REPEAT_BONUS_123_ID, number(DIP_BONUS_ITEM)),
-        ),
+    # Advance (check_for_extra_solvalou 149-155, update_next_bonus_life_Ks 181-183): a threshold below the
+    # increment is replaced BY the increment, otherwise the increment is added — so 20,000 then 60,000, then
+    # every 60,000 (120,000, 180,000 ...), not 20,000 then 80,000. (slice 21, #103) The add is the arcade's
+    # four-digit BCD add of the thousands word (abcd pair, 163-171) whose carry out is dropped, so the
+    # threshold wraps (9,960,000 + 60,000 -> 20,000) and every award grants a craft until the threshold
+    # climbs back past the score. At the cap it never can, which is the cap quirk below.
+    def increment() -> str:
+        return blocks.list_item("repeat bonus 123", REPEAT_BONUS_123_ID, number(DIP_BONUS_ITEM))
+
+    advance = blocks.add("control_if_else")
+    catch_up = blocks.op_lt(variable("next bonus", NEXT_BONUS_ID), increment())
+    blocks.blocks[advance]["inputs"]["CONDITION"] = [2, catch_up]
+    blocks.blocks[catch_up]["parent"] = advance
+    blocks.substack(advance, [blocks.set_var_expr("next bonus", NEXT_BONUS_ID, increment())])
+    blocks.substack(
+        advance,
+        [
+            blocks.set_var_expr(
+                "next bonus",
+                NEXT_BONUS_ID,
+                blocks.op_mod(
+                    blocks.op_add(variable("next bonus", NEXT_BONUS_ID), increment()),
+                    number(BONUS_THRESHOLD_WRAP),
+                ),
+            )
+        ],
+        name="SUBSTACK2",
     )
     normal_if = blocks.if_reporter(at_or_past, grant() + [advance])
 

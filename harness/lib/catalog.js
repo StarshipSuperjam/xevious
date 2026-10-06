@@ -2808,6 +2808,69 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'ship number', 1),
   },
   {
+    // ECO-03.stop-after-two (slice 21, #103): the threshold advance replaces a threshold below the increment BY the
+    // increment (check_for_extra_solvalou 149-155, update_next_bonus_life_Ks 181-183): 20,000, then 60,000, then
+    // every 60,000 — not 20,000 then 80,000. The add drops the BCD carry (163-171), so 9,960,000 + 60,000 wraps
+    // to 20,000 and the next award grants again.
+    key: 'bonus-life-20k-then-60k',
+    behavior:
+      'ECO-03.stop-after-two: the default bonus craft come at 20,000 and then 60,000 (the threshold below the '
+      + 'increment becomes the increment), then 120,000 — never at 80,000; past 9,960,000 the threshold wraps to '
+      + '20,000',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'frozen');
+      step(vm, 1);
+      const firstThreshold = Number(readVar(vm, 'eco-next-bonus'));
+      const check = (score) => {
+        const before = Number(readVar(vm, 'eco-craft'));
+        writeVar(vm, 'eco-score', score);
+        callProc(vm, 'Stage', 'check bonus life');
+        step(vm, 1);
+        return { granted: Number(readVar(vm, 'eco-craft')) - before, next: Number(readVar(vm, 'eco-next-bonus')) };
+      };
+      return {
+        firstThreshold,
+        at20k: check(20000),
+        at59990: check(59990),
+        at60k: check(60000),
+        at80k: check(80000),
+        atWrap: (writeVar(vm, 'eco-next-bonus', 9960000), check(9960000)),
+        afterWrap: check(9960010),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.firstThreshold, 20000, 'precondition: the default first threshold is 20,000');
+      assert.equal(obs.at20k.granted, 1, '20,000 grants a craft');
+      assert.equal(obs.at20k.next, 60000, 'the threshold below the 60,000 increment becomes 60,000, not 80,000');
+      assert.equal(obs.at59990.granted, 0, '59,990 grants nothing');
+      assert.equal(obs.at60k.granted, 1, '60,000 grants the second craft');
+      assert.equal(obs.at60k.next, 120000, 'from 60,000 the increment is added: 120,000');
+      assert.equal(obs.at80k.granted, 0, '80,000 grants nothing');
+      assert.equal(obs.atWrap.granted, 1, '9,960,000 grants a craft');
+      assert.equal(obs.atWrap.next, 20000, 'the four-digit BCD add drops its carry: 9,960,000 + 60,000 wraps to 20,000');
+      assert.equal(obs.afterWrap.granted, 1, 'the wrapped threshold is below the score, so the next award grants again');
+      assert.equal(obs.afterWrap.next, 60000, 'the wrapped 20,000 is below the increment, so it becomes 60,000');
+    },
+    // The pre-slice-21 advance: the catch-up test is never true, so the increment is always added (20K, 80K).
+    negativeMutation: (p) => {
+      const stage = p.targets.find((t) => t.isStage);
+      let hit = 0;
+      for (const b of Object.values(stage.blocks)) {
+        if (!b || b.opcode !== 'control_if_else') continue;
+        const cond = stage.blocks[b.inputs.CONDITION && b.inputs.CONDITION[1]];
+        const op1 = cond && cond.inputs && cond.inputs.OPERAND1;
+        if (cond && cond.opcode === 'operator_lt' && Array.isArray(op1) && Array.isArray(op1[1]) && op1[1][2] === 'eco-next-bonus') {
+          cond.inputs.OPERAND2 = [1, [4, '0']];
+          hit += 1;
+        }
+      }
+      if (hit !== 1) throw new Error(`bonus-life-20k-then-60k negative: expected one catch-up test, found ${hit}`);
+    },
+  },
+  {
     key: 'toroid-wave-spawns-and-moves',
     behavior:
       'The formation spawner fills flying slots with live Toroids that then move under their own velocity each tick, drawn by six persistent clones',

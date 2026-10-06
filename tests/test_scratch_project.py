@@ -15234,13 +15234,13 @@ class ScratchProjectTests(unittest.TestCase):
             for b in vals
         ):
             failures.add("bonus-craft-changed")
-        # advance: next bonus += the per-setting increment read from the repeat table.
+        # advance: next bonus += the per-setting increment read from the repeat table (wrapped, see below).
         advance = any(
             b["opcode"] == "data_setvariableto"
             and b["fields"].get("VARIABLE", [None, None])[1] == director.NEXT_BONUS_ID
             and isinstance(b["inputs"].get("VALUE"), list)
             and isinstance(b["inputs"]["VALUE"][1], str)
-            and blocks.get(b["inputs"]["VALUE"][1], {}).get("opcode") == "operator_add"
+            and blocks.get(b["inputs"]["VALUE"][1], {}).get("opcode") in ("operator_add", "operator_mod")
             for b in vals
         )
         repeat_read = any(
@@ -15250,6 +15250,65 @@ class ScratchProjectTests(unittest.TestCase):
         )
         if not (advance and repeat_read):
             failures.add("bonus-advance")
+
+        # catch-up (slice 21, #103; check_for_extra_solvalou 149-155, update_next_bonus_life_Ks 181-183): an
+        # if/else on `next bonus < increment` whose first arm sets `next bonus` TO the increment and whose second
+        # adds it, so the thresholds run 20,000 then 60,000, then every 60,000.
+        def reporter(spec):
+            return blocks.get(spec[1], {}) if isinstance(spec, list) and len(spec) >= 2 and isinstance(spec[1], str) else {}
+
+        def is_increment(spec) -> bool:
+            child = reporter(spec)
+            return child.get("opcode") == "data_itemoflist" and child["fields"].get("LIST", [None])[0] == "repeat bonus 123"
+
+        def arm_sets(branch_id, value_ok) -> bool:
+            b = blocks.get(branch_id or "", {})
+            return (
+                b.get("opcode") == "data_setvariableto"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.NEXT_BONUS_ID
+                and value_ok(b["inputs"].get("VALUE"))
+            )
+
+        def wrapped(spec):
+            # The BCD thousands word drops its carry (check_for_extra_solvalou 163-171): the sum is taken
+            # modulo BONUS_THRESHOLD_WRAP. Returns (wraps, the summed operand).
+            child = reporter(spec)
+            if child.get("opcode") == "operator_mod" and child["inputs"].get("NUM2") == [
+                1,
+                [4, director.BONUS_THRESHOLD_WRAP],
+            ]:
+                return True, child["inputs"].get("NUM1")
+            return False, spec
+
+        def adds_increment(spec) -> bool:
+            child = reporter(wrapped(spec)[1])
+            return (
+                child.get("opcode") == "operator_add"
+                and refs(child["inputs"].get("NUM1"), director.NEXT_BONUS_ID)
+                and is_increment(child["inputs"].get("NUM2"))
+            )
+
+        catch_up = False
+        threshold_wraps = False
+        for b in vals:
+            if b["opcode"] != "control_if_else":
+                continue
+            cond = reporter(b["inputs"].get("CONDITION"))
+            if not (
+                cond.get("opcode") == "operator_lt"
+                and refs(cond["inputs"].get("OPERAND1"), director.NEXT_BONUS_ID)
+                and is_increment(cond["inputs"].get("OPERAND2"))
+            ):
+                continue
+            first_arm = (b["inputs"].get("SUBSTACK") or [None, None])[1]
+            second_arm = (b["inputs"].get("SUBSTACK2") or [None, None])[1]
+            if arm_sets(first_arm, is_increment) and arm_sets(second_arm, adds_increment):
+                catch_up = True
+                threshold_wraps = wrapped(blocks[second_arm]["inputs"].get("VALUE"))[0]
+        if not catch_up:
+            failures.add("bonus-catch-up")
+        if not threshold_wraps:
+            failures.add("bonus-threshold-wrap")
         # DIP seeds: starting craft and the first threshold, read from the ingested tables.
         if not sets_from_list(director.LIVES_ID, "starting lives"):
             failures.add("lives-seeded")
@@ -15257,6 +15316,8 @@ class ScratchProjectTests(unittest.TestCase):
             failures.add("bonus-seeded")
         return failures
 
+    # roadmap-evidence: ECO-03 success  (ECO-03.stop-after-two: test_bonus_economy_present's bonus-catch-up; harness bonus-life-20k-then-60k grants at 20,000 and 60,000, never 80,000)
+    # roadmap-evidence: ECO-03 failure  (ECO-03.stop-after-two: never_catch_up / catch_up_adds negatives bite; bonus-life-20k-then-60k negative leaves the second threshold at 80,000)
     def test_bonus_economy_present(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._eco03_failures(project))
@@ -15318,11 +15379,43 @@ class ScratchProjectTests(unittest.TestCase):
                 b["inputs"]["BROADCAST_INPUT"][1][1] = "director stop"
 
         def break_advance(p):
-            b = first(
+            # the advance reads the increment three times (the catch-up test and both arms) — break every read.
+            for b in each(
+                p,
                 lambda b: b["opcode"] == "data_itemoflist"
-                and b["fields"].get("LIST", [None])[0] == "repeat bonus 123"
-            )(p)
-            b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+                and b["fields"].get("LIST", [None])[0] == "repeat bonus 123",
+            ):
+                b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        def catch_up_block(p):
+            stage = next(t for t in p["targets"] if t["isStage"])
+            blocks = stage["blocks"]
+            for b in blocks.values():
+                if b["opcode"] == "control_if_else":
+                    cond = blocks.get((b["inputs"].get("CONDITION") or [None, None])[1] or "", {})
+                    operand = (cond.get("inputs", {}).get("OPERAND1") or [None, [None, None, None]])[1]
+                    if cond.get("opcode") == "operator_lt" and isinstance(operand, list) and operand[2:3] == [director.NEXT_BONUS_ID]:
+                        return blocks, b, cond
+            raise AssertionError("no catch-up if/else")
+
+        def never_catch_up(p):
+            # The pre-slice-21 port: the test can never be true, so the increment is always added (20K, 80K).
+            _blocks, _b, cond = catch_up_block(p)
+            cond["inputs"]["OPERAND2"] = [1, [4, "0"]]
+
+        def catch_up_adds(p):
+            # The first arm adds the increment too, instead of replacing the threshold with it.
+            blocks, b, _cond = catch_up_block(p)
+            first = blocks[b["inputs"]["SUBSTACK"][1]]
+            second = blocks[b["inputs"]["SUBSTACK2"][1]]
+            first["inputs"]["VALUE"] = copy.deepcopy(second["inputs"]["VALUE"])
+
+        def never_wraps(p):
+            # The pre-fix port: the plain decimal add, so past 9,960,000 no craft until the cap.
+            blocks, b, _cond = catch_up_block(p)
+            second = blocks[b["inputs"]["SUBSTACK2"][1]]
+            wrap = blocks[second["inputs"]["VALUE"][1]]
+            second["inputs"]["VALUE"] = copy.deepcopy(wrap["inputs"]["NUM1"])
 
         def break_lives_seed(p):
             b = first(
@@ -15345,6 +15438,9 @@ class ScratchProjectTests(unittest.TestCase):
             ("bonus-extend-sound", break_sound),
             ("bonus-craft-changed", break_signal),
             ("bonus-advance", break_advance),
+            ("bonus-catch-up", never_catch_up),
+            ("bonus-catch-up", catch_up_adds),
+            ("bonus-threshold-wrap", never_wraps),
             ("lives-seeded", break_lives_seed),
             ("bonus-seeded", break_bonus_seed),
         ]
@@ -21921,7 +22017,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "e8a99d55f42d15b9a6c7c354453c83b986ce383cd85f26f64cc4b5b0f763e37a",
+            "44c340453a4871c5e09ea8b906a499d05cf4a4f93158e42a181880fdec963b07",
             build_hash,
         )
 
