@@ -59,7 +59,7 @@ presentation is the arcade's 56-frame explosion plus 32-frame pause, owned by
 frames — normatively owned by [Scoring, lives, and game over](scoring-lives-and-game-over.md). The invented
 READY and GAME OVER speech bubbles are removed: READY is the tick-counted hold, and GAME OVER is drawn in the
 HUD's own glyphs. The arcade also runs the forest wait after the **last** death, before initials entry or
-GAME OVER; the port does not yet (record 055 deviation 2; the slice-21 leaf `player.final-forest-wait`).
+GAME OVER; the port holds it too, as 32 paced frames of forest ([record 056](../mechanics/056-release-fidelity.md) item 3).
 
 The reset scopes' postconditions (this document is their
 normative home):
@@ -74,24 +74,12 @@ normative home):
 Per-state input rules (the port's own, with the keys in the control mapping below): title accepts the
 coin key, the up/down 1P/2P selector and the start (Space), and coins are accepted in every state; the
 initials-entry screen accepts its up/down scroll and Space commit; READY, player-dead, respawning, and game-over accept no gameplay input; playing accepts
-movement, fire, and bomb. (Earlier slices carried two temporary keyboard fixtures — `D` to request
+movement, fire, and bomb, except while the craft explodes (the dying window), when movement, new shots and
+new bomb presses are refused and the shots and bombs already in flight carry on. (Earlier slices carried two temporary keyboard fixtures — `D` to request
 respawn and `G` to request terminal death — solely to exercise the death paths before any enemy could
 kill the craft; now that live flying enemies and their bullets deal real lethal contact, those fixtures
-are removed.) Three temporary keyboard fixtures are present again: while playing, holding `T` brings in a
-single debug **aerial** enemy at a time (the next only after the current one leaves or dies), cycling through the
-built aerial families as the field clears (Terrazi → Kapi → wrap), so an aerial family that
-only spawns at high AI levels is reachable for the operator playtest; and holding `G` does the same for the
-built **ground** families (Barra → Zolbak → … → Boza Logram → wrap), stamping one ground family into the
-band from the top of the field and advancing to the next only after the current one scrolls off or is bombed,
-because a ground family — a multi-slot composite especially — otherwise only appears in the narrow,
-non-repeatable window when the area schedule happens to scroll it up. While either debug spawn key is held it
-also **isolates** the family under test — the normal enemy stream is suppressed (the flying-formation count is
-pinned at 0 and the flying/Bacura bands cleared each tick, and the schedule's own ground stamps are withheld) —
-so only the debug family is on screen. The third fixture, `P`, is a freeze/resume **toggle**: a tap of `P`
-freezes the whole tick (the walk stops advancing) so the operator can screenshot a problem, and a second tap
-resumes it. All three are inert when their key is not held or (for `P`) while `debug paused` is 0, and all three
-are tracked for removal once every family (aerial and ground) is built and playtested (issue
-#119). Repeated keys can never duplicate transitions,
+are removed; the later `T`/`G`/`P` playtest keys that summoned or isolated a single enemy family and froze
+the tick were removed for the release, issue #119.) Repeated keys can never duplicate transitions,
 loops, shots, or bombs; the green flag from any state performs the cold-start reset; stop halts the
 project.
 
@@ -179,17 +167,13 @@ title screen **confirms the selected mode and starts it** — a one-player start
 two-player start costs two, each deducted on start (insufficient credits is a silent no-op; see
 [Cabinet flow](cabinet-flow.md)). B bombs, a permanent `C` inserts a coin (a port
 necessity: the arcade coin slot has no hardware in this port, so coin entry is a player-doable key — one
-credit per press, capped at 99, per [Cabinet flow](cabinet-flow.md)), a temporary `T` (playtest-only, issue #119)
-cycles a single debug aerial enemy through the built aerial families one at a time — holding it brings in one
-enemy, and each time the field clears it advances to the next family (Terrazi → Kapi → wrap) — a
-temporary `G` (playtest-only, issue #119) does the same for the built ground families, stamping one into the
-band from the top and advancing to the next only after the current one scrolls off or is bombed (Barra →
-Zolbak → … → Boza Logram → wrap), and while either `T` or `G` is held the normal enemy stream is suppressed so
-only the debug family is on screen; a temporary `P` (playtest-only, issue #119) is a freeze/resume toggle —
-a tap freezes the tick for a screenshot, a second tap resumes. On the **high-score initials-entry screen**
+credit per press, capped at 99, per [Cabinet flow](cabinet-flow.md)). No other key does anything. On the
+**high-score initials-entry screen**
 (reached when a finished game's score qualifies for the five-entry table — see [Cabinet flow](cabinet-flow.md)),
 the **up/down arrows scroll the current initial** through the 27-symbol set (A–Z and space, wrapping both ways)
-and **Space confirms the current letter and advances to the next of the ten cells**; entry is forward-only (no
+and **Space confirms the current letter and advances to the next of the ten cells**; holding **B** shows and
+commits the letter in lowercase, and a space committed with B held is stored as a full stop (the arcade's
+`check_lowercase`); entry is forward-only (no
 cursor-back or rubout) and **auto-completes on the tenth letter or when a fixed overall time limit (about 68
 seconds, counted from when entry begins and not reset by input) runs out** (a control remap recorded like the
 `C` coin key — the arcade cycled letters with the joystick left/right and committed with the fire button; this

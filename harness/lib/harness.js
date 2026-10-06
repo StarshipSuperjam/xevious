@@ -79,6 +79,23 @@ export async function stepSettled(vm, times = 1) {
   }
 }
 
+/**
+ * Pace a VM the way the editor runs a project whose stage changes every frame: one pass of every thread per
+ * pump, any thread stepping standing for the redraw request a renderer would make. Headless, nothing requests
+ * a redraw, so an unpaced pump runs passes until a wall-clock budget is spent and how many frames share a pump
+ * depends on the machine; a paced pump is one frame on any machine. Used by the soak and by scenarios that
+ * sample a frame-exact schedule (the title clock).
+ */
+export function paceLikeTheEditor(vm) {
+  const { sequencer } = vm.runtime;
+  const stepThread = sequencer.stepThread.bind(sequencer);
+  sequencer.stepThread = (thread) => {
+    stepThread(thread);
+    vm.runtime.redrawRequested = true;
+  };
+  return vm;
+}
+
 export function greenFlag(vm) {
   vm.greenFlag();
 }
@@ -238,6 +255,35 @@ export function cloneReports(vm, spriteName, localVarNames = []) {
         : null;
       return { vars, costume, visible: c.visible };
     });
+}
+
+/**
+ * Call `onSet(value, previous)` on every write to a Stage variable (set or change), synchronously inside the
+ * writing block (#158, slice 21; shared with the release soak). One headless pump runs many walk ticks, so a whole
+ * 44-tick death window, or an area's last tick, can pass inside one step; trapping the walk's own counter observes
+ * every tick of it. A list is matched as a list, a variable as a variable. Returns a release that restores the
+ * plain variable with its current value.
+ */
+export function trapStageVar(vm, id, onSet) {
+  const stage = vm.runtime.getTargetForStage();
+  const { name, kind } = variable(id);
+  const type = kind === 'list' ? 'list' : '';
+  const v = Object.values(stage.variables).find((x) => x.name === name && x.type === type);
+  if (!v) throw new Error(`harness: no Stage variable '${name}' to trap`);
+  let val = v.value;
+  Object.defineProperty(v, 'value', {
+    configurable: true,
+    enumerable: true,
+    get: () => val,
+    set: (x) => {
+      const previous = val;
+      val = x;
+      onSet(x, previous);
+    },
+  });
+  return () => {
+    Object.defineProperty(v, 'value', { configurable: true, enumerable: true, writable: true, value: val });
+  };
 }
 
 export { constants, variable };

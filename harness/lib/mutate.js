@@ -17,6 +17,16 @@ function listNamed(t, name) {
   throw new Error(`mutate: no list '${name}' on '${t.name}'`);
 }
 
+// The proccode of the procedure whose definition holds block `id` (null for a block under a hat).
+function procOf(t, id) {
+  let top = id;
+  while (t.blocks[top].parent) top = t.blocks[top].parent;
+  const def = t.blocks[top];
+  if (def.opcode !== 'procedures_definition') return null;
+  const proto = t.blocks[def.inputs.custom_block[1]];
+  return proto && proto.mutation ? proto.mutation.proccode : null;
+}
+
 function variableId(t, name) {
   for (const id of Object.keys(t.variables || {})) {
     if (t.variables[id][0] === name) return id;
@@ -104,19 +114,11 @@ export function pinVariableSet(project, spriteName, varName, constValue) {
  */
 export function changeListReplaceLiteral(project, spriteName, listName, fromValue, toValue, withinProc = null) {
   const t = target(project, spriteName);
-  const procOf = (id) => {
-    let top = id;
-    while (t.blocks[top].parent) top = t.blocks[top].parent;
-    const def = t.blocks[top];
-    if (def.opcode !== 'procedures_definition') return null;
-    const proto = t.blocks[def.inputs.custom_block[1]];
-    return proto && proto.mutation ? proto.mutation.proccode : null;
-  };
   let patched = 0;
   for (const id of Object.keys(t.blocks)) {
     const b = t.blocks[id];
     if (b.opcode !== 'data_replaceitemoflist' || !b.fields.LIST || b.fields.LIST[0] !== listName) continue;
-    if (withinProc !== null && procOf(id) !== withinProc) continue;
+    if (withinProc !== null && procOf(t, id) !== withinProc) continue;
     const item = b.inputs.ITEM;
     if (Array.isArray(item) && Array.isArray(item[1]) && String(item[1][1]) === String(fromValue)) {
       b.inputs.ITEM = [1, [10, String(toValue)]];
@@ -144,6 +146,26 @@ export function changeEqualsOperand(project, spriteName, fromValue, toValue) {
     }
   }
   if (!patched) throw new Error(`mutate: no 'operator_equals == ${fromValue}' on ${spriteName}`);
+}
+
+/**
+ * Rewrite the literal STRING of every `letter (...) of <fromValue>` on a sprite. Used to point the initials
+ * entry's bomb-held lowercase ring back at the uppercase ring (CAB-04, slice 21 audit), so holding the bomb
+ * button no longer changes the letter.
+ */
+export function changeLetterOfString(project, spriteName, fromValue, toValue) {
+  const t = target(project, spriteName);
+  let patched = 0;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (b.opcode !== 'operator_letter_of' || !b.inputs.STRING) continue;
+    const shadow = b.inputs.STRING[1];
+    if (Array.isArray(shadow) && String(shadow[1]) === String(fromValue)) {
+      b.inputs.STRING = [1, [10, String(toValue)]];
+      patched += 1;
+    }
+  }
+  if (!patched) throw new Error(`mutate: no 'letter of ${fromValue}' on ${spriteName}`);
 }
 
 /**
@@ -235,12 +257,13 @@ export function changeVarEqualsOperand(project, spriteName, varName, fromValue, 
  * reporter-single-parent-steal fix), so BOTH copies of the fire guard are patched — exactly the intent:
  * the Logram then never fires at full-open.
  */
-export function changeListItemEqualsOperand(project, spriteName, listName, fromValue, toValue) {
+export function changeListItemEqualsOperand(project, spriteName, listName, fromValue, toValue, withinProc = null) {
   const t = target(project, spriteName);
   let patched = 0;
   for (const id of Object.keys(t.blocks)) {
     const b = t.blocks[id];
     if (b.opcode !== 'operator_equals' || !b.inputs.OPERAND1 || !b.inputs.OPERAND2) continue;
+    if (withinProc !== null && procOf(t, id) !== withinProc) continue;
     const lhsId = b.inputs.OPERAND1[1];
     const lhs = typeof lhsId === 'string' ? t.blocks[lhsId] : null;
     const isListItem =
@@ -304,6 +327,25 @@ export function insertBroadcastBeforeTransition(project, spriteName, destination
     }
     call.parent = newId;
   });
+}
+
+/**
+ * Rewrite the literal right-hand side of every `operator_lt` whose OPERAND2 is `fromValue` on a sprite. Used to
+ * move the HUD's "always shown" digit places (`hud place < 2`) so the leading zeros come back.
+ */
+export function changeLessThanLiteral(project, spriteName, fromValue, toValue) {
+  const t = target(project, spriteName);
+  let patched = 0;
+  for (const id of Object.keys(t.blocks)) {
+    const b = t.blocks[id];
+    if (b.opcode !== 'operator_lt' || !b.inputs.OPERAND2) continue;
+    const shadow = b.inputs.OPERAND2[1];
+    if (Array.isArray(shadow) && shadow[0] !== 12 && String(shadow[1]) === String(fromValue)) {
+      b.inputs.OPERAND2 = [1, [4, String(toValue)]];
+      patched += 1;
+    }
+  }
+  if (!patched) throw new Error(`mutate: no 'operator_lt < ${fromValue}' on ${spriteName}`);
 }
 
 export function changeDivideLiteral(project, spriteName, fromValue, toValue) {

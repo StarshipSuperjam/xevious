@@ -26,20 +26,10 @@ above so a build that adapted to a wrong spec never reaches the playtest.) Contr
 also starts from the title), **B** bombs; the crosshair leads the ship and tracks it automatically
 (there is no separate crosshair control). The temporary **D**, **G**, and **S** debug keys are **gone** —
 enemies now exist, so death, game over, and scoring are exercised by real combat: destroy Toroids to
-score, let one (or its bullet) touch you to die. Three **temporary** debug keys are present. Holding **T**
-during play brings in one debug **aerial** enemy at a time and **cycles through the built firing families** as the
-field clears — **Terrazi** first (step 4b), then **Kapi** (step 4c), then **Torkan** (step 4d), then wrapping — so families
-unreachable in early play can be tested. Holding **G** does the same for the built **ground** families
-(step 4e) — it stamps one ground family into the band from the top of the field and advances to the next only
-after the current one scrolls off or is bombed — so a ground family (a multi-slot composite especially),
-which otherwise only appears in the narrow window when the area schedule happens to scroll it up, can be
-bomb-tested on demand. **While you hold `T` or `G` the normal enemy stream is suppressed** — no normal
-flying waves or Bacura arrive and the schedule's own ground objects are withheld — so **only** the debug
-family under test is on screen (this isolation is the tool doing its job, not a bug; normal play resumes the
-instant you release the key). The third key, **P**, is a **freeze/resume toggle**: **tap `P`** to freeze the
-whole screen so you can take a screenshot of anything that looks wrong, and **tap `P` again** to resume — you
-do not need to hold it, so both hands are free for the screenshot. All three are dev tools tracked for removal
-(issue #119), not part of the finished game.
+score, let one (or its bullet) touch you to die. The later **T**, **G** and **P** playtest keys are gone
+too (issue #119): every enemy family now arrives only where the arcade's own area schedule and formation
+tables put it, so the per-family steps below name the area to fly to. The only keys the game reads are the
+arrows, Space, **B** and **C** (coin).
 
 **Applicability.** A step that names something not yet built (enemies, ground objects, scoring) is
 skipped, not failed — the mechanics catalog says what exists. **Dispositions are three,** not two: a
@@ -51,10 +41,12 @@ rule is now built in the area clock — a death in the final fifth of an area ad
 instead of restarting. Since the visual-terrain slice the terrain is drawn from the area clock, so the
 area and its restart show on screen as well as in the `area progress`/`area number` watchers.)
 
-1. **Cold start.** Green flag: one title presentation (the logo entering as the spec's presentation
-   document records), music once, no stray sprites. The small "START SPACE KEY" hint baked into the logo
-   art is now too small to read; say whether to redraw it as a readable text line under the logo (that
-   would be new project text). Press Space: one READY presentation, then play.
+1. **Cold start.** Green flag: one title presentation, music once, no stray sprites. The logo is
+   the arcade's own art and is already in place — it no longer slides in. After about a second a small
+   sparkle twinkles at the left of the letters, slides right along their top and fades; then the logo's
+   outline flashes through its colours until the demo starts. "START SPACE KEY" now reads as its own text
+   line under the logo. Insert a coin during the sparkle: the sparkle vanishes and the outline stays red.
+   Press Space: one READY presentation, then play.
 2. **Held fire while moving.** Hold Space for five seconds while flying circles: the cadence stays
    steady the whole time — no stutter, no silencing when an arrow key joins, and never more than 3
    shots on screen. Shots vanish at the top edge, never parking there.
@@ -107,16 +99,9 @@ area and its restart show on screen as well as in the `area progress`/`area numb
    orphan clones). The enemy bullet draws the arcade's own bullet sprite, pulsing through four colours, and
    the kill explosion is the arcade's air explosion, which doubles in size partway through (both from
    [record 055](mechanics/055-presentation-fidelity.md); step 9, *Sound and effects*, checks the art itself).
-4b. **Terrazi combat — the first firing family (temporary debug spawn).** Terrazi only spawns at very high
-   AI levels, unreachable in a normal area-1 flight, so this build carries a **temporary playtest key**:
-   while playing, **hold `T`** to bring in one debug enemy at a time. The tool **cycles through the built
-   firing families** — the first enemy is a **Terrazi**; each time the field clears while you keep holding
-   `T`, it advances to the next family (**Kapi**, step 4c; then **Torkan**, step 4d), then wraps. This key is a dev tool tracked for
-   removal (issue #119) — it is not part of the finished game.
-   **Note:** to isolate a single debug enemy, engaging `T` **clears the whole flying field first** — any live
-   Toroid wave on screen simply vanishes (no explosion, no score) as the lone enemy comes in. That is the
-   tool doing its job, **not** a bug; normal Toroid waves resume once you release `T` (checked at the end).
-   Hold `T` and watch a single Terrazi through, confirming: it **enters aimed toward the craft** at a
+4b. **Terrazi combat — the first firing family.** Terrazi spawns from the formation tables only at very
+   high AI levels, but the area schedule places one in **area 7** and **area 11** (its add_object record), so
+   fly there to meet it. Watch a single Terrazi through, confirming: it **enters aimed toward the craft** at a
    faster clip than Toroids (the 3 px/frame tier), **rolling** through its frames; while still distant it
    **fires aimed bullets on a timer** (a steady drip, not one-and-done like the Toroid — the rate tracks
    the scheduled mask); and as it draws **nearly level with you laterally** (lining up in your column, the
@@ -125,11 +110,9 @@ area and its restart show on screen as well as in the `area progress`/`area numb
    into you. **Shoot one:** it explodes and the score rises by **700** (the HUD digits are the definitive
    signal), the wreck clears. Check the **roll sprite** reads right (the small green banking-light on two
    of the frames is correct, not an artifact); the shared explosion is the same air explosion as the
-   Toroid. Then **keep holding `T`**: once the Terrazi is gone the tool advances to the
-   next family — go to step 4c. (Release `T` at any point and normal Toroid waves resume.)
-4c. **Kapi combat — the peel-away diving family (temporary debug spawn, next in the `T` cycle).** With the
-   Terrazi gone and `T` still held, the next debug enemy is a **Kapi**. Kapi, like Terrazi, only spawns at
-   high AI levels, so the `T` key is the only way to see it. Watch one through, confirming:
+   Toroid.
+4c. **Kapi combat — the peel-away diving family.** Kapi, like Terrazi, spawns from the formation tables
+   only at high AI levels, but the area schedule places one in **area 7**. Watch one through, confirming:
    - it **approaches silently** — aimed toward the craft, a touch slower than the Terrazi (the 2 px/frame
      tier), and it does **not** fire during this approach (no bullets yet);
    - after a short delay it **commits a dive**, and this is the behavior to watch most closely: the Kapi
@@ -142,13 +125,10 @@ area and its restart show on screen as well as in the `area progress`/`area numb
      *silent* when it glides. Silent on the way in, firing once it dives.
    **Shoot one:** it explodes and the score rises by **300** (the HUD digits are the definitive signal), the
    wreck clears. Check the **dive sprite** cycles through its frames; the shared explosion is the same
-   air explosion as the Toroid. Then **keep holding `T`**: once the Kapi is gone the
-   tool advances to the next family — go to step 4d. (Release `T` at any point and normal Toroid waves resume.)
-4d. **Torkan combat — the approach → one-shot → hover → break-away family (temporary debug spawn, next in the
-   `T` cycle).** With the Kapi gone and `T` still held, the next debug enemy is a **Torkan**. Torkan, like the
-   others, reaches high AI levels in ordinary play (it *does* appear in normal area-1 waves at standard
-   difficulty), but the `T` key is the reliable way to watch one in isolation. Watch a single Torkan through
-   its whole arc, confirming:
+   air explosion as the Toroid.
+4d. **Torkan combat — the approach → one-shot → hover → break-away family.** Torkan appears in normal
+   area-1 waves at standard difficulty, and the area schedule also places one in **area 3**. Watch a single
+   Torkan through its whole arc, confirming:
    - it **approaches aimed toward the craft** on the 2 px/frame tier (the same speed as the Kapi's approach),
      and it does **not** fire during this approach (silent on the way in);
    - it then fires **exactly one** aimed bullet — a single shot, **not** the Kapi's continuous stream and
@@ -161,25 +141,16 @@ area and its restart show on screen as well as in the `area progress`/`area numb
      2 px/frame tier instead of the fast one, is the failure to flag (the away-direction and the faster tier
      are the fidelity-critical points here).
    **Shoot one:** it explodes and the score rises by **50** (the HUD digits are the definitive signal), the
-   wreck clears. The shared explosion is the same air explosion as the Toroid. Release
-   `T` and confirm normal Toroid waves resume.
-4e. **Ground families — the debug ground cycle (temporary `G` key).** Ground objects only enter by scrolling
-   up from the area schedule — a narrow, one-shot window — so this build carries a **temporary ground playtest
-   key**: while playing, **hold `G`** to stamp one built ground family into the field from the top. The tool
-   **cycles through the built ground families** — **Barra**, **Zolbak**, **Garu Barra**, **Logram**, **Derota**,
-   **Garu Derota**, then the **Boza Logram** — advancing to the next only once the current one has **scrolled
-   off the bottom or been bombed**, then wrapping. It is a dev tool tracked for removal (issue #119) — not part
-   of the finished game. **Note:** to isolate one family, engaging `G` **clears the whole ground band first** —
-   any ground object already scrolling simply vanishes (no crater, no score) as the family comes in; that is the
-   tool doing its job, **not** a bug, and scheduled ground traffic resumes once you release `G`. As each family
-   enters at the top and scrolls down toward the craft, confirm it looks right and **bomb it** to check its
-   death and score against the mechanics catalog (land families **crater** and persist; the firing families —
-   Logram, Derota, Garu Derota — open/aim on their timer before you bomb them). **This PR's family is the Boza
-   Logram** (the five-part composite): hold `G` until it appears (last in the cycle), then — **bomb one outer
-   dome:** it craters and scores **300**, and the centre's value drops to **600** (a later bomb on the centre now
-   scores 600, not 2,000); on a fresh Boza, **bomb the centre first:** it scores **2,000** and the four
-   surrounding outer domes clear in cascade for **no extra score**. Release `G` and confirm scheduled ground
-   traffic resumes.
+   wreck clears. The shared explosion is the same air explosion as the Toroid.
+4e. **Ground families.** Ground objects enter only by scrolling up from the area schedule, each at its own
+   fixed place in its area — **Barra**, **Zolbak**, **Logram**, **Derota**, **Garu Barra**, **Garu Derota** and
+   the **Boza Logram** each arrive in the areas their schedule places them. As each family enters at the top and scrolls down toward
+   the craft, confirm it looks right and **bomb it** to check its death and score against the mechanics catalog
+   (land families **crater** and persist; the firing families — Logram, Derota, Garu Derota — open/aim on their
+   timer before you bomb them). On a **Boza Logram** (the five-part composite): **bomb one outer dome:** it
+   craters and scores **300**, and the centre's value drops to **600** (a later bomb on the centre now scores
+   600, not 2,000); on a fresh Boza, **bomb the centre first:** it scores **2,000** and the four surrounding
+   outer domes clear in cascade for **no extra score**.
 5. **Repeated deaths and the near-end checkpoint.** Die several times in a row by letting a Toroid or its
    bullet touch the craft (once ground objects and Bacura exist, exercise those too): the full death
    presentation and sound complete uncut, the craft respawns **immediately vulnerable** (fly into an enemy
@@ -191,9 +162,9 @@ area and its restart show on screen as well as in the `area progress`/`area numb
    final fifth before the ≈65,056 completion mark; that is 44 ticks earlier than `scroll row` alone
    suggests, because the arcade reads the row only after the explosion, while its scroll keeps running)
    **advances** `area number` by one instead (the checkpoint; completing area 16 rolls to 7). Two edge cases are correct, not bugs: a death 37–44 ticks before the completion mark (`area progress` about 63,650 to 63,870) finishes the area during the explosion and then skips the next one too, so `area number` jumps by **two**; and a death just after an area change, while `area progress` is still negative (about −480 to −256), restarts the new area rather than advancing. The
-   respawn now also shows it: the next area's own terrain rather than the one you died in. The screen
-   stays frozen during the explosion, where the arcade keeps scrolling (a recorded divergence, follow-up
-   issue #158 — note, do not fail). **You do not need to
+   respawn now also shows it: the next area's own terrain rather than the one you died in. During the
+   explosion the world keeps running — the ground scrolls and enemies and their bullets move on — as in
+   the arcade. **You do not need to
    reach area 16 by play** — there is no clock-acceleration key, so confirm a **few** real area→area+1
    advances (with `schedule fired` climbing and resetting each boundary, its peak varying as areas
    change — the coarse sanity signal of step 4); the full
@@ -215,8 +186,7 @@ area and its restart show on screen as well as in the `area progress`/`area numb
      over trees or water. Fly the same area twice to compare. A Garu Barra or Garu Derota's top sits
      centred on its large base, and both sit a little right of and below where the last build drew them
      (where the arcade draws them); bombing the top still exposes the base's red centre.
-   - **The Sol Tower rises with its shadow.** Bomb a hidden Sol Tower (area 1 hides two; the debug ground key
-     (G) brings one in as its second family, right after a Barra): it rises in seven steps into the tall tower with its long dark shadow running
+   - **The Sol Tower rises with its shadow.** Bomb a hidden Sol Tower (area 1 hides two): it rises in seven steps into the tall tower with its long dark shadow running
      down and to the right, as in the before/after picture you approved, sitting a little right of and below
      where the last build drew it. A second bomb leaves the crater where the tower stood.
    - **A Bacura only kills where it is drawn.** Fly the craft close beside a tumbling Bacura, especially

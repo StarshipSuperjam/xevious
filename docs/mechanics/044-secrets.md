@@ -155,8 +155,8 @@
     for the minimum score, the `easter egg showing` signal holds for the display window and then clears, the
     slot removes itself, and an un-bombed egg raises nothing). `ground-dispatch-spawns-scoped` additionally
     treats the Sol Tower (`0x1D`) and Hidden Credit (`0x53`) as in-scope handled families rather than unhandled
-    leakage (the Bonus Flag rides the `add_object` path, not the ground schedule that scenario consumes, so it
-    does not appear there). Each scenario is proven against the real build and a mutated build that fails the
+    leakage. Since slice 21 the schedule's `add_object` records place the Bonus Flag in natural play (areas 1, 3,
+    5, 7), so the flag (`0x54`) is counted there as in scope too ([record 056](056-release-fidelity.md) (1)). Each scenario is proven against the real build and a mutated build that fails the
     same assertion.
   - Structural (`tests/test_scratch_project.py`): `_sec01_failures` — guards pinning the Sol Tower (warp; the
     state split; the active-idle scroll; the hit split into destroy vs rise; the persistent crater; the

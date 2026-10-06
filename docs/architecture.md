@@ -90,5 +90,17 @@ director's authority) → explosion presentation → *respawning* with the recor
   visuals, audio, or feel, which stay the operator's playtest, and a green run reflects its pinned VM, not
   the exact runtime the operator plays. Chosen over the scratch-gui editor (the wrong layer, and archived)
   and over adopting se2p/whisker now (a forked, heavier VM one step further from stock Scratch 3, most of
-  it unused for a fidelity restoration); Whisker stays a deliberate later step for block coverage and
-  automated mutation analysis, on this same substrate. It is never a gameplay gate.
+  it unused for a fidelity restoration). It is never a gameplay gate. **Whisker is not needed for the release**
+  (decided in slice 21, #165): the mutation analysis it would automate is already done by hand, scenario by
+  scenario — every harness scenario carries a negative fixture that must make it fail, and every structural
+  check in `tests/` carries corrupted-project negatives — and block coverage is not a release criterion for a
+  fidelity port whose behaviour is judged against the arcade source and the operator's playtest. It stays
+  an option after the release, on this same substrate, if block coverage ever becomes a goal.
+- **The harness's npm packages stay outside Dependabot (accepted gap, slice 21, #162).**
+  `.github/dependabot.yml` is the Engine's own file and watches only the Engine's tool runtime and the
+  GitHub Actions, so an advisory against `scratch-vm` or its dependencies raises no update PR. Accepted
+  because the harness is a test tool that never ships in the `.sb3`, its install runs with
+  `--ignore-scripts` from a committed lockfile, and a `scratch-vm` bump is deliberate work that needs the
+  full harness run anyway (the harness's results reflect the VM it pins). Chosen over hand-adding an npm
+  entry to the Engine's file, which the next Engine update would silently overwrite, and over installing
+  a dependency add-on for one test tool.

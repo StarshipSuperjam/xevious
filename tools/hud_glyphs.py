@@ -39,6 +39,7 @@ import wave
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import sprite_extractor as se  # noqa: E402
+import reference_art_render as rar  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -142,6 +143,8 @@ CREDIT_TRANSPARENT = (0, 0, 0, 0)
 # default best-five table are the port's own strings, NOT the ROM's default name strings; only the
 # letterforms are the credited CC-BY font. See docs/mechanics 037 (CAB-01).
 ATTRACT_TARGET = "start_screen"
+# Slice 21: start_screen costumes game_director owns (the pinned title logo and sparkle), kept by the prune below.
+TITLE_ART_PREFIXES = ("title-logo/", "title-sparkle/")
 # CAB-04 (slice 19): the LIVE best-five table. It is no longer one pre-baked costume — an arbitrary live
 # table and typed names cannot be pre-rendered, so game_director draws it with per-cell clones that switch
 # to glyph/<c> (names) or digit/<d> (rank/score) at runtime. So the sheet font emits one costume per name
@@ -150,12 +153,26 @@ ATTRACT_TARGET = "start_screen"
 # columns align; the rank/score columns reuse the existing digit/<0-9> costumes (no duplicate digit
 # costumes — the uniqueItems loader trap). The "glyph/" prefix matches game_director.ATTRACT_GLYPH_PREFIX.
 ATTRACT_NAME_GLYPHS = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ.")
+# CAB-04 (slice 21 audit): the arcade's initials entry stores and shows a lowercase letter while the bomb
+# button is held (check_lowercase, xevious_main.68k 1784-1792, adds 0x2C to the letter code at 1717 and 1747).
+# The credited HUD font has no lowercase, so these come from the arcade's own text tiles 0x36-0x4F, which
+# tools/reference_art_render.py draws into the last row of the reference_art sheet. Each tile pixel is
+# LOWERCASE_TILE_SCALE native pixels, so the 7-row letter body is the 98 native rows of a capital: the body
+# sits on the capitals' baseline in the same SMALL_TEXT_GEOM cell, and the descender row hangs below it in
+# a taller canvas whose rotation centre stays the capitals' (9, 9), so both line up on the same grid.
+LOWERCASE_GLYPHS = tuple("abcdefghijklmnopqrstuvwxyz")
+LOWERCASE_TILE_SCALE = 14
+LOWERCASE_CANVAS_H = 126  # the 108 cell plus an 18-row descender band (both divide by 6)
 ATTRACT_LABELS = (
     ("credit-label", "CREDIT"),
     # PRES-01 (slice 20 playtest): the full cabinet phrase, so it fills the arcade prompt cell (10,23) the way
     # the arcade's does — generic cabinet control wording, the same class as INSERT COIN / CREDIT.
     ("push-start", "PUSH START BUTTON"),
     ("insert-coin", "INSERT COIN"),
+    # Slice 21 (CAB-01): the port's start-key hint, which the baseline baked into its logo costume. The logo
+    # is now the arcade's own tile art (game_director title-logo/), so the hint is set in the credited font
+    # like the prompts above — project-original control text, on its own row under the logo.
+    ("start-hint", "START SPACE KEY"),
 )
 # PRES-01 (slice 20 playtest): the best-five screen in the arcade's layout — a header above the table and
 # ordinal ranks. The ranks are plain English ordinals. The header is the PORT'S OWN wording: the arcade's
@@ -181,17 +198,19 @@ ATTRACT_SELECTOR_LABELS = (
     ("select-1p", "1 PLAYER"),
     ("select-2p", "2 PLAYERS"),
 )
-# CAB-03 (cabinet.two-player, slice 18): the two "GAME OVER PLAYER n" elimination-banner costumes. Unlike the
-# labels above these attach to the HUD target (not start_screen) — the banner shows on the game field during a
-# two-player handoff, where the HUD is the during-play overlay (game_director's HUD banner clone, gated on
-# `banner player`, switches to the matching costume). Same credited sheet + compositor; rendered at the shared
-# SMALL_TEXT_GEOM cell (slice-18 playtest scale correction) so the banner matches the plain GAME OVER
-# screen and the 18-char line stays on the 480-wide stage. All glyphs (G A M E O V R P L Y, space, and 1/2) are
-# already in SHEET_TEXT_RECTS. The wording is arcade-faithful English UI text, set in the credited font like
-# every other port string.
+# CAB-03 (cabinet.two-player, slice 18): the two-player elimination-banner costumes. Unlike the labels above these
+# attach to the HUD target (not start_screen) — the banner shows on the game field during a two-player handoff,
+# where the HUD is the during-play overlay (game_director's two HUD banner clones, gated on `banner player`).
+# Slice 21 (#31): the banner is two rows, as the arcade writes it (display_game_over_player_1_2, xevious_main.68k
+# 845-855): "GAME OVER" on row 24 and the player line on row 26, so it is three costumes — the GAME OVER line and
+# one player line per player. The names avoid start_screen's `entry-player-*` tags. Same credited sheet +
+# compositor, at the shared SMALL_TEXT_GEOM cell. All glyphs are in SHEET_TEXT_RECTS. The player line is the
+# port's own wording ("PLAYER 1"), not a transcription of the arcade's string, set in the credited font like every
+# other port string.
 BANNER_LABELS = (
-    ("game-over-player-1", "GAME OVER PLAYER 1"),
-    ("game-over-player-2", "GAME OVER PLAYER 2"),
+    ("banner-game-over", "GAME OVER"),
+    ("banner-player-1", "PLAYER 1"),
+    ("banner-player-2", "PLAYER 2"),
 )
 BANNER_COSTUME_NAMES = frozenset(name for name, _text in BANNER_LABELS)
 # CAB-04 (cabinet.high-scores, slice 19): the initials-entry screen headers + PLAYER-n tags, rendered from
@@ -299,19 +318,20 @@ class CreditOutput:
     png: bytes
     width: int
     height: int
+    center: tuple[int, int] | None = None  # rotation centre; None centres the image
 
 
+# The manifest and provenance readers are the sprite extractor's own, raising this tool's error (#24: shared,
+# not copied — the copies had drifted).
 def _require_keys(value: dict, expected: set[str], label: str) -> None:
-    actual = set(value)
-    if actual != expected:
-        missing = expected - actual
-        unknown = actual - expected
-        details = []
-        if missing:
-            details.append("missing " + ", ".join(sorted(missing)))
-        if unknown:
-            details.append("unknown " + ", ".join(sorted(unknown)))
-        raise HudGlyphsError(f"{label} fields are invalid: {'; '.join(details)}")
+    se._require_keys(value, expected, label, error=HudGlyphsError)
+
+
+def _require_ink(image: se.Image, label: str) -> None:
+    # #24: the binarized crop is checked for ink, but the canvas placement and the nearest-neighbour downscale
+    # could still drop every inked pixel (a thin stroke between sampled rows), leaving an invisible costume.
+    if not any(pixel[3] for pixel in image.pixels):
+        raise HudGlyphsError(f"{label} has no ink after the downscale")
 
 
 def _sheet_record(value: object, label: str) -> dict:
@@ -540,6 +560,7 @@ def render_glyphs(manifest: dict) -> list[GlyphOutput]:
         crop = _binarize_glyph(sheet, rect, threshold, _INK_BY_RECOLOR[recolor])
         placed = se._place_on_canvas(crop, canvas, anchor)
         final = _downscale_nearest(placed, factor)
+        _require_ink(final, f"glyph {name}")
         png = se.encode_png(final)
         return GlyphOutput(name, f"{se._md5(png)}.png", png, final.width)
 
@@ -647,6 +668,7 @@ def render_sheet_text_costume(
                         pixels[(cy + gy) * base_width + (cx + gx)] = pixel
     base = se.Image(base_width, base_height, tuple(pixels))
     scaled = _downscale_nearest(base, downscale)
+    _require_ink(scaled, f"text costume {name}")
     png = se.encode_png(scaled)
     return CreditOutput(name, f"{se._md5(png)}.png", png, scaled.width, scaled.height)
 
@@ -682,19 +704,75 @@ def render_attract_costumes(sheet: se.Image, threshold: int) -> list[CreditOutpu
         outputs.append(
             render_sheet_text_costume(sheet, threshold, f"glyph/{ch}", (ch,), **SMALL_TEXT_GEOM)
         )
+    # CAB-04 (slice 21 audit): the lowercase letters the bomb button selects, from the arcade's text tiles.
+    outputs.extend(render_lowercase_costumes())
+    return outputs
+
+
+def _reference_art_sheet() -> tuple[se.Image, dict]:
+    manifest, _data = se.load_manifest()
+    record = manifest["sheets"][rar.SHEET_NAME]
+    path = ASSET_DIR / record["asset"]
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise HudGlyphsError(f"cannot read the reference_art sheet {path}: {exc}") from exc
+    if se._sha256(data) != record["sha256"]:
+        raise HudGlyphsError(f"the reference_art sheet {path.name} does not match its manifest SHA-256")
+    return se.decode_png(data, path.name), record
+
+
+def render_lowercase_costumes() -> list[CreditOutput]:
+    """The 26 lowercase name-cell costumes glyph/a-z, from the arcade's own text tiles (CAB-04)."""
+    sheet, _record = _reference_art_sheet()
+    matte = rar.MATTE + (255,)
+    cell = SHEET_SMALL_CELL
+    scale = LOWERCASE_TILE_SCALE
+    body_top = cell - 7 * scale  # the capitals' 98-row body, bottom-aligned in the cell
+    if len(LOWERCASE_GLYPHS) != len(rar.LOWERCASE_ORIGINS):
+        raise HudGlyphsError("the lowercase glyphs and the reference_art lowercase row disagree")
+    outputs = []
+    for char, (ox, oy) in zip(LOWERCASE_GLYPHS, rar.LOWERCASE_ORIGINS):
+        ink = {
+            (tx, ty)
+            for ty in range(rar.CHAR)
+            for tx in range(rar.CHAR)
+            if sheet.pixel(ox + tx, oy + ty) != matte
+        }
+        if not ink:
+            raise HudGlyphsError(f"lowercase tile for {char!r} has no ink")
+        left = min(tx for tx, _ty in ink)
+        width = (max(tx for tx, _ty in ink) - left + 1) * scale
+        x0 = (cell - width) // 2
+        pixels = [CREDIT_TRANSPARENT] * (cell * LOWERCASE_CANVAS_H)
+        for tx, ty in ink:
+            for y in range(body_top + ty * scale, body_top + (ty + 1) * scale):
+                for x in range(x0 + (tx - left) * scale, x0 + (tx - left + 1) * scale):
+                    pixels[y * cell + x] = CREDIT_INK
+        scaled = _downscale_nearest(
+            se.Image(cell, LOWERCASE_CANVAS_H, tuple(pixels)), SHEET_SMALL_DOWNSCALE
+        )
+        _require_ink(scaled, f"lowercase glyph {char}")
+        png = se.encode_png(scaled)
+        centre = cell // SHEET_SMALL_DOWNSCALE // 2
+        outputs.append(
+            CreditOutput(
+                f"glyph/{char}", f"{se._md5(png)}.png", png, scaled.width, scaled.height,
+                (centre, centre),
+            )
+        )
     return outputs
 
 
 def render_banner_costumes(sheet: se.Image, threshold: int) -> list[CreditOutput]:
-    """The CAB-03 "GAME OVER PLAYER n" elimination-banner costumes, in the Xevious HUD font.
+    """The CAB-03 two-player elimination-banner costumes, in the Xevious HUD font.
 
-    Two whole-string costumes (BANNER_LABELS) composited by the same sheet compositor as the
-    attract text. Playtest correction (slice 18): rendered at the shared SMALL_TEXT_GEOM cell,
-    matching the plain GAME OVER screen's per-glyph HUD scale, rather than the larger
-    credit downscale that towered over it; the 18-char line still fits the 480 px stage. These
+    Three whole-string costumes (BANNER_LABELS: the GAME OVER line and one player line per
+    player) composited by the same sheet compositor as the attract text, at the shared
+    SMALL_TEXT_GEOM cell that matches the plain GAME OVER screen's per-glyph HUD scale. These
     attach to the HUD target (not start_screen): the banner shows on the game field during a
-    two-player handoff, where game_director's HUD banner clone — gated on `banner player` —
-    switches to the matching costume for BANNER_HOLD_TICKS."""
+    two-player handoff, where game_director's two HUD banner clones — gated on `banner player` —
+    show the GAME OVER line and the eliminated player's line for BANNER_HOLD_TICKS."""
     return [
         render_sheet_text_costume(sheet, threshold, name, (text,), **SMALL_TEXT_GEOM)
         for name, text in BANNER_LABELS
@@ -708,8 +786,8 @@ def _credit_costume(output: CreditOutput) -> dict:
         "dataFormat": "png",
         "assetId": output.filename.removesuffix(".png"),
         "md5ext": output.filename,
-        "rotationCenterX": output.width // 2,
-        "rotationCenterY": output.height // 2,
+        "rotationCenterX": output.width // 2 if output.center is None else output.center[0],
+        "rotationCenterY": output.height // 2 if output.center is None else output.center[1],
     }
 
 
@@ -761,6 +839,28 @@ def _overlay_attract_record(manifest: dict, output: CreditOutput) -> dict:
     }
 
 
+def _overlay_lowercase_record(output: CreditOutput) -> dict:
+    _sheet, record = _reference_art_sheet()
+    return {
+        "origin": (
+            f"Lowercase initials glyph '{output.name}' (CAB-04) composited by tools/hud_glyphs.py "
+            f"(render_lowercase_costumes) from the last row of the reference_art sheet {record['asset']}, "
+            "which tools/reference_art_render.py renders from the pinned arcade reference jotd666/xevious "
+            "@71473685a8c7856c8401c8519276cd97a38d4183 (assets/amiga/xevious_gfx.c fg_tile 0x36-0x4F)"
+        ),
+        "license": record["license"],
+        "notes": (
+            f"Sheet credit: {record['credit']}. The repository operator did not create this asset. "
+            f"Sheet SHA-256 {record['sha256']}; the 8x8 text tile scaled {LOWERCASE_TILE_SCALE}x onto the "
+            f"{SHEET_SMALL_CELL}px cell (letter body bottom-aligned to the capitals' baseline, descender "
+            f"below in a {LOWERCASE_CANVAS_H}px canvas) and {SHEET_SMALL_DOWNSCALE}x nearest-neighbor "
+            f"decimated, white ink on transparent, bitmapResolution {TEXT_BITMAP_RESOLUTION}. The arcade "
+            "draws these while the bomb button is held during initials entry (check_lowercase, "
+            "src/xevious_main.68k 1784-1792)."
+        ),
+    }
+
+
 def _overlay_banner_record(manifest: dict, output: CreditOutput) -> dict:
     sheet = manifest["font_sheet"]
     label = dict(BANNER_LABELS).get(output.name, "")
@@ -776,9 +876,9 @@ def _overlay_banner_record(manifest: dict, output: CreditOutput) -> dict:
             f"SHEET_TEXT_RECTS, laid out on the {SHEET_SMALL_CELL}px monospace cell and "
             f"{SHEET_SMALL_DOWNSCALE}x nearest-neighbor decimated (slice-18 playtest scale "
             f"correction to match the plain GAME OVER screen), white ink on transparent, "
-            f"bitmapResolution {TEXT_BITMAP_RESOLUTION}. Costume on the hud target: the game_director banner clone "
-            f"switches to it during a two-player handoff. The WORDING ({label}) is arcade-faithful "
-            "English UI text set in the credited font — not arcade art and not transcribed ROM text."
+            f"bitmapResolution {TEXT_BITMAP_RESOLUTION}. Costume on the hud target: a game_director banner clone "
+            f"shows it during a two-player handoff. The WORDING ({label}) is the port's own English UI "
+            "text set in the credited font — not arcade art and not transcribed ROM text."
         ),
     }
 
@@ -1003,7 +1103,9 @@ def expected_project(
     # slice-17 baked "best-five" costume, replaced by live per-glyph cells in CAB-04) is pruned
     # rather than lingering with a now-deleted asset — an idempotent filter keyed only on the NEW
     # output names would leave retired names behind.
-    # start_screen gets every overlay EXCEPT the CAB-03 banners routed to the HUD above.
+    # start_screen gets every overlay EXCEPT the CAB-03 banners routed to the HUD above. Slice 21: the title
+    # logo and sparkle art (TITLE_ART_PREFIXES) right after the base costume belongs to game_director, which
+    # mirrors it from the sprite proof; it is kept in place, so the two generators reach the same fixpoint.
     start_screen_outputs = [
         o for o in (attract_outputs or []) if o.name not in BANNER_COSTUME_NAMES
     ]
@@ -1019,6 +1121,7 @@ def expected_project(
             costume
             for costume in start_screen["costumes"]
             if costume.get("name") == ATTRACT_TARGET
+            or str(costume.get("name", "")).startswith(TITLE_ART_PREFIXES)
         ] + [_credit_costume(output) for output in start_screen_outputs]
     stage = next(target for target in result["targets"] if target.get("isStage"))
     # Rebuild the Stage's added sounds deterministically: keep the base music/start sounds, then
@@ -1087,23 +1190,11 @@ def _overlay_sound_record(manifest: dict, filename: str) -> dict:
 
 
 def _read_json(path: Path) -> dict:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise HudGlyphsError(f"cannot read JSON {path}: {exc}") from exc
-    if not isinstance(value, dict):
-        raise HudGlyphsError(f"{path} must contain one JSON object")
-    return value
+    return se._read_json(path, HudGlyphsError)
 
 
 def _prior_output_records() -> dict[str, dict]:
-    if not DERIVATIVE_PROVENANCE_PATH.exists():
-        return {}
-    prior = _read_json(DERIVATIVE_PROVENANCE_PATH)
-    outputs = prior.get("outputs")
-    if not isinstance(outputs, dict):
-        raise HudGlyphsError(f"{DERIVATIVE_PROVENANCE_PATH} has no outputs object")
-    return outputs
+    return se._prior_output_records(DERIVATIVE_PROVENANCE_PATH, HudGlyphsError)
 
 
 def _derivative_provenance(
@@ -1152,7 +1243,11 @@ def _derivative_provenance(
     for output in attract_outputs or []:
         outputs[output.filename] = {
             # CAB-03 banners ride in the same overlay list but are a distinct kind (HUD target).
-            "kind": "banner" if output.name in BANNER_COSTUME_NAMES else "attract",
+            "kind": (
+                "banner" if output.name in BANNER_COSTUME_NAMES
+                else "lowercase" if output.name.removeprefix("glyph/") in LOWERCASE_GLYPHS
+                else "attract"
+            ),
             "name": output.name,
             "generator_version": GENERATOR_VERSION,
         }
@@ -1235,6 +1330,8 @@ def _expected_state() -> tuple[
     for output in attract_outputs:
         if output.name in BANNER_COSTUME_NAMES:
             assets[output.filename] = _overlay_banner_record(manifest, output)
+        elif output.name.removeprefix("glyph/") in LOWERCASE_GLYPHS:
+            assets[output.filename] = _overlay_lowercase_record(output)
         else:
             assets[output.filename] = _overlay_attract_record(manifest, output)
     assets = dict(sorted(assets.items()))

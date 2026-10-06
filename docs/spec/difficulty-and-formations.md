@@ -32,14 +32,20 @@ place of a record offset): the four DIP-selectable settings add
 2, 0, 6, or 16 respectively (`xevious_sub.68k` `difficulty_tbl` 338–342, decoded in
 [data/difficulty.json](data/difficulty.json); consumed by `sub_2_fn_3__inc_enemy_AI_and_flying_enemies`
 317–329). If the raise would take the level to 0x80 or above, 0x40 is subtracted first (same routine) — the
-level saturates by folding back, not by clamping.
+level saturates by folding back, not by clamping. The level is a byte: the raise adds within it, wrapping at
+256, before that test.
 
 **Score-adaptive re-tune.** Schedule records of the `adjust_ai_level_from_score` kind — 21 across the
 sixteen areas, zero to four per area (four areas have none; the per-area counts are the committed
-schedule data's) — recompute pressure from performance: the player's score in thousands is divided by the number of
-craft in reserve, capped at 16, and added to the AI level (`xevious_sub.68k`
-`sub_2_fn_23__adjust_AI_level_based_on_score` 344–353 and `avg_score_per_solvalou` 360–372). A player
-scoring heavily with many lives left meets sharply higher pressure; a struggling player is spared.
+schedule data's) — recompute pressure from performance: the player's score in thousands is divided by the ship number — the
+player's craft in play counted from 1 at the game start and up by one as each death's pause ends (the
+per-player `solvalou_number`, `xevious_main.68k` 444 and 2086) — capped at 16, and added to the AI level
+(`xevious_sub.68k` `sub_2_fn_23__adjust_AI_level_based_on_score` 344–353 and `avg_score_per_solvalou`
+360–372). The thousands are read as the score's four BCD digits taken as a binary number, so 20,000 points
+divides as 0x20 = 32. The cap is a signed compare, so a quotient of 0x8000 or more (only from 8,000,000
+points on ship number 1) passes uncapped; a ship number of 0 (after 255 craft) gives 0xFFFF; the add wraps in the byte and is
+not folded. A player scoring heavily per craft spent meets sharply higher pressure; one who has lost many
+craft is spared.
 
 **Formation selection.** Schedule records of the *set-formation* kind carry a signed offset that is itself
 the index into the formation table (`sub_2_fn_2__set_flying_enemies` sign-extends the record byte and doubles
@@ -67,7 +73,10 @@ is specified in that family's document ([Aerial enemies](aerial-enemies.md), [Gr
 [Andor Genesis](andor-genesis.md)).
 
 **What resets.** The AI level, formation state, and masks belong to the per-player game state: they persist
-across death and respawn within a game, and reset for a new game. In two-player alternation each player
+across death and respawn within a game, and reset for a new game. Each death in a real game lowers the AI
+level once, as the forest fills: `main_gameplay_loop` (`xevious_main.68k` 522–533) subtracts
+`enemy_AI_dec_value` (1204–1205: 16, 24, 8 or 0, indexed by the same difficulty switch the raise reads) and
+clears the level on a borrow, so it never goes below 0. A demo ends before this path and never drops it. In two-player alternation each player
 carries their own difficulty state ([Cabinet flow](cabinet-flow.md)).
 
 ## Acceptance criteria
@@ -77,7 +86,7 @@ carries their own difficulty state ([Cabinet flow](cabinet-flow.md)).
 | The committed formation table (including negative indices) and difficulty tables match a re-derivation from the pinned commit | `python3 tools/reference_extract.py --verify --checkout <clone>` with a fresh clone at the pin (clone recipe in [the index](index.md)); the run passes or names the failing table | operator |
 | The four difficulty-setting increments are 2, 0, 6, 16 and the build's data matches the committed file | Data-table comparison in the deterministic build fixtures | engine |
 | A model fixture over the committed data reproduces formation lookups (set-formation indexed by the record offset; raise indexed by the folded AI level; fold-back at 0x80); the build's in-game selection is confirmed in play (a runtime-harness candidate once the enemy/formation slice ships) | Python fixture over the committed tables; operator play for the in-game half | engine |
-| A model fixture over representative score/lives pairs computes the re-tune rule (score per reserve craft, capped at 16); the build's in-game re-tune is confirmed in play (a runtime-harness candidate once the lives slice ships) | Python fixture implementing the documented rule; operator play for the in-game half | engine |
+| A model fixture computes the re-tune rule (the score's BCD thousands divided by the ship number, capped at 16 by a signed compare, added as a byte) and proves its division equals the arcade's bit-serial loop for every divisor; the build's re-tune and the ship number's count are confirmed on the built blocks | Python fixture over the documented rule; the runtime harness on the built project | engine |
 | Wave sizes stay within the table's recorded range and vary with the AI level at a fixed setting | Play several areas at one setting; wave sizes vary as the AI level walks the count table (the arcade sawtooth — rising and falling, not a strict climb) and never exceed six enemies | operator |
 | Playing better produces visibly harder waves | Play one area twice — once scoring heavily, once minimally — and compare wave pressure (paired with the seeded re-tune fixture above, since the two runs also differ in what was destroyed) | operator |
 | A scheduled family's fire *cadence* follows its per-family fire-frequency mask | Play a Terrazi wave: its members fire on their scheduled per-family cadence through the shared fire gate — a smaller mask fires more densely, a larger mask more rarely | operator |

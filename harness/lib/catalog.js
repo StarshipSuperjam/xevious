@@ -25,6 +25,8 @@ import {
   cloneReports,
   constants,
   variable,
+  trapStageVar,
+  paceLikeTheEditor,
 } from './harness.js';
 import { reachPlaying, reachPlaying2P, stateOf, insertCoin, loadArtifact } from './build.js';
 import * as mutate from './mutate.js';
@@ -41,6 +43,13 @@ const AREA_MAP_COLUMNS = JSON.parse(
   readFileSync(new URL('../../docs/spec/data/terrain.json', import.meta.url)),
 ).area_offset_in_map_tbl.values;
 const FLYING_SLOT_INDICES = [58, 59, 60, 61, 62, 63];
+// Every sprite that draws an object slot (the craft, its shots, bomb and sight, enemies, bullets, ground objects),
+// as opposed to the terrain strips, the HUD, the bezel and the attract text.
+const FIELD_SPRITES = [
+  'solvalou', 'blaster', 'target_a', 'target_b', 'bomb', 'toroid', 'enemy_bullet', 'terrazi', 'kapi', 'torkan',
+  'zoshi', 'jara', 'zakato', 'giddo-spario', 'brag-spario', 'garu-zakato', 'bacura', 'sheonite', 'bonus-flag',
+  'easter-egg', 'ground',
+];
 // Suppress ALL ground-object spawns for the rest of the run by emptying the schedule's ground-object
 // type column (the ground analogue of forcing the flying type table to the non-shooting Toroid). With no
 // type to stamp, the ground dispatch spawns nothing, so the first ground firer — the Logram, which opens
@@ -62,6 +71,10 @@ function suppressGroundSpawns(vm) {
 // shot-vs-air detector resolves the overlap on the first tick — before the spawner refills anything.
 // Returns the Toroid's expected award (its value-table entry). Writes the slot lists directly (the
 // blaster clone normally mirrors the shot's position; here we place it), so no firing/aiming is needed.
+// Slot numbering (#165): `readVar` hands back the Scratch list as a 0-based JS array, while the generator's slot
+// constants are Scratch's 1-based item numbers, so JS index i is Scratch slot i + 1. `shotSlot = 36` is therefore
+// Scratch slot 37 — SHOT_SLOTS[0], arcade object 0x24, the FIRST player-shot slot — and not the craft
+// (SOLVALOU_SLOT = Scratch 36, JS 35). `enemySlot = 63` is Scratch 64, arcade 0x3F, the last flying slot.
 function seedAirKill(vm, { enemySlot = 63, shotSlot = 36, cellX = 5000, cellY = 4000 } = {}) {
   const put = (id, i, v) => {
     const a = readVar(vm, id);
@@ -104,9 +117,33 @@ function seedCraftHit(vm, enemySlot = 63) {
 }
 
 // CAB-01 (slice 17): green-flag and step past the title hold to the first attract demo (playing with the
-// attract flag still raised). The arcade title stage runs 744 frames before it auto-advances to the demo;
-// at FRAMES_PER_TICK=2 that is 372 ticks, so a 500-tick budget clears it. The title ticks are cheap (the
+// attract flag still raised). The arcade title stage runs 740 frames before it auto-advances to the demo
+// (attract_mode_title_screen main 1217-1290, slice 21); at FRAMES_PER_TICK=2 that is 370 ticks, so a 600-pump
+// budget clears it. The title ticks are cheap (the
 // walk only runs while playing). Returns true once the cabinet is demonstrating a game to an empty arcade.
+// Slice 21: the title's logo-outline (attract role 15) and sparkle (role 16) clones, as the costume each shows
+// ('hidden' / 'gone' for a sparkle not drawn / deleted; the sparkle carries its x).
+const pad2 = (k) => String(k).padStart(2, '0');
+function titleClones(vm) {
+  const clones = vm.runtime.targets.filter((t) => !t.isOriginal && t.sprite && t.sprite.name === 'start_screen');
+  const role = (c) => Object.values(c.variables).find((v) => v.name === 'attract role').value;
+  const name = (c) => c.sprite.costumes[c.currentCostume].name;
+  const sp = clones.find((c) => role(c) === 16);
+  const ol = clones.find((c) => role(c) === 15);
+  return {
+    sparkle: !sp ? 'gone' : sp.visible ? `${name(sp)} ${sp.x}` : 'hidden',
+    outline: ol ? name(ol) : 'none',
+  };
+}
+
+// After a green flag, step until the title is up and its clock has counted once. The Stage still holds the saved
+// state ('title') before the first pump, and the reset passes through 'resetting' before the title draws its
+// clones, so neither "state is title" nor a single pump is a safe start for sampling the title's schedule.
+function reachTitleClock(vm) {
+  step(vm, 1);
+  return stepUntil(vm, (v) => state(v) === 'title' && Number(readVar(v, 'cabinet-title-tick')) >= 1, 200);
+}
+
 function reachDemo(vm) {
   vm.greenFlag();
   step(vm, 1);
@@ -283,6 +320,20 @@ function collapseFlipMod(p, spriteName) {
   if (!patched) throw new Error(`mutate: no 'mod 4' on ${spriteName}`);
 }
 
+/** Change an `operator_lt` literal right-hand bound on a sprite (moves a < gate). */
+function changeLessThanLiteral(p, spriteName, fromValue, toValue) {
+  const t = p.targets.find((x) => x.name === spriteName);
+  let patched = 0;
+  for (const b of Object.values(t.blocks)) {
+    const rhs = b.opcode === 'operator_lt' && b.inputs.OPERAND2 && b.inputs.OPERAND2[1];
+    if (Array.isArray(rhs) && String(rhs[1]) === String(fromValue)) {
+      b.inputs.OPERAND2 = [1, [4, String(toValue)]];
+      patched += 1;
+    }
+  }
+  if (!patched) throw new Error(`mutate: no 'operator_lt < ${fromValue}' on ${spriteName}`);
+}
+
 export const SCENARIOS = [
   {
     key: 'shot-cap-ceiling',
@@ -428,7 +479,9 @@ export const SCENARIOS = [
       let reach = Infinity;
       // One harness step runs several ticks and a shot covers its last step-unit before row 0 in ONE tick, so
       // sampling only at step boundaries caught it there by luck (an intermittent red). Sample the shot slots
-      // after every thread step the sequencer runs instead.
+      // after every thread step the sequencer runs instead. The drawn height has the same trap under load (a
+      // loaded step runs more ticks, so a shot crossed the top band between samples: highest y 155, a red only
+      // in the full suite), so each shot clone's position is also sampled after its own thread steps.
       const seq = vm.runtime.sequencer;
       const original = seq.stepThread;
       seq.stepThread = function hooked(thread) {
@@ -436,6 +489,11 @@ export const SCENARIOS = [
         const types = readVar(vm, 'slot-type');
         const xs = readVar(vm, 'slot-x');
         for (const s of shotSlots) if (Number(types[s]) !== 0) reach = Math.min(reach, Number(xs[s]));
+        const t = thread.target;
+        if (t && !t.isStage && !t.isOriginal && t.sprite && t.sprite.name === 'blaster') {
+          if (!shots.has(t.id)) shots.set(t.id, -Infinity);
+          if (t.visible) shots.set(t.id, Math.max(shots.get(t.id), t.y));
+        }
       };
       keyDown(vm, ' ');
       try {
@@ -501,10 +559,10 @@ export const SCENARIOS = [
   },
   {
     key: 'pres01-world-hidden-off-field',
-    // roadmap-evidence: PRES-01 success  (a live world object is shown only while its row is inside the window,
-    //   rows 4-39, and hidden in rows 0-3 above the stage top where Scratch would fence it onto the edge)
+    // roadmap-evidence: PRES-01 success  (a live world object is drawn while any of it can reach the window,
+    //   rows 4-39 widened by the 3-row margin, and the stage edge clips it; above that it is hidden)
     behavior:
-      'PRES-01: a live world object is drawn only while its row is inside the window (rows 4-39) — a Bacura held at row 3 (alive, above the window) is hidden, and the same slab at rows 4 and 39 is shown',
+      'PRES-01: a live world object is drawn while any of it can reach the window (slice 21: rows 1-42, the visible rows 4-39 widened by the 3-row margin) — a Bacura at row 3, hanging over the top edge, is drawn and clipped there, and the same slab at row 0, wholly above the window, is hidden; it is drawn at rows 4 and 39',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -538,20 +596,28 @@ export const SCENARIOS = [
           x: Number(readVar(vm, 'slot-x')[slot]),
         };
       };
-      // Row 3 is a live object (the walk culls only at row <= -2), so hiding it is the gate's work. It is
-      // seeded at the row's start so any scroll during the step keeps it inside row 3 (checked by the assert).
-      return { row4: at(4, 32), row3: at(3, 0), row39: at(constants.render_view_rows - 1, 32) };
+      // Row 0 is a live object (the walk culls only at row <= -2), so hiding it is the gate's work. Each slab is
+      // seeded at its row's start so any scroll during the step keeps it inside that row (checked below).
+      return {
+        row4: at(4, 32),
+        row3: at(3, 0),
+        row0: at(0, 0),
+        row39: at(constants.render_view_rows - 1, 32),
+      };
     },
     assert(obs) {
-      const first = constants.render_view_first_row * constants.slot_units_per_cell;
+      const U = constants.slot_units_per_cell;
+      const first = (constants.render_view_first_row - constants.render_view_margin_rows) * U;
       assert.equal(obs.row4.visible, true, 'a slab at row 4, the first row inside the window, is shown');
-      assert.equal(obs.row3.alive, true, 'precondition: the slab at row 3 is still a live object');
-      assert.ok(obs.row3.x < first, `precondition: the slab is still in row 3 when sampled (slot x ${obs.row3.x})`);
-      assert.equal(obs.row3.visible, false, 'a live slab at row 3, above the window, is hidden');
+      assert.equal(obs.row3.visible, true, 'a slab at row 3, hanging over the top edge, is drawn (the edge clips it)');
+      assert.ok(obs.row3.x < 4 * U, `precondition: the slab is still in row 3 when sampled (slot x ${obs.row3.x})`);
+      assert.equal(obs.row0.alive, true, 'precondition: the slab at row 0 is still a live object');
+      assert.ok(obs.row0.x < first, `precondition: the slab is still in row 0 when sampled (slot x ${obs.row0.x})`);
+      assert.equal(obs.row0.visible, false, 'a live slab at row 0, wholly above the window, is hidden');
       assert.equal(obs.row39.visible, true, 'a slab at row 39, the last on-field row, is shown');
     },
-    // roadmap-evidence: PRES-01 failure  (with the gate's lower bound widened, the live slab at row 3 is
-    //   drawn fenced onto the stage top and the hidden assertion goes red)
+    // roadmap-evidence: PRES-01 failure  (with the gate's lower bound widened, the live slab at row 0 is
+    //   drawn above the stage top and the hidden assertion goes red)
     negativeMutation: (p) => {
       const t = p.targets.find((x) => x.name === 'bacura');
       let patched = 0;
@@ -562,7 +628,8 @@ export const SCENARIOS = [
         const lhs = t.blocks[lt.inputs.OPERAND1[1]];
         const rhs = lt.inputs.OPERAND2[1];
         const isSlotX = lhs && lhs.opcode === 'data_itemoflist' && lhs.fields.LIST[0] === 'slot x';
-        const first = constants.render_view_first_row * constants.slot_units_per_cell;
+        const first =
+          (constants.render_view_first_row - constants.render_view_margin_rows) * constants.slot_units_per_cell;
         if (isSlotX && Array.isArray(rhs) && Number(rhs[1]) === first) {
           lt.inputs.OPERAND2 = [1, [4, '-99999']];
           patched += 1;
@@ -742,14 +809,14 @@ export const SCENARIOS = [
   },
   {
     // CAB-01 (cabinet.attract-credits, slice 17): an idle cabinet auto-launches its demo. The title stage
-    // holds 744 frames (~372 ticks) then advances to `playing` with the attract flag still raised — a game
+    // holds 740 frames (370 ticks) then advances to `playing` with the attract flag still raised — a game
     // demonstrated to an empty arcade, not a real game. (arcade `attract_mode_main_loop` main 359-370; the
     // title stage is main 1217-1296.)
     key: 'attract-title-launches-demo',
     behavior: 'An idle title auto-launches the attract demo (playing, with the attract flag still raised)',
     playtestStep: 1,
     async drive(vm) {
-      const launched = reachDemo(vm); // steps past the ~372-tick title hold
+      const launched = reachDemo(vm); // steps past the 370-tick title hold
       return { launched, st: state(vm), attract: readVar(vm, 'cabinet-attract') };
     },
     assert(obs) {
@@ -759,6 +826,177 @@ export const SCENARIOS = [
     },
     // Remove the title -> playing edge so the auto-launch is a silent no-op → the demo never starts.
     negativeMutation: (p) => mutate.removeAllowedTransition(p, 'title -> playing'),
+  },
+  {
+    // Slice 21 (presentation.reference-art): the title runs the arcade's own logo sequence on the title clock
+    // (`title tick`, counted by the Stage's title hold, one a frame). attract_mode_title_screen (main 1217-1274)
+    // holds 64 frames, then the sparkle (codes 0x130-0x13F) appears in place for 15 frames, moves right along
+    // the top of the letters for 135, and disappears for 15; then animate_flashing_logo (1276-1290) steps the
+    // outline's colour down the table from index 7 every other frame — on the odd frames 229..737 in the port's
+    // 740-frame title. At two frames a tick: hidden before tick 32; twinkle/(n-30) at x -73.75 to tick 38;
+    // twinkle/(9+((2n+43)&7)) at x 2.5n-170 to tick 106; twinkle/(115-n) at x 95 to tick 113; then gone, and the
+    // outline red (outline/01) through tick 114 and then on colour (114-n) mod 8. Every sample is checked against the schedule at the clock's count, or the count
+    // before it: a harness pump can end part-way through a frame, after the Stage counts but before the clones
+    // redraw.
+    // roadmap-evidence: CAB-01 success  (the title's sparkle and outline flash follow the arcade schedule on the title clock)
+    key: 'title-logo-sparkle-and-flash',
+    behavior:
+      'The title logo sparkle appears, sweeps right along the letters and fades, then the outline flashes through its colours',
+    playtestStep: 1,
+    async drive(vm) {
+      // Paced one frame a pump, and the title reached before sampling: unpaced, a slow CI runner can still be
+      // booting after one pump (no samples) and a fast one can jump the clock past a phase.
+      paceLikeTheEditor(vm);
+      vm.greenFlag();
+      reachTitleClock(vm);
+      const samples = [];
+      let t = 0;
+      while (state(vm) === 'title' && t < 2000) {
+        const n = Number(readVar(vm, 'cabinet-title-tick'));
+        if (n > 150) break;
+        const clones = titleClones(vm);
+        samples.push({ n, sparkle: clones.sparkle, outline: clones.outline });
+        step(vm, 1);
+        t += 1;
+      }
+      return { samples };
+    },
+    assert(obs) {
+      const sparkleAt = (n) => {
+        if (n < 32) return 'hidden';
+        if (n <= 38) return `title-sparkle/twinkle/${pad2(n - 30)} -73.75`;
+        if (n <= 106) return `title-sparkle/twinkle/${pad2(9 + ((2 * n + 43) & 7))} ${2.5 * n - 170}`;
+        if (n <= 113) return `title-sparkle/twinkle/${pad2(115 - n)} 95`;
+        return 'gone';
+      };
+      const outlineAt = (n) => `title-logo/outline/${pad2(n < 115 ? 1 : 1 + ((((114 - n) % 8) + 8) % 8))}`;
+      const phases = new Set();
+      const colours = new Set();
+      for (const s of obs.samples) {
+        const accepted = [s.n, Math.max(0, s.n - 1)];
+        assert.ok(
+          accepted.some((k) => sparkleAt(k) === s.sparkle),
+          `tick ${s.n}: the sparkle shows ${s.sparkle}, the schedule ${sparkleAt(s.n)}`,
+        );
+        assert.ok(
+          accepted.some((k) => outlineAt(k) === s.outline),
+          `tick ${s.n}: the outline shows ${s.outline}, the schedule ${outlineAt(s.n)}`,
+        );
+        if (s.sparkle.startsWith('title-sparkle/')) phases.add(s.n <= 38 ? 'appear' : s.n <= 106 ? 'move' : 'fade');
+        if (s.n >= 115) colours.add(s.outline);
+      }
+      assert.deepEqual([...phases].sort(), ['appear', 'fade', 'move'], 'the sparkle was seen appearing, moving and fading');
+      assert.equal(colours.size, 8, 'the outline was seen in all eight flash colours');
+    },
+    // Shift the outline's flash costume one colour on (`3 + ((114 - n) mod 8)` → `4 + ...`): every flash
+    // sample is then a step off the arcade's colour order, so the outline assertion fails.
+    // roadmap-evidence: CAB-01 failure  (an outline flash off the arcade's colour order is caught)
+    negativeMutation: (p) => mutate.changeAddLiteral(p, 'start_screen', 3, 4),
+  },
+  {
+    // Slice 21: a banked credit stops the title's logo sequence. coined_up (main 377-388) clears every object
+    // (zero_obj_state_tbl), so the sparkle goes, and redraws the logo static in its red; the flash never runs.
+    // Here a coin lands mid-sweep (tick 60) and the title is watched past tick 140, where the flash would be
+    // under way.
+    key: 'title-logo-holds-red-with-credit',
+    behavior: 'Inserting a coin on the title removes the sparkle and holds the logo outline static red',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 1);
+      let t = 0;
+      while (Number(readVar(vm, 'cabinet-title-tick')) < 60 && t < 200) {
+        step(vm, 1);
+        t += 1;
+      }
+      const before = titleClones(vm).sparkle;
+      insertCoin(vm, 1);
+      const after = [];
+      t = 0;
+      while (Number(readVar(vm, 'cabinet-title-tick')) < 140 && t < 300) {
+        step(vm, 1);
+        t += 1;
+        after.push(titleClones(vm));
+      }
+      return { before, after, st: state(vm), credits: readVar(vm, 'cabinet-credits'), n: readVar(vm, 'cabinet-title-tick') };
+    },
+    assert(obs) {
+      assert.ok(obs.before.startsWith('title-sparkle/'), `precondition: the sparkle is sweeping before the coin (${obs.before})`);
+      assert.equal(obs.st, 'title', 'the credited cabinet stays on the title');
+      assert.equal(obs.credits, 1, 'the coin was banked');
+      assert.ok(Number(obs.n) >= 140, 'the title clock ran past the flash start');
+      assert.ok(obs.after.length > 0, 'the title was sampled after the coin');
+      for (const s of obs.after) {
+        assert.equal(s.sparkle, 'gone', 'the sparkle is cleared once a credit is banked');
+        assert.equal(s.outline, 'title-logo/outline/01', 'the outline holds its red while a credit is banked');
+      }
+    },
+    // Lift the start_screen's `> 0` credit gates (`credits > 0` → `credits > 99`), among them the sparkle's
+    // coined-up exit: the sparkle keeps sweeping after the coin, so the cleared-sparkle assertion fails.
+    negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'start_screen', 0, 99),
+  },
+  {
+    // CAB-01 (slice 21): the title and the best-five page draw on black. The arcade clears the background with
+    // clear_bg_to_black (xevious_main.68k 633-646) before the flashing logo on the title (1217-1222) and on
+    // flash_logo_and_high_score_table (1465-1468); the demo fills the forest (fill_bg_with_forest, 1316). The
+    // logo's background tiles are opaque black, so drawn over the forest they showed as black blocks (build 1).
+    key: 'title-draws-on-black',
+    // roadmap-evidence: CAB-01 success  (CAB-01.title-sparkle: the title and the best-five page hide both terrain
+    //   strips so the logo sits on black, and the demo between them draws the forest again)
+    behavior: 'The title and the best-five page draw on a black background; the attract demo between them shows the forest',
+    playtestStep: 1,
+    async drive(vm) {
+      const strips = () => {
+        const shown = ['terrain-even-shown', 'terrain-odd-shown'].map((id) => Number(readVar(vm, id)));
+        const drawn = vm.runtime.targets
+          .filter((t) => t.isOriginal && t.sprite && ['area_01a', 'area_01b'].includes(t.sprite.name))
+          .map((t) => t.visible);
+        return { shown, drawn };
+      };
+      vm.greenFlag();
+      step(vm, 1);
+      let t = 0;
+      while (Number(readVar(vm, 'cabinet-title-tick')) < 10 && t < 200) {
+        step(vm, 1);
+        t += 1;
+      }
+      const title = { st: state(vm), ...strips() };
+      const demoReached = reachDemo(vm);
+      const demo = { st: state(vm), ...strips() };
+      const scoresReached = killDemoToState(vm, 'attract-scores');
+      step(vm, 1);
+      const scores = { st: state(vm), ...strips() };
+      return { title, demoReached, demo, scoresReached, scores };
+    },
+    assert(obs) {
+      assert.equal(obs.title.st, 'title', 'precondition: the cabinet is on the title');
+      assert.deepEqual(obs.title.shown, [0, 0], 'the title hides both terrain strips');
+      assert.deepEqual(obs.title.drawn, [false, false], 'neither strip is drawn behind the title logo');
+      assert.ok(obs.demoReached, 'precondition: the attract demo starts');
+      assert.ok(obs.demo.drawn.includes(true), 'the demo draws the forest');
+      assert.ok(obs.scoresReached, 'precondition: the demo death routes to the best-five page');
+      assert.equal(obs.scores.st, 'attract-scores', 'precondition: the best-five page is up');
+      assert.deepEqual(obs.scores.drawn, [false, false], 'the best-five page draws on black');
+    },
+    // roadmap-evidence: CAB-01 failure  (with the title's black clear set back to show the strips, the forest
+    //   draws behind the logo and the title assertions go red)
+    negativeMutation: (p) => {
+      const stage = p.targets.find((x) => x.isStage).blocks;
+      const shownVar = (b) =>
+        b && b.opcode === 'data_setvariableto' && /^terrain (even|odd) shown$/.test(b.fields.VARIABLE[0]);
+      let patched = 0;
+      for (const b of Object.values(stage)) {
+        if (b.opcode !== 'control_if' || !b.inputs.SUBSTACK) continue;
+        let link = b.inputs.SUBSTACK[1];
+        if (!shownVar(stage[link])) continue;
+        while (shownVar(stage[link])) {
+          stage[link].inputs.VALUE = [1, [10, '1']];
+          patched += 1;
+          link = stage[link].next;
+        }
+      }
+      if (patched !== 2) throw new Error(`mutate: expected the title's two strip clears, found ${patched}`);
+    },
   },
   {
     // CAB-01: the demo ends the way the arcade demo does — the craft dies (no timer). A demo death routes to
@@ -860,7 +1098,7 @@ export const SCENARIOS = [
     // CAB-05 (slice 20): no demo runs while a credit is banked. The arcade runs the attract cycle only with no
     // credits (main_thread_main_loop xevious_main.68k 348-357); with one it goes to coined_up (377-380), which
     // waits for START and never runs a demo — so every demo is a silent one. Here a coin at the title, then far
-    // past the 372-tick title hold: the title stays up and no demo starts.
+    // past the 370-tick title hold: the title stays up and no demo starts.
     key: 'attract-no-demo-with-a-credit',
     behavior: 'With a credit banked the title stays up and waits for START; the attract demo never starts',
     playtestStep: 1,
@@ -1352,8 +1590,9 @@ export const SCENARIOS = [
   },
   {
     // CAB-04 (cabinet.high-scores, slice 19): the LIVE table cells do not leak. Entering attract-scores stamps
-    // exactly 91 clones — 90 cells (5 rows × (1 rank + 10 name + 7 score), all role 7/8/9) plus the PRES-01
-    // header (role 14); they must ALL retire on
+    // exactly 92 clones — 90 cells (5 rows × (1 rank + 10 name + 7 score), all role 7/8/9) plus the PRES-01
+    // header (role 14) and, since slice 21, the logo's red outline (role 15, the arcade's text-layer half of the
+    // logo, flash_logo_and_high_score_table main 1465-1468); they must ALL retire on
     // the transition out — each cell self-deletes when its loop exits (`repeat until not attract-scores` → hide
     // → delete this clone) AND common_stop(clones=True) is the backstop. Without retirement every best-five
     // visit would stack a fresh 90-cell table on the previous one, climbing toward the scratch-vm 300-clone
@@ -1371,7 +1610,7 @@ export const SCENARIOS = [
       // Count the WHOLE start_screen clone pool, not role-filtered: a leak build blows past the 300-clone
       // ceiling and overwrites the leaked clones' `attract role` var, so a role filter reads 0 and misses
       // them. The total census is immune to both — the field is torn down in attract-scores, so the only
-      // start_screen clones alive are this screen's 90 table cells and its header.
+      // start_screen clones alive are this screen's 90 table cells, its header and the logo outline.
       const present = cloneCount(vm, 'start_screen');
       // The best-five hold auto-advances to demo 2 (~256 ticks); step until the screen leaves attract-scores.
       let t = 0;
@@ -1384,7 +1623,11 @@ export const SCENARIOS = [
       return { present, stateAfter: state(vm), afterExit: cloneCount(vm, 'start_screen') };
     },
     assert(obs) {
-      assert.equal(obs.present, 91, 'the best-five screen stamps exactly 90 table cells (5 × (1 + 10 + 7)) and the header');
+      assert.equal(
+        obs.present,
+        92,
+        'the best-five screen stamps exactly 90 table cells (5 × (1 + 10 + 7)), the header and the logo outline',
+      );
       // Demo 2 keeps only the handful of ordinary attract clones (≈6); the table cells are all gone. A
       // leak build carries all 90 cells (capped at the 300 ceiling) past the transition → far above this.
       assert.ok(obs.afterExit < 30, `the table cells are retired on leaving attract-scores (saw ${obs.afterExit})`);
@@ -1511,6 +1754,81 @@ export const SCENARIOS = [
     // finishes, and the cabinet never leaves high-score-entry → the return-to-title assertion fails.
     // roadmap-evidence: CAB-04 failure  (without the decrement the fixed countdown never expires and entry hangs)
     negativeMutation: (p) => mutate.freezeVariableChange(p, 'Stage', 'entry timer'),
+  },
+  {
+    // CAB-04 (slice 21 audit): holding the bomb button turns the entry letter lowercase. The arcade's
+    // `check_lowercase` (xevious_main.68k 1784-1792) reads the bomb bit and adds 0x2C to the letter code, both on
+    // the active cell it draws (1717) and on the letter `append_char` stores (1747); the ring itself is unchanged.
+    // A timed-out entry keeps the base letter inc/dec stored (name_entry_finished never calls check_lowercase), so
+    // the in-flight letter lands uppercase even with the button held. We hold `b` on cell 1 (A -> 'a', shown and
+    // committed), release it on cell 2 (B stays 'B'), hold it on a space on cell 3 (the full stop), then hold it
+    // through a timeout on cell 4 (D stays 'D').
+    // roadmap-evidence: CAB-04 success  (bomb held: the active cell shows and Space commits the lowercase letter;
+    //   released: uppercase; a timeout keeps the uppercase in-flight letter)
+    key: 'high-score-entry-lowercase',
+    behavior:
+      'Holding the bomb button (B) during initials entry shows and commits a lowercase letter (a space becomes a full stop); a timed-out letter stays uppercase',
+    playtestStep: 1,
+    async drive(vm) {
+      assert.ok(enterEntry(vm, { row: 2, timer: 1000000 }), 'precondition: the cabinet reaches the entry screen');
+      const names = readVar(vm, 'eco-high-score-names');
+      names.splice(0, names.length, 'STK', 'M.N', 'EVE', 'S.O', 'S.K');
+      const roleName = variable('attract-display-role').name;
+      const placeName = variable('attract-display-place').name;
+      const active = (place) => {
+        const c = cloneReports(vm, 'start_screen', [roleName, placeName]).find(
+          (r) => r.vars[roleName] === 10 && r.vars[placeName] === place,
+        );
+        return c ? c.costume : null;
+      };
+      writeVar(vm, 'cabinet-entry-char', 0); // A
+      keyDown(vm, 'b');
+      step(vm, 2);
+      const heldCell = active(1);
+      tapKey(vm, ' '); // commit with the bomb button held
+      keyUp(vm, 'b');
+      writeVar(vm, 'cabinet-entry-char', 1); // B
+      step(vm, 2);
+      const releasedCell = active(2);
+      tapKey(vm, ' '); // commit with the bomb button up
+      // The space (ring 27) with the bomb button held: 0x24 + 0x2C = 0x50, the full stop of "M.N".
+      writeVar(vm, 'cabinet-entry-char', 26);
+      keyDown(vm, 'b');
+      step(vm, 2);
+      const heldSpaceCell = active(3);
+      tapKey(vm, ' ');
+      keyUp(vm, 'b');
+      const committed = readVar(vm, 'cabinet-entry-name-buffer');
+      writeVar(vm, 'cabinet-entry-char', 3); // D, in flight
+      keyDown(vm, 'b');
+      writeVar(vm, 'cabinet-entry-timer', 2);
+      const reachedTitle = stepUntil(vm, (v) => state(v) === 'title');
+      keyUp(vm, 'b');
+      return {
+        heldCell,
+        releasedCell,
+        heldSpaceCell,
+        committed,
+        stateAfter: reachedTitle ? 'title' : state(vm),
+        landed: readVar(vm, 'eco-high-score-names')[1], // rank 2 -> JS index 1
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.heldCell, 'glyph/a', 'with the bomb button held the active cell draws the lowercase letter');
+      assert.equal(obs.releasedCell, 'glyph/B', 'with the bomb button up the active cell draws the uppercase letter');
+      assert.equal(obs.heldSpaceCell, 'glyph/.', 'with the bomb button held the space cell draws the full stop');
+      assert.equal(obs.committed, 'aB.', 'Space commits the lowercase letter (a space: the full stop) only while the bomb button is held');
+      assert.equal(obs.stateAfter, 'title', 'the countdown expiring finishes entry and returns to the title');
+      assert.equal(obs.landed, 'aB.D', 'a timeout keeps the in-flight letter uppercase even with the bomb button held');
+    },
+    // Point both lowercase reads (the commit on the Stage, the active cell on start_screen) back at the uppercase
+    // ring: holding the bomb button then changes nothing, so the 'a' cell and the 'aB' buffer assertions fail.
+    // roadmap-evidence: CAB-04 failure  (without the lowercase ring the bomb button no longer lowers the letter)
+    negativeMutation: (p) => {
+      for (const sprite of ['Stage', 'start_screen']) {
+        mutate.changeLetterOfString(p, sprite, 'abcdefghijklmnopqrstuvwxyz.', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ ');
+      }
+    },
   },
   {
     // ECO-04 (economy.game-over-routing, slice 19): the end-of-game ROUTING acts on the qualification verdict,
@@ -1721,6 +2039,83 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.removeAllowedTransition(p, 'player-dead -> game-over'),
   },
   {
+    key: 'final-forest-wait-before-game-over',
+    behavior:
+      'After the LAST death the screen shows only forest, every object cleared, and holds 32 frames (the arcade '
+      + '64-frame wait, xevious_main 508-546; the object clear 4745-4748) before the game-over route, with the area clock left at the death row; a death '
+      + 'with craft left goes straight on to the respawn (its READY hold stands in for the wait)',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'invuln', 0);
+      // One frame per pump while not playing: the hold is paced (`wait 0` each frame), so the pumps counted in
+      // player-dead are its frames. Count them for a death with craft left first, then for the last death.
+      // A single pump can run the whole 44-tick window (the walk settles many ticks per pump), so the pumps are
+      // counted by the state each one ends in, until the death has moved on (the epoch advanced past the window).
+      // The arcade's object pass wipes all 64 objects once the scroll is disabled (main_fn_2__handle_objects
+      // 4745-4748), so the wait shows no enemy, bullet, ground object or bomb sight: count what the field still
+      // holds — busy slots and visible clones of every object sprite (the terrain strips and the HUD stay).
+      const fieldBusy = () => {
+        const busy = readVar(vm, 'slot-type').filter((t) => Number(t) !== 0).length;
+        const shown = vm.runtime.targets.filter(
+          (t) => !t.isStage && t.visible && t.sprite && FIELD_SPRITES.includes(t.sprite.name),
+        ).length;
+        return busy + shown;
+      };
+      const deadPumps = (craft, movedOn) => {
+        writeVar(vm, 'eco-craft', craft);
+        const epoch0 = epoch(vm);
+        seedCraftHit(vm);
+        const busyAtHit = fieldBusy();
+        let busyInWait = 0;
+        let pumps = 0;
+        let forest = true;
+        let progress = null;
+        let progressKept = true;
+        // The bound is a backstop only: the loop ends on the outcome, and a slow runner needs many pumps to play
+        // the 44-tick window (a pump is a wall-clock budget, not a tick).
+        for (let t = 0; t < 4000 && !(epoch(vm) > epoch0 && movedOn(state(vm))); t += 1) {
+          step(vm, 1);
+          if (state(vm) !== 'player-dead') continue;
+          pumps += 1;
+          busyInWait = Math.max(busyInWait, fieldBusy());
+          const p = Number(readVar(vm, 'area-progress'));
+          if (progress === null) progress = p;
+          progressKept = progressKept && p === progress;
+          if (pumps >= 2) {
+            forest = forest
+              && readVar(vm, 'terrain-even-costume') === 'terrain filler'
+              && Number(readVar(vm, 'terrain-even-shown')) === 1
+              && Number(readVar(vm, 'terrain-odd-shown')) === 0;
+          }
+        }
+        return { pumps, forest, progressKept, busyAtHit, busyInWait, next: state(vm) };
+      };
+      const respawn = deadPumps(3, (s) => s === 'respawning' || s === 'playing');
+      assert.ok(stepUntil(vm, (v) => state(v) === 'playing'), 'the respawn returns to playing');
+      writeVar(vm, 'invuln', 0);
+      const last = deadPumps(1, (s) => s !== 'playing' && s !== 'player-dead');
+      return { respawn, last };
+    },
+    assert(obs) {
+      assert.ok(['respawning', 'playing'].includes(obs.respawn.next), `a death with craft left respawns (${obs.respawn.next})`);
+      assert.ok(obs.respawn.pumps <= 3, `a death with craft left adds no wait (${obs.respawn.pumps} pumps in player-dead)`);
+      assert.notEqual(obs.last.next, 'player-dead', 'the last death leaves player-dead');
+      assert.notEqual(obs.last.next, 'respawning', 'the last death does not respawn');
+      assert.ok(
+        obs.last.pumps >= 32 && obs.last.pumps <= 36,
+        `the last death holds the 32-frame forest wait (${obs.last.pumps} pumps in player-dead)`,
+      );
+      assert.equal(obs.last.forest, true, 'only forest is on screen during the wait');
+      assert.equal(obs.last.progressKept, true, 'the wait leaves the area clock at the death row');
+      assert.ok(obs.last.busyAtHit > 0, `the field holds objects when the craft is hit (${obs.last.busyAtHit})`);
+      assert.equal(obs.last.busyInWait, 0, 'the wait shows no object: every slot is free and no object clone is shown');
+    },
+    // Gate the wait on craft = -1 (never true): the last death then hands straight on to the game-over route,
+    // so its pumps in player-dead drop to the respawn's and the forest is never drawn.
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'solv_death', 'craft', 0, -1),
+  },
+  {
     key: 'enemy-bullet-fires',
     behavior:
       'A shooting Toroid (type 0x0B) allocates an aimed enemy bullet when it commits its swing',
@@ -1854,15 +2249,14 @@ export const SCENARIOS = [
   {
     key: 'near-end-checkpoint',
     behavior:
-      'A new-life death advances the area when the row the arcade reads after its 44 ticks of post-death scrolling is in the near-end window [0x0E,0x43], else restarts it — and area 16 in-window wraps to 7',
+      'A new-life respawn advances the area when the live scroll row it reads (the walk has scrolled on through the 44-tick explosion window) is in the near-end window [0x0E,0x43], else restarts it — and area 16 in-window wraps to 7',
     playtestStep: 5,
     async drive(vm) {
-      // The live death->respawn sequence completes within a single headless pump, so it cannot be
-      // paused to inject a death position. Instead drive `area_reset` in isolation: green-flag to a
-      // settled state, inject the new-life scope + a chosen area number + a chosen frozen death-tick
-      // `area progress`, fire `director reset`, and read the resulting area number — exactly the
-      // checkpoint decision. The checkpoint projects 44 ticks (1408 progress) ahead, so the window's
-      // edges in death-tick progress are: projected row 67 first at 50080, row 15 at 63616.
+      // Drive `area_reset` in isolation: green-flag to a settled state, inject the new-life scope + a chosen
+      // area number + a chosen `area progress`, fire `director reset`, and read the resulting area number —
+      // exactly the checkpoint decision. #158 (slice 21): the walk scrolls on through the 44-tick explosion
+      // window, so the checkpoint reads the live row (no projection); the injected progress is the window-end
+      // position, 1408 past the death tick. Row 67 first at 51488, row 15 at 65024.
       const trial = (progress, area) => {
         vm.greenFlag();
         step(vm, 2);
@@ -1874,20 +2268,20 @@ export const SCENARIOS = [
         return readVar(vm, 'area-number');
       };
       return {
-        high: trial(50080, 5), // projected row 67 (0x43) — window high edge
-        mid: trial(57984, 5), // projected row 41
-        low: trial(63616, 5), // projected row 15 — the last tick before the projection completes the area
-        aboveWindow: trial(50048, 5), // projected row 68, just above 0x43
-        top: trial(0, 5), // projected row 7, below the window
-        wrap16: trial(57984, 16), // in-window death in area 16
+        high: trial(51488, 5), // row 67 (0x43) — window high edge
+        mid: trial(59392, 5), // row 37
+        low: trial(65024, 5), // row 15 — the last position before the area completes
+        aboveWindow: trial(51456, 5), // row 68, just above 0x43
+        top: trial(0, 5), // row 13, below the window
+        wrap16: trial(59392, 16), // in-window death in area 16
       };
     },
     assert(obs) {
-      assert.equal(obs.high, 6, 'a death projecting to row 67 (window high edge) advances the area');
-      assert.equal(obs.mid, 6, 'a death projecting to row 41 advances the area');
-      assert.equal(obs.low, 6, 'a death projecting to row 15 advances the area');
-      assert.equal(obs.aboveWindow, 5, 'a death projecting to row 68 restarts (holds the area)');
-      assert.equal(obs.top, 5, 'a death at the area top restarts (holds the area)');
+      assert.equal(obs.high, 6, 'a respawn reading row 67 (window high edge) advances the area');
+      assert.equal(obs.mid, 6, 'a respawn reading row 37 advances the area');
+      assert.equal(obs.low, 6, 'a respawn reading row 15 advances the area');
+      assert.equal(obs.aboveWindow, 5, 'a respawn reading row 68 restarts (holds the area)');
+      assert.equal(obs.top, 5, 'a respawn reading row 13 restarts (holds the area)');
       assert.equal(obs.wrap16, 7, 'an in-window death in area 16 wraps to area 7');
     },
     // Raise the window's lower bound (row > 13) out of reach, so no death is ever near-end and the
@@ -1895,48 +2289,63 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', 13, 999),
   },
   {
-    // AREA-01 (slice 20): the projection's area-change edge. The arcade keeps scrolling for 88 frames
-    // after a death with the area completion live (xevious_main.68k 507-521; xevious_sub.68k 696-730), so a
-    // death in the last 37-44 ticks of an area completes it during the explosion and THEN reads row 0x0E —
-    // skipping the next area too; a death in the 8-tick carry window at the start of an area (row 0x0E,
-    // progress -480..-256) reads row 9 after the scroll and restarts.
+    // AREA-01 (slice 20), live since #158 (slice 21): the area-change edge. The arcade keeps scrolling for 88
+    // frames after a death with the area completion live (xevious_main.68k 507-521, 2034-2090; xevious_sub.68k
+    // 696-730), so a death in the last 37-44 ticks of an area completes it during the explosion and THEN reads row
+    // 0x0E — skipping the next area too; a death in the 8-tick carry window at the start of an area (row 0x0E,
+    // progress -480..-256) reads row 9 after the scroll and restarts. The port now runs that window live, so each
+    // trial raises a real hit at a chosen death-tick progress and lets the walk scroll and complete through it.
     // roadmap-evidence: AREA-01 success  (a death 37-44 ticks before the end of an area skips the next area,
-    //   one 36 ticks before advances once, and a carry-window death restarts — live, through area_reset)
-    key: 'checkpoint-projected-area-change',
+    //   one 36 ticks before advances once, and a carry-window death restarts — live, through the walk's window)
+    key: 'checkpoint-after-live-window-area-change',
     behavior:
-      'A death in the last 37-44 ticks of an area completes it during the explosion and skips the next area too, while a death in the carry window at the start of an area restarts it',
+      'A death in the last 37-44 ticks of an area completes it during the explosion and skips the next area too, while a death in the carry window at the start of an area restarts it — the walk scrolling live through the window',
     playtestStep: 5,
     async drive(vm) {
-      const trial = (progress, area) => {
-        vm.greenFlag();
-        step(vm, 2);
-        writeVar(vm, 'game-director-reset-scope', 'new-life');
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      writeVar(vm, 'eco-craft', 9);
+      let ended = false;
+      const release = trapStageVar(vm, 'player-dying-tick', (k) => {
+        if (Number(readVar(vm, 'player-dying')) !== 1) return; // a director reset's clear, not a window tick
+        if (Number(k) === 0) writeVar(vm, 'invuln', 1); // the respawned craft must not die again mid-pump
+        if (Number(k) >= 44) ended = true;
+      });
+      // The hit is raised before the walk's next tick, which advances the clock (+32) and then opens the window:
+      // seed 32 short of the death-tick progress.
+      const trial = (deathTick, area) => {
+        ended = false;
+        writeVar(vm, 'invuln', 0);
         writeVar(vm, 'area-number', area);
-        writeVar(vm, 'area-progress', progress);
-        fireBroadcast(vm, 'director reset');
-        step(vm, 1);
-        return readVar(vm, 'area-number');
+        writeVar(vm, 'area-progress', deathTick - 32);
+        writeVar(vm, 'player-hit', 1);
+        const back = stepUntil(
+          vm,
+          () => ended && state(vm) === 'playing' && Number(readVar(vm, 'player-dying')) === 0,
+          300,
+        );
+        return back ? readVar(vm, 'area-number') : null;
       };
-      return {
-        skipFirst: trial(63648, 5), // projects to 65056: completes, carries to -480 (row 0x0E) -> advances again
-        skipLast: trial(63872, 5), // projects to 65280 -> -256, still row 0x0E
-        afterSkip: trial(63904, 5), // projects to 65312 -> -224, row 0x0D: completion only
-        skip16: trial(63648, 16), // completes 16 -> 7, then the band advances 7 -> 8
-        carryStart: trial(-480, 5), // carry window: projects to 928, row 9
-        carryEnd: trial(-256, 5),
-      };
+      try {
+        return {
+          skipFirst: trial(63648, 5), // completes at the window's end, carries to -480 (row 0x0E) -> advances again
+          afterSkip: trial(63904, 5), // ends at -224, row 0x0D: completion only
+          skip16: trial(63648, 16), // completes 16 -> 7, then the band advances 7 -> 8
+          carryStart: trial(-480, 5), // carry window: the window ends at 928, row 9
+        };
+      } finally {
+        release();
+      }
     },
     assert(obs) {
       assert.equal(obs.skipFirst, 7, 'a death 44 ticks before the end skips the next area');
-      assert.equal(obs.skipLast, 7, 'a death 37 ticks before the end skips the next area');
       assert.equal(obs.afterSkip, 6, 'a death 36 ticks before the end advances one area');
       assert.equal(obs.skip16, 8, 'the skip wraps 16 -> 7 and then advances to 8');
       assert.equal(obs.carryStart, 5, 'a death at the start of the carry window restarts the area');
-      assert.equal(obs.carryEnd, 5, 'a death at the end of the carry window restarts the area');
     },
-    // roadmap-evidence: AREA-01 failure  (a checkpoint that reads the frozen death-tick position — no
-    //   projection — misses the skip and advances on a carry-window death)
-    negativeMutation: (p) => mutate.changeAddLiteral(p, 'Stage', 1408, 0),
+    // roadmap-evidence: AREA-01 failure  (a window that ends a tick after the hit — the screen effectively frozen at
+    //   the death tick — misses the skip)
+    negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', 43, 0),
   },
   {
     // AREA-01 (slice 20): completing an area carries the scroll clock, as the arcade does (its
@@ -1983,6 +2392,77 @@ export const SCENARIOS = [
     // Undo the carry (change by -65536 -> by 0): progress keeps climbing past completion, still at row
     // 0x0E for 7 more ticks with progress > 0, so the area completes again on each of them.
     negativeMutation: (p) => mutate.changeVariableChangeBy(p, 'Stage', 'area progress', -65536, 0),
+  },
+  {
+    // AREA-02 (slice 21 soak finding, record 056 item 12): each frame the arcade's sub CPU runs the schedule step
+    // (sub_fn_2__handle_objects, xevious_sub.68k 574-602) before the area step (sub_fn_3__handle_next_area,
+    // 696-730) — its function table's index order (sub_fn_jump_tbl_ROM 109-119, xevious_sub_cpu 80-106). So on
+    // the frame the row reaches 0x0E, area 13's final record (a flying-formation reset on row 0x0E) still fires
+    // before the area advances. Live: seed area 13 two ticks short of completion with the schedule cursor on that
+    // record and a formation in play, trap the area-number write (it lands before `_enter_next_area` repoints the
+    // cursor), and read the cursor and the formation count at that instant.
+    // roadmap-evidence: AREA-02 success  (the completion-row record is consumed for the outgoing area before the
+    //   area advances: the cursor stands on area 13's sentinel and the formation is reset when the area changes)
+    key: 'completion-row-record-fires-before-advance',
+    behavior:
+      'On the tick an area completes, a schedule record on the completion row fires for the outgoing area before it '
+      + 'advances (area 13\'s final formation reset), as the arcade runs handle_objects before handle_next_area',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const rows = readVar(vm, 'area-schedule-trigger-row').map(Number);
+      const handlers = readVar(vm, 'area-schedule-handler');
+      const end = Number(readVar(vm, 'area-schedule-end')[12]); // area 13's sentinel (1-based)
+      const record = end - 1;
+      assert.equal(rows[record - 1], 14, 'precondition: area 13 ends with a record on the completion row 0x0E');
+      assert.equal(handlers[record - 1], 'reset_flying_formation', 'precondition: it is the formation reset');
+      writeVar(vm, 'area-number', 13);
+      writeVar(vm, 'area-progress', 64992); // two ticks short of the completion row
+      writeVar(vm, 'area-schedule-cursor', record);
+      writeVar(vm, 'formation-count', 4);
+      let atAdvance = null;
+      const release = trapStageVar(vm, 'area-number', (area) => {
+        if (atAdvance === null && Number(area) === 14) {
+          atAdvance = {
+            cursor: Number(readVar(vm, 'area-schedule-cursor')),
+            formation: Number(readVar(vm, 'formation-count')),
+          };
+        }
+      });
+      try {
+        for (let i = 0; i < 40 && atAdvance === null; i += 1) step(vm, 1);
+      } finally {
+        release();
+      }
+      return { atAdvance, end, area: readVar(vm, 'area-number'), state: readVar(vm, 'game-director-state') };
+    },
+    assert(obs) {
+      assert.equal(obs.state, 'playing', 'precondition: still playing');
+      assert.ok(obs.atAdvance, 'area 13 completed into area 14');
+      assert.equal(obs.atAdvance.cursor, obs.end, 'the completion-row record was consumed before the area advanced');
+      assert.equal(obs.atAdvance.formation, 0, 'its formation reset ran for the outgoing area');
+    },
+    // Move the completion test back in front of the consume (the old order): the area advances first, the cursor
+    // is repointed at area 14, and area 13's last record never fires.
+    negativeMutation: (p) => {
+      const b = p.targets.find((t) => t.isStage).blocks;
+      const proto = Object.keys(b).find(
+        (k) => b[k] && b[k].opcode === 'procedures_prototype' && b[k].mutation && b[k].mutation.proccode === 'advance area',
+      );
+      const chain = [];
+      for (let cur = b[b[proto].parent].next; cur; cur = b[cur].next) chain.push(cur);
+      const completion = chain[chain.length - 1];
+      const consume = chain.findIndex((id) => b[id].opcode === 'control_repeat_until');
+      if (b[completion].opcode !== 'control_if' || consume < 1) {
+        throw new Error('completion-row negative: advance area is not [.., consume, completion]');
+      }
+      const before = chain[consume - 1];
+      b[chain[chain.length - 2]].next = null;
+      b[before].next = completion;
+      b[completion].parent = before;
+      b[completion].next = chain[consume];
+      b[chain[consume]].parent = completion;
+    },
   },
   {
     // AREA-01 (slice 20): the terrain phase. tools/terrain_render.py derives from the reference renderer
@@ -2437,7 +2917,10 @@ export const SCENARIOS = [
         'fire-mask-boza-logram',
         'fire-mask-domogram',
       ];
-      for (let i = 0; i < 260; i += 1) {
+      // Slice 21: bounded by the outcome, not a pump count. A pump is a wall-clock budget, so a slow CI runner
+      // plays fewer ticks a pump and a fixed 260-pump window could end before area 4 (a red run on CI); the
+      // loop stops once all four are seen, and the bound is a backstop only.
+      for (let i = 0; i < 800 && !(logramSet && otherMaskSet && andorSet && groundStopSet); i += 1) {
         step(vm, 1);
         if (readVar(vm, 'fire-mask-logram') > 0) logramSet = true;
         if (readVar(vm, 'fire-mask-andor-genesis') > 0) andorSet = true;
@@ -2512,6 +2995,59 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'formation count', 3),
   },
   {
+    // DIF-01 (slice 21 review fix): each real-game death lowers the AI level by `enemy_AI_dec_value[difficulty]`
+    // (xevious_main.68k 522-533, table 1204-1205) — 0x10 at the port's difficulty index 0 — clearing it on a
+    // borrow. It runs at the death decision (`death complete`), before a two-player swap, so it lowers the level
+    // of the player who died. Driven at the director receiver (an injected `player-dead` + the broadcast), with a
+    // trap recording every `ai level` write until play resumes, so a raise the walk makes after the respawn
+    // cannot hide the drop.
+    key: 'ai-level-drops-on-death',
+    behavior:
+      'DIF-01: each death lowers the AI level by 16 (never below 0); in two-player it lowers the level of the '
+      + 'player who died, not the one taking over',
+    playtestStep: 4,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2); // boot to the title and arm the director receivers
+      const die = (ai, { twoPlayer = 0, otherAi = 0 } = {}) => {
+        writeVar(vm, 'cabinet-two-player', twoPlayer);
+        writeVar(vm, 'cabinet-curr-player', 0);
+        writeVar(vm, 'eco-craft', 2); // a craft left: the death respawns
+        writeVar(vm, 'other-craft', twoPlayer ? 2 : 0);
+        writeVar(vm, 'difficulty-ai-level', ai);
+        writeVar(vm, 'other-ai-level', otherAi);
+        writeVar(vm, 'game-director-state', 'player-dead');
+        const writes = [];
+        const untrap = trapStageVar(vm, 'difficulty-ai-level', (x) => {
+          if (state(vm) !== 'playing') writes.push(Number(x));
+        });
+        fireBroadcast(vm, 'death complete');
+        const respawned = stepUntil(vm, (v) => state(v) === 'playing', 400);
+        untrap();
+        return {
+          respawned,
+          settled: writes.length ? writes[writes.length - 1] : null,
+          other: Number(readVar(vm, 'other-ai-level')),
+        };
+      };
+      return {
+        drop: die(40),
+        floor: die(10),
+        twoPlayer: die(40, { twoPlayer: 1, otherAi: 70 }),
+      };
+    },
+    assert(obs) {
+      assert.ok(obs.drop.respawned && obs.floor.respawned && obs.twoPlayer.respawned, 'every death respawns');
+      assert.equal(obs.drop.settled, 24, 'a death lowers the AI level by 16 (40 -> 24)');
+      assert.equal(obs.floor.settled, 0, 'the drop never takes the AI level below 0 (10 -> 0)');
+      assert.equal(obs.twoPlayer.other, 24, "in two-player the drop lands on the dying player's level (40 -> 24)");
+      assert.equal(obs.twoPlayer.settled, 70, "the incoming player's level is swapped in untouched (70)");
+    },
+    // Zero the drop: the death leaves the level where it was, so 40 stays 40 and the dying player keeps 40.
+    // roadmap-evidence: DIF-01 failure  (without the per-death drop the AI level persists through a death)
+    negativeMutation: (p) => mutate.changeVariableChangeBy(p, 'Stage', 'ai level', -16, 0),
+  },
+  {
     key: 'live-pressure-adaptive',
     behavior:
       'DIF-02 (.play): a heavy score with craft in reserve re-tunes the AI level past the raise-only fold ceiling (the score adjust is NOT folded, unlike raises)',
@@ -2565,6 +3101,176 @@ export const SCENARIOS = [
     // level → it folds and can never be observed >= 128 → the assertion fails.
     negativeMutation: (p) =>
       mutate.changeEqualsOperand(p, 'Stage', 'adjust_ai_level_from_score', '__never__'),
+  },
+  {
+    // DIF-02 (slice 21, difficulty.ship-number-divisor): the re-tune divides the score's BCD thousands word, read
+    // as binary, by the per-player ship number (sub_2_fn_23 344-353, avg_score_per_solvalou 360-372).
+    key: 'ship-number-divisor',
+    behavior:
+      'DIF-02.ship-divisor: the score re-tune divides the BCD thousands by the ship number (20,000 points on ship 3 '
+      + 'adds 0x20/3 = 10 per record, not 20/3 or 20/craft), and a ship number of 0 adds 0xFFFF as a byte',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Freeze the walk and run the real `advance area` exactly once on area 1's first adjust record (the
+      // live-pressure-adaptive set-up), once per case.
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'frozen');
+      step(vm, 1);
+      const handlers = readVar(vm, 'area-schedule-handler');
+      const triggers = readVar(vm, 'area-schedule-trigger-row');
+      const start = Number(readVar(vm, 'area-schedule-start')[0]);
+      let idx = start - 1;
+      while (idx < handlers.length && handlers[idx] !== 'adjust_ai_level_from_score') idx += 1;
+      assert.ok(idx < handlers.length, "precondition: area 1's schedule has a score-adjust record");
+      const row = Number(triggers[idx]);
+      // Area 1 holds two re-tune records on this row (sub 868: `0x9B, 0x57, 0x9B, 0x57`); the tick runs both.
+      let records = 0;
+      while (handlers[idx + records] === 'adjust_ai_level_from_score' && Number(triggers[idx + records]) === row) records += 1;
+      const after = (((0x0d00 - row * 256 - 128) % 0x10000) + 0x10000) % 0x10000;
+      const adjust = ({ score, ship, craft, ai }) => {
+        writeVar(vm, 'area-number', 1);
+        writeVar(vm, 'area-schedule-cursor', idx + 1);
+        writeVar(vm, 'area-progress', after - 32);
+        writeVar(vm, 'difficulty-ai-level', ai);
+        writeVar(vm, 'difficulty-ship-number', ship);
+        writeVar(vm, 'eco-score', score);
+        writeVar(vm, 'eco-craft', craft);
+        callProc(vm, 'Stage', 'advance area');
+        step(vm, 2);
+        return {
+          onRow: Number(readVar(vm, 'area-scroll-row')) === row,
+          consumed: Number(readVar(vm, 'area-schedule-cursor')) > idx + records,
+          ai: Number(readVar(vm, 'difficulty-ai-level')),
+        };
+      };
+      return {
+        records,
+        bcd: adjust({ score: 20000, ship: 3, craft: 1, ai: 120 }),
+        zero: adjust({ score: 20000, ship: 0, craft: 3, ai: 120 }),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.records, 2, "precondition: area 1's first re-tune row holds the source's pair of records");
+      for (const c of [obs.bcd, obs.zero]) {
+        assert.ok(c.onRow && c.consumed, 'precondition: the tick consumes both adjust records');
+      }
+      assert.equal(obs.bcd.ai, 120 + 2 * 10, `20,000 points on ship 3 adds 0x20/3 = 10 per record (got ${obs.bcd.ai - 120})`);
+      assert.equal(obs.zero.ai, (120 + 2 * 0xffff) % 256, `a ship number of 0 adds 0xFFFF as a byte (got ${obs.zero.ai})`);
+    },
+    // Divide by the craft left instead of the ship number (the pre-slice-21 port): 0x20 / 1 = 32, capped to 16.
+    negativeMutation: (p) => {
+      const stage = p.targets.find((t) => t.isStage);
+      let hit = 0;
+      for (const b of Object.values(stage.blocks)) {
+        if (!b || b.opcode !== 'operator_divide') continue;
+        const num2 = b.inputs.NUM2;
+        if (Array.isArray(num2) && Array.isArray(num2[1]) && num2[1][0] === 12 && num2[1][2] === 'difficulty-ship-number') {
+          num2[1] = [12, 'craft', 'eco-craft'];
+          hit += 1;
+        }
+      }
+      if (hit !== 1) throw new Error(`ship-number-divisor negative: expected one divide by ship number, found ${hit}`);
+    },
+  },
+  {
+    // DIF-02 (slice 21): `solvalou_number` is 1 at the game start (main 444), one more as each death's pause ends
+    // (finish_solvalou_exploding 2086), and a 2P start copies player 1's fresh 1 to player 2 (456-460).
+    key: 'ship-number-lifecycle',
+    behavior:
+      'DIF-02.ship-divisor: the ship number starts at 1, counts up by one as a death pause ends, and a two-player '
+      + 'start gives both players ship number 1',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const atStart = Number(readVar(vm, 'difficulty-ship-number'));
+      writeVar(vm, 'invuln', 0);
+      writeVar(vm, 'eco-craft', 3);
+      const epoch0 = epoch(vm);
+      seedCraftHit(vm);
+      const respawned = stepUntil(vm, (v) => epoch(v) > epoch0 && state(v) === 'playing');
+      const afterDeath = Number(readVar(vm, 'difficulty-ship-number'));
+      const vm2 = await loadArtifact();
+      assert.ok(reachPlaying2P(vm2), 'precondition: a two-player game reaches playing');
+      return {
+        atStart,
+        respawned,
+        afterDeath,
+        p1: Number(readVar(vm2, 'difficulty-ship-number')),
+        p2: Number(readVar(vm2, 'other-ship-number')),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.atStart, 1, 'the first craft is ship number 1');
+      assert.ok(obs.respawned, 'the death respawns');
+      assert.equal(obs.afterDeath, 2, 'the next craft is ship number 2');
+      assert.deepEqual([obs.p1, obs.p2], [1, 1], 'a two-player start gives both players ship number 1');
+    },
+    // Pin every `ship number` write to 1: the count never goes up, so the next craft still reads 1.
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'ship number', 1),
+  },
+  {
+    // ECO-03.stop-after-two (slice 21, #103): the threshold advance replaces a threshold below the increment BY the
+    // increment (check_for_extra_solvalou 149-155, update_next_bonus_life_Ks 181-183): 20,000, then 60,000, then
+    // every 60,000 — not 20,000 then 80,000. The add drops the BCD carry (163-171), so 9,960,000 + 60,000 wraps
+    // to 20,000 and the next award grants again.
+    key: 'bonus-life-20k-then-60k',
+    behavior:
+      'ECO-03.stop-after-two: the default bonus craft come at 20,000 and then 60,000 (the threshold below the '
+      + 'increment becomes the increment), then 120,000 — never at 80,000; past 9,960,000 the threshold wraps to '
+      + '20,000',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'frozen');
+      step(vm, 1);
+      const firstThreshold = Number(readVar(vm, 'eco-next-bonus'));
+      const check = (score) => {
+        const before = Number(readVar(vm, 'eco-craft'));
+        writeVar(vm, 'eco-score', score);
+        callProc(vm, 'Stage', 'check bonus life');
+        step(vm, 1);
+        return { granted: Number(readVar(vm, 'eco-craft')) - before, next: Number(readVar(vm, 'eco-next-bonus')) };
+      };
+      return {
+        firstThreshold,
+        at20k: check(20000),
+        at59990: check(59990),
+        at60k: check(60000),
+        at80k: check(80000),
+        atWrap: (writeVar(vm, 'eco-next-bonus', 9960000), check(9960000)),
+        afterWrap: check(9960010),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.firstThreshold, 20000, 'precondition: the default first threshold is 20,000');
+      assert.equal(obs.at20k.granted, 1, '20,000 grants a craft');
+      assert.equal(obs.at20k.next, 60000, 'the threshold below the 60,000 increment becomes 60,000, not 80,000');
+      assert.equal(obs.at59990.granted, 0, '59,990 grants nothing');
+      assert.equal(obs.at60k.granted, 1, '60,000 grants the second craft');
+      assert.equal(obs.at60k.next, 120000, 'from 60,000 the increment is added: 120,000');
+      assert.equal(obs.at80k.granted, 0, '80,000 grants nothing');
+      assert.equal(obs.atWrap.granted, 1, '9,960,000 grants a craft');
+      assert.equal(obs.atWrap.next, 20000, 'the four-digit BCD add drops its carry: 9,960,000 + 60,000 wraps to 20,000');
+      assert.equal(obs.afterWrap.granted, 1, 'the wrapped threshold is below the score, so the next award grants again');
+      assert.equal(obs.afterWrap.next, 60000, 'the wrapped 20,000 is below the increment, so it becomes 60,000');
+    },
+    // The pre-slice-21 advance: the catch-up test is never true, so the increment is always added (20K, 80K).
+    negativeMutation: (p) => {
+      const stage = p.targets.find((t) => t.isStage);
+      let hit = 0;
+      for (const b of Object.values(stage.blocks)) {
+        if (!b || b.opcode !== 'control_if_else') continue;
+        const cond = stage.blocks[b.inputs.CONDITION && b.inputs.CONDITION[1]];
+        const op1 = cond && cond.inputs && cond.inputs.OPERAND1;
+        if (cond && cond.opcode === 'operator_lt' && Array.isArray(op1) && Array.isArray(op1[1]) && op1[1][2] === 'eco-next-bonus') {
+          cond.inputs.OPERAND2 = [1, [4, '0']];
+          hit += 1;
+        }
+      }
+      if (hit !== 1) throw new Error(`bonus-life-20k-then-60k negative: expected one catch-up test, found ${hit}`);
+    },
   },
   {
     key: 'toroid-wave-spawns-and-moves',
@@ -2669,7 +3375,9 @@ export const SCENARIOS = [
       writeVar(vm, 'rng-state', seed);
       let prev = readVar(vm, 'rng-out');
       const observed = [];
-      for (let i = 0; i < 8; i += 1) {
+      // Slice 21: stop at four observed draws rather than after a fixed eight pumps — on a slow CI runner eight
+      // pumps can hold fewer than three draws (a red run); stopping early also keeps the stream inside the fixture.
+      for (let i = 0; i < 200 && observed.length < 4; i += 1) {
         step(vm, 1);
         const out = readVar(vm, 'rng-out');
         if (out !== prev) {
@@ -3137,7 +3845,7 @@ export const SCENARIOS = [
   {
     key: 'zoshi-bottom-enters-edge',
     behavior:
-      'The bottom-entry Zoshi (type 14) is its own reachable object type with its own initializer — the arcade zoshi_0E bottom variant is a distinct spawnable, brought in here through the shared debug spawn cycle (its FIXED bottom-edge entry row 40 is the exact-value contract locked structurally in tests/test_scratch_project.py::_air03_failures, which the settling harness cannot observe — see note)',
+      'The bottom-entry Zoshi (type 14) is its own reachable object type with its own initializer — the arcade zoshi_0E bottom variant is a distinct spawnable, brought in here through the normal flying spawner (its FIXED bottom-edge entry row 40 is the exact-value contract locked structurally in tests/test_scratch_project.py::_air03_failures, which the settling harness cannot observe — see note)',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -3145,44 +3853,22 @@ export const SCENARIOS = [
       // row (40), set once by `init zoshi bottom`. That is a SPAWN-INSTANT value the settling harness
       // cannot read: `_step()` runs an unfixed, machine-speed-dependent number of ticks (harness.js
       // header), and BOTH top (row 0) and bottom (row 40) entrants converge on and overshoot the craft
-      // row, so within a single settling step they roam the same span (measured: top reaches ~38, bottom
-      // drops to ~15) — any post-settling row threshold is unfaithful. The exact entry row 40 is therefore
-      // pinned as an EXACT-VALUE structural contract in _air03_failures (zoshi-bottom-fixed-edge-entry).
-      // What IS pacing-invariant here is REACHABILITY: that the bottom variant is its own type with its own
-      // initializer that stamps a live type-14 slot. The shared debug cursor gallops by >1 per settling step
-      // (see debug-key-cycles-families), so an ordered per-family window is racy; instead hold the key,
-      // accumulate the types seen over a sustained hold, and require the bottom variant (type 14) to appear
-      // — order-independent, so the galloping cursor cannot false-fail it. Do NOT clear the field manually
-      // (the debug wave clears its own slots; a manual clear would drive the normal spawner and leak
-      // debug-only families, breaking the negative). The negative neutralizes the SHARED `init zoshi
-      // bottom` (used by both the debug and normal spawn paths, game_director.py install_spawn_flying), so
-      // no path can stamp a type-14 slot and the negative cannot be masked by normal-play leakage.
-      //
-      // Robustness (contention): `step()` bounds each settling pump by WALL CLOCK (loadBuild sets
-      // currentStepTime; harness.js header), so under full-suite CPU load a single pump advances far fewer
-      // internal ticks. The debug cursor's per-family dwell has grown every slice (Zakato, Bacura, and now
-      // the Sheonite escort, whose homing pair holds the field for a long bounded lifecycle at the tail of
-      // the cycle), so a free-galloping cursor completes fewer full cycles per budget and the bottom
-      // variant's brief live window can fall between two observed pumps — an intermittent false-fail. So
-      // rather than wait for the cursor to WANDER to the bottom variant, PIN the debug spawn cursor to its
-      // family index each pump: the debug gate then spawns the bottom variant (through the same shared debug
-      // spawn path this scenario is about) as soon as the field is clear and keeps re-spawning it, so a live
-      // type-14 slot is reliably present to observe. This removes the timing race while still proving
-      // reachability VIA THE DEBUG CYCLE (the gate, not a hand-called init). ZOSHI_BOTTOM is index 4 in
-      // game_director.py DEBUG_SPAWN_FAMILIES (terrazi, kapi, torkan, zoshi-top, zoshi-bottom, ...); a
-      // family reorder makes the POSITIVE fail loudly here rather than silently drift. The negative still
-      // bites: neutralizing `init zoshi bottom` (the shared initializer that stamps the type-14 slot on both
-      // the debug and normal paths) means no type-14 slot is ever stamped, even with the cursor pinned.
-      const ZOSHI_BOTTOM_DEBUG_INDEX = 4;
-      keyDown(vm, 't');
+      // row, so within a single settling step they roam the same span — any post-settling row threshold is
+      // unfaithful. The exact entry row 40 is therefore pinned as an EXACT-VALUE structural contract in
+      // _air03_failures (zoshi-bottom-fixed-edge-entry). What IS pacing-invariant here is REACHABILITY:
+      // that the bottom variant is its own type with its own initializer that stamps a live type-14 slot.
+      // Force every flying-type-table entry to the bottom variant (14) — the same direct-seeding pattern
+      // the sibling Zoshi scenarios use — so the NORMAL spawner draws only type 14, then accumulate the
+      // types seen in the flying band over a sustained run (order-independent). The negative neutralizes
+      // the `init zoshi bottom` the spawner dispatches to, so no type-14 slot is ever stamped.
+      const typeTable = readVar(vm, 'flying-type-table');
+      for (let i = 0; i < typeTable.length; i += 1) typeTable[i] = 14;
       const seen = new Set();
-      for (let i = 0; i < 100; i += 1) {
-        writeVar(vm, 'debug-spawn-index', ZOSHI_BOTTOM_DEBUG_INDEX);
+      for (let i = 0; i < 100 && !seen.has(14); i += 1) {
         step(vm, 1);
         const type = readVar(vm, 'slot-type');
         for (const s of FLYING_SLOT_INDICES) if (type[s] !== 0) seen.add(type[s]);
       }
-      keyUp(vm, 't');
       return { saw: seen.has(14) };
     },
     assert(obs) {
@@ -3348,7 +4034,7 @@ export const SCENARIOS = [
   {
     key: 'zakato-teleports-in-then-commits-active',
     behavior:
-      'A Zakato teleports in HELD IN PLACE and not yet hittable (state SLOT_TELEPORT, dx=dy=0) while its ~20-frame sparkle plays; when the sparkle clock completes `update zakato` flips it to the hittable SLOT_ACTIVE and stamps its movement (an aimed variant gets a non-zero velocity toward the craft) — the arcade zakato_teleport -> zakato_NN_main fall-through (3961 -> 3733)',
+      'A Zakato teleports in on no velocity of its own and not yet hittable (state SLOT_TELEPORT, dx=dy=0) while its ~20-frame sparkle plays; when the sparkle clock completes `update zakato` flips it to the hittable SLOT_ACTIVE and stamps its movement (an aimed variant gets a non-zero velocity toward the craft) — the arcade zakato_teleport -> zakato_NN_main fall-through (3961 -> 3733)',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -3370,7 +4056,7 @@ export const SCENARIOS = [
       const slot = 63;
       const pc = readVar(vm, 'player-col');
       put('slot-type', slot, 21); // cont (0x15): aims at the craft on commit → observable non-zero velocity
-      put('slot-state', slot, 4); // SLOT_TELEPORT: indestructible, holding in place
+      put('slot-state', slot, 4); // SLOT_TELEPORT: indestructible, drifting with the terrain
       put('slot-x', slot, 10 * 256); // interior row, clear of the top/bottom cull edges
       put('slot-y', slot, (pc - 8) * 256); // 8 columns aside: an on-field column outside the [-4,3] band (so
       // no fire on commit) yet not off the left edge (so the commit-tick active move does not cull it)
@@ -3449,14 +4135,20 @@ export const SCENARIOS = [
         state: readVar(vm, 'slot-state')[slot],
         dx: readVar(vm, 'slot-dx')[slot],
         dy: readVar(vm, 'slot-dy')[slot],
+        timer: readVar(vm, 'slot-timer')[slot],
       };
-      // Play out the self-destruct burst; it frees on its own 20-frame clock (2/tick, ~10 ticks).
+      // Play out the self-destruct burst; it frees on its own 20-frame clock (2/tick). Count the ticks
+      // that still hold the slot after the firing tick.
+      let burstTicks = 0;
       for (let t = 0; t < 14; t += 1) {
         callProc(vm, 'Stage', 'update zakato');
         step(vm, 1);
+        if (readVar(vm, 'slot-type')[slot] !== 20) break;
+        burstTicks += 1;
       }
       return {
         ...afterFire,
+        burstTicks,
         freedType: readVar(vm, 'slot-type')[slot],
         freedState: readVar(vm, 'slot-state')[slot],
         score0,
@@ -3468,6 +4160,10 @@ export const SCENARIOS = [
       assert.equal(obs.state, 5, 'having fired, the Zakato flips ITSELF to the benign SLOT_SELF_EXPLODE');
       assert.equal(obs.dx, 0, 'the self-destructing Zakato zeroes its scroll-axis velocity');
       assert.equal(obs.dy, 0, 'the self-destructing Zakato zeroes its lateral velocity');
+      // zakato_shoot arms _TIMER=0xFF (3762) and zakato_explode increments first (3932): the firing frame
+      // draws timer 0, and frames 0-19 are drawn before the remove at 20 — the firing tick plus 9 more.
+      assert.equal(obs.timer, 0, 'the firing tick draws the first self-destruct frame (timer 0)');
+      assert.equal(obs.burstTicks, 9, 'the burst holds the slot 9 ticks after the firing tick, then frees at 20');
       assert.equal(obs.freedType, 0, 'the self-destruct burst frees the slot (type cleared) when its clock completes');
       assert.equal(obs.freedState, 0, 'the freed slot state is cleared so it can be reused');
       assert.equal(obs.score1, obs.score0, 'a Zakato that self-destructs after firing awards NOTHING');
@@ -3705,6 +4401,245 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update brag spario'),
   },
   {
+    // AIR-10.spario (slice 21): a shot never destroys a Brag Spario. handle_09_Brag_Spario has no hit branch and
+    // writes _STATE=2 every frame (3092); the shot test hits only a _STATE 2 enemy (2566), sets 3, consumes the
+    // shot and scores 500 (2525-2538). The shot test reads the frame-start sprite snapshot, so the port goes
+    // back to ACTIVE, tests the shots at the drawn position, and then moves (on a hit tick too).
+    key: 'brag-spario-survives-a-shot',
+    behavior:
+      'AIR-10.spario: a shot that hits a Brag Spario scores 500 and is consumed, but the Spario keeps flying — '
+      + 'it is back to active on the next tick, still moving, and a second shot scores 500 again',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      // Warm the air detector live, then freeze the walk so one callProc is one tick of the Spario.
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'frozen');
+      step(vm, 1);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (const sl of FLYING_SLOT_INDICES) {
+        put('slot-type', sl, 0);
+        put('slot-state', sl, 0);
+      }
+      const slot = 63;
+      const shot = 36;
+      const pr = readVar(vm, 'player-row');
+      const pc = readVar(vm, 'player-col');
+      put('slot-type', slot, 9); // BRAG_SPARIO_TYPE
+      put('slot-state', slot, 1); // SLOT_ACTIVE
+      put('slot-pts', slot, 12); // BRAG_SPARIO_PTS: value-table position 12 (500)
+      put('slot-x', slot, (pr - 6) * 256);
+      put('slot-y', slot, (pc - 6) * 256);
+      put('slot-dx', slot, 0);
+      put('slot-dy', slot, 0);
+      put('slot-timer', slot, 0);
+      writeVar(vm, 'slot-index', slot + 1);
+      const aimShot = () => {
+        put('slot-type', shot, 1); // SHOT_TYPE
+        put('slot-state', shot, 1);
+        put('slot-x', shot, readVar(vm, 'slot-x')[slot]);
+        put('slot-y', shot, readVar(vm, 'slot-y')[slot]);
+      };
+      const tick = () => {
+        const score = Number(readVar(vm, 'eco-score'));
+        const x = Number(readVar(vm, 'slot-x')[slot]);
+        writeVar(vm, 'slot-index', slot + 1);
+        callProc(vm, 'Stage', 'update brag spario');
+        step(vm, 1);
+        return {
+          scored: Number(readVar(vm, 'eco-score')) - score,
+          moved: Number(readVar(vm, 'slot-x')[slot]) - x,
+          type: Number(readVar(vm, 'slot-type')[slot]),
+          state: Number(readVar(vm, 'slot-state')[slot]),
+          shotState: Number(readVar(vm, 'slot-state')[shot]),
+        };
+      };
+      aimShot();
+      const hit = tick();
+      const after = tick();
+      aimShot();
+      const again = tick();
+      return { hit, after, again, value: Number(readVar(vm, 'eco-value-table')[11]) };
+    },
+    assert(obs) {
+      assert.equal(obs.value, 500, 'precondition: value-table position 12 is 500');
+      assert.equal(obs.hit.scored, 500, 'the shot scores the Brag Spario 500');
+      assert.notEqual(obs.hit.shotState, 1, 'the shot that hit is consumed');
+      assert.equal(obs.hit.type, 9, 'the struck Spario keeps its slot');
+      assert.ok(obs.hit.moved !== 0, 'it moved on the tick it was hit (the move runs after the shot test)');
+      assert.equal(obs.after.type, 9, 'it is still a Brag Spario a tick later (no explosion)');
+      assert.equal(obs.after.state, 1, 'it is back to active on the next tick');
+      assert.ok(obs.after.moved !== 0, 'it keeps flying');
+      assert.equal(obs.after.scored, 0, 'no further score without a shot');
+      assert.equal(obs.again.scored, 500, 'a second shot scores 500 again');
+    },
+    // The struck Spario is never set back to ACTIVE (the recovery writes HIT), so it stops flying.
+    negativeMutation: (p) => {
+      const stage = p.targets.find((t) => t.isStage);
+      const b = stage.blocks;
+      const proto = Object.keys(b).find(
+        (k) => b[k] && b[k].opcode === 'procedures_prototype' && b[k].mutation && b[k].mutation.proccode === 'update brag spario',
+      );
+      // The update's second block is the recovery (the first is the craft test).
+      const recover = b[b[b[b[proto].parent].next].next];
+      const write = recover && recover.opcode === 'control_if' && b[recover.inputs.SUBSTACK[1]];
+      if (!write || write.opcode !== 'data_replaceitemoflist') {
+        throw new Error('brag-spario-survives-a-shot negative: the update has no recovery second');
+      }
+      write.inputs.ITEM = [1, [4, 2]];
+    },
+  },
+  {
+    key: 'zakato-teleports-mid-field-and-drifts',
+    behavior:
+      'AIR-07/AIR-08: a base or Brag Zakato teleports in on a random row 5-20 and column 4-28, not the top row '
+      + '(init_teleport 3994-4001); while its sparkle plays it drifts with the terrain one scroll step a tick and '
+      + 'moves one cell at timer 8 (+1 row, -1 column, zakato_teleport 3961-3967); while its self-destruct burst '
+      + 'plays it drifts the same way and moves one cell at timer 16 (-1 row, +1 column, zakato_explode 3931-3938)',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      step(vm, 1);
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const get = (id, i) => Number(readVar(vm, id)[i]);
+      for (const sl of FLYING_SLOT_INDICES) {
+        put('slot-type', sl, 0);
+        put('slot-state', sl, 0);
+      }
+      const slot = 63;
+      // Entry: many teleport-ins of both families from the live random stream.
+      const entries = [];
+      for (let i = 0; i < 48; i += 1) {
+        const brag = i % 2 === 1;
+        put('slot-type', slot, 0);
+        put('slot-state', slot, 0);
+        put('slot-x', slot, -99 * 256);
+        put('slot-y', slot, -99 * 256);
+        writeVar(vm, 'walk-type', brag ? 22 : 21);
+        writeVar(vm, 'slot-index', slot + 1);
+        callProc(vm, 'Stage', brag ? 'init brag zakato' : 'init zakato');
+        stepUntil(vm, () => get('slot-state', slot) === 4, 40);
+        entries.push({
+          brag,
+          state: get('slot-state', slot),
+          row: Math.floor(get('slot-x', slot) / 256),
+          col: Math.floor(get('slot-y', slot) / 256),
+        });
+      }
+      // One tick of an update, returning the slot's movement over that tick.
+      const tick = (proc) => {
+        const x = get('slot-x', slot);
+        const y = get('slot-y', slot);
+        writeVar(vm, 'slot-index', slot + 1);
+        callProc(vm, 'Stage', proc);
+        step(vm, 1);
+        return {
+          dx: get('slot-x', slot) - x,
+          dy: get('slot-y', slot) - y,
+          timer: get('slot-timer', slot),
+          state: get('slot-state', slot),
+          type: get('slot-type', slot),
+        };
+      };
+      const pc = readVar(vm, 'player-col');
+      const seed = (type, state) => {
+        put('slot-type', slot, type);
+        put('slot-state', slot, state);
+        put('slot-x', slot, 10 * 256);
+        put('slot-y', slot, (pc - 8) * 256); // outside the closeY band, on-field
+        put('slot-dx', slot, 0);
+        put('slot-dy', slot, 0);
+        put('slot-timer', slot, 0);
+        put('slot-fire-timer', slot, 200);
+      };
+      const run = (proc, type, state) => {
+        seed(type, state);
+        const ticks = [];
+        for (let t = 0; t < 14; t += 1) {
+          const r = tick(proc);
+          if (r.state !== state || r.type !== type) break;
+          ticks.push(r);
+        }
+        return ticks;
+      };
+      return {
+        entries,
+        teleport: run('update zakato', 18, 4), // slow: straight, so the commit tick is excluded cleanly
+        bragTeleport: run('update brag zakato', 22, 4),
+        selfExplode: run('update zakato', 18, 5),
+      };
+    },
+    assert(obs) {
+      for (const e of obs.entries) {
+        assert.equal(e.state, 4, `the ${e.brag ? 'Brag ' : ''}Zakato is stamped teleporting`);
+        assert.ok(e.row >= 5 && e.row <= 20, `teleport row ${e.row} is in 5-20 (rnd&15 + 5)`);
+        assert.ok(e.col >= 4 && e.col <= 28, `teleport column ${e.col} is in 4-28 (gen_random_Y_store_obj + 1)`);
+      }
+      const rows = new Set(obs.entries.map((e) => e.row));
+      assert.ok(rows.size >= 6, `the entry row is drawn at random; saw only ${[...rows].join(',')}`);
+      for (const [name, ticks] of [['base', obs.teleport], ['Brag', obs.bragTeleport]]) {
+        assert.equal(ticks.length, 9, `the ${name} sparkle plays 9 drifting ticks before the commit tick`);
+        for (const t of ticks) {
+          const nudge = t.timer === 8;
+          assert.equal(t.dx, 32 + (nudge ? 256 : 0), `${name} teleport tick at timer ${t.timer} drifts one scroll step${nudge ? ' plus the +1-row move' : ''}`);
+          assert.equal(t.dy, nudge ? -256 : 0, `${name} teleport tick at timer ${t.timer} moves ${nudge ? '-1 column' : 'no column'}`);
+        }
+      }
+      assert.equal(obs.selfExplode.length, 9, 'the self-destruct burst drifts 9 ticks, then the slot frees');
+      for (const t of obs.selfExplode) {
+        const nudge = t.timer === 16;
+        assert.equal(t.dx, 32 - (nudge ? 256 : 0), `self-destruct tick at timer ${t.timer} drifts one scroll step${nudge ? ' less the -1-row move' : ''}`);
+        assert.equal(t.dy, nudge ? 256 : 0, `self-destruct tick at timer ${t.timer} moves ${nudge ? '+1 column' : 'no column'}`);
+      }
+    },
+    // Put the Zakatos back on the old fixed entry: the base init's row draw becomes `(rnd mod 1) + 0` = row 0,
+    // and the drift step in both updates becomes 0. The entry-row and per-tick drift assertions bite.
+    negativeMutation: (p) => {
+      const stage = p.targets.find((t) => t.isStage);
+      const b = stage.blocks;
+      const procBlocks = (proccode) => {
+        const proto = Object.keys(b).find(
+          (k) => b[k] && b[k].opcode === 'procedures_prototype' && b[k].mutation && b[k].mutation.proccode === proccode,
+        );
+        if (!proto) throw new Error(`zakato-teleports-mid-field-and-drifts negative: no '${proccode}'`);
+        const seen = new Set();
+        const walk = (id) => {
+          if (!id || seen.has(id) || !b[id] || typeof b[id] !== 'object' || Array.isArray(b[id])) return;
+          seen.add(id);
+          walk(b[id].next);
+          for (const inp of Object.values(b[id].inputs || {})) {
+            if (Array.isArray(inp) && typeof inp[1] === 'string') walk(inp[1]);
+          }
+        };
+        walk(b[proto].parent);
+        return [...seen].map((id) => b[id]);
+      };
+      const lit = (blk, key) => blk.inputs[key] && Array.isArray(blk.inputs[key][1]) ? blk.inputs[key][1] : null;
+      let rowEdits = 0;
+      for (const blk of procBlocks('init zakato')) {
+        const n2 = blk.opcode === 'operator_mod' && lit(blk, 'NUM2');
+        if (n2 && String(n2[1]) === '16') { n2[1] = '1'; rowEdits += 1; }
+        const a2 = blk.opcode === 'operator_add' && lit(blk, 'NUM2');
+        if (a2 && String(a2[1]) === '5') { a2[1] = '0'; rowEdits += 1; }
+      }
+      let driftEdits = 0;
+      for (const proc of ['update zakato', 'update brag zakato']) {
+        for (const blk of procBlocks(proc)) {
+          const a2 = blk.opcode === 'operator_add' && lit(blk, 'NUM2');
+          if (a2 && String(a2[1]) === '32') { a2[1] = '0'; driftEdits += 1; }
+        }
+      }
+      if (rowEdits < 2 || driftEdits < 4) {
+        throw new Error(`zakato-teleports-mid-field-and-drifts negative: found ${rowEdits} row and ${driftEdits} drift literals`);
+      }
+    },
+  },
+  {
     key: 'brag-zakato-fires-five-bullet-fan',
     behavior:
       'A fused Brag Zakato whose shot fuse has elapsed fires a TERMINAL 5-bullet aimed radiating FAN — five fresh enemy bullets at the 48-magnitude (3 px/f) tier, two radiating-steps apart around the craft-aim direction (brag_zakato_shoot 5054) — then flips ITSELF to the benign SLOT_SELF_EXPLODE with its velocity zeroed, awarding NOTHING (brag_zakato_explode 3920). The sharpest contrast with the base Zakato, which fires a SINGLE aimed bullet.',
@@ -3796,7 +4731,7 @@ export const SCENARIOS = [
   {
     key: 'garu-zakato-detonates-into-ring-and-four-sparios',
     behavior:
-      'A Garu Zakato whose fuse elapses DETONATES: it lays a 16-bullet 360-degree ring (the even radiating angles 0,2,..,30 at the 48-magnitude tier, from its own cell) AND spawns 4 Brag Sparios into the 4 flying slots ADJACENT to it (the arcade clobbers obj 0x3C-0x3F) at its cell with the four CARDINAL velocities (±32 on each axis, brag_spario_dX/dY_tbl), then VANISHES with no burst and no score (garu_zakato_explode 4031 → init_garu_zakato_explosion 5075).',
+      'A Garu Zakato whose fuse elapses DETONATES: it lays a 16-bullet 360-degree ring (the even radiating angles 0,2,..,30 at the 48-magnitude tier, from its own cell) AND spawns 4 Brag Sparios into the 4 flying slots ADJACENT to it (the arcade obj 0x3C-0x3F; here all four are free) at its cell with the four CARDINAL velocities (±32 on each axis, brag_spario_dX/dY_tbl), then VANISHES with no burst and no score (garu_zakato_explode 4031 → init_garu_zakato_explosion 5075).',
     playtestStep: 4,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -3816,10 +4751,11 @@ export const SCENARIOS = [
         put('slot-type', js, 0);
         put('slot-state', js, 0);
       }
-      // The Garu must occupy the FIRST flying slot (FLYING_SLOTS[0] == JS 58, Scratch slot-index 59) so its
-      // 4 successors — the slots the detonation writes (gslot+1..+4 == JS 59..62) — stay in-band; its only
-      // spawner (the debug key) stamps it there. This adjacency is the arcade's obj 0x3C-0x3F clobber.
-      const garu = 58;
+      // The Garu occupies its own arcade slot 0x3B (GARU_ZAKATO_SLOT == JS 59, Scratch slot-index 60) — where the
+      // add_object schedule places it — so its 4 successors, the slots the detonation writes (gslot+1..+4 == JS
+      // 60..63), are the last 4 flying slots: the arcade's obj 0x3C-0x3F (xevious_main.68k:5084-5103). All four
+      // are free here; garu-detonation-spares-a-busy-slot covers a slot that already holds an enemy.
+      const garu = 59;
       const gx = 11 * 256;
       const gy = 9 * 256;
       put('slot-type', garu, 24); // GARU_ZAKATO_TYPE
@@ -3849,8 +4785,8 @@ export const SCENARIOS = [
       }
       const ringExpected = [];
       for (let a = 0; a < 32; a += 2) ringExpected.push(`${aimDx48[a]},${aimDy48[a]}`);
-      // The 4 Sparios land in the adjacent slots garu+1..garu+4 (JS 59..62).
-      const sparios = [59, 60, 61, 62].map((js) => ({
+      // The 4 Sparios land in the adjacent slots garu+1..garu+4 (JS 60..63, the arcade's 0x3C-0x3F).
+      const sparios = [60, 61, 62, 63].map((js) => ({
         type: readVar(vm, 'slot-type')[js],
         state: readVar(vm, 'slot-state')[js],
         dx: readVar(vm, 'slot-dx')[js],
@@ -3893,7 +4829,7 @@ export const SCENARIOS = [
       assert.equal(obs.garuState, 0, 'the detonating Garu clears its slot state');
       assert.equal(
         obs.slotIndex,
-        59,
+        60,
         "detonate restores the walk cursor (slot index) to the Garu's slot so the ordered walk resumes correctly",
       );
       assert.equal(obs.scoreDelta, 0, 'a Garu that detonates on its fuse awards NOTHING (it was not shot)');
@@ -3901,6 +4837,77 @@ export const SCENARIOS = [
     // Empty `garu zakato detonate` so no ring/Sparios are laid and the Garu is never freed → the ring count,
     // Spario and free assertions all bite.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'garu zakato detonate'),
+  },
+  {
+    // AIR-08 (slice 21): the detonation writes its position and the Spario velocities into obj 0x3C-0x3F
+    // unconditionally, but the Spario type is taken up only by an IDLE slot (add_obj_handler,
+    // xevious_main.68k:4801-4815) — a live enemy keeps its own handler, which never reads _TYPE. So an
+    // enemy already in one of those slots is moved onto the Garu with that slot's Spario velocity and stays
+    // what it was; only the free slots get Sparios.
+    key: 'garu-detonation-spares-a-busy-slot',
+    behavior:
+      "A Garu Zakato detonating while one of the four slots after it holds a live enemy leaves that enemy in place as itself — moved onto the Garu's cell with that slot's cardinal velocity — and spawns Brag Sparios only in the free slots (5084-5103 with add_obj_handler 4801-4815)",
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (const s of FLYING_SLOT_INDICES) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+        put('slot-dx', s, 0);
+        put('slot-dy', s, 0);
+      }
+      for (let js = 39; js <= 57; js += 1) {
+        put('slot-type', js, 0);
+        put('slot-state', js, 0);
+      }
+      const garu = 59; // obj 0x3B (JS 59); its successors 0x3C-0x3F are JS 60..63
+      const gx = 11 * 256;
+      const gy = 9 * 256;
+      put('slot-type', garu, 24); // GARU_ZAKATO_TYPE
+      put('slot-state', garu, 1);
+      put('slot-x', garu, gx);
+      put('slot-y', garu, gy);
+      put('slot-dx', garu, 48);
+      put('slot-dy', garu, 0);
+      put('slot-fire-timer', garu, 2); // elapses this tick
+      // A live Toroid in obj 0x3D (JS 61), well away from the Garu.
+      const busy = 61;
+      put('slot-type', busy, 10); // TOROID_TYPE
+      put('slot-state', busy, 1);
+      put('slot-x', busy, 4 * 256);
+      put('slot-y', busy, 20 * 256);
+      put('slot-dx', busy, 40);
+      put('slot-dy', busy, 8);
+      writeVar(vm, 'slot-index', garu + 1);
+      callProc(vm, 'Stage', 'update garu zakato');
+      step(vm, 1);
+      const read = (js) => ({
+        type: readVar(vm, 'slot-type')[js],
+        state: readVar(vm, 'slot-state')[js],
+        vel: `${readVar(vm, 'slot-dx')[js]},${readVar(vm, 'slot-dy')[js]}`,
+        atCell: readVar(vm, 'slot-x')[js] === gx && readVar(vm, 'slot-y')[js] === gy,
+      });
+      return { slots: [60, 61, 62, 63].map(read), garuType: readVar(vm, 'slot-type')[garu] };
+    },
+    assert(obs) {
+      const [a, b, c, d] = obs.slots;
+      assert.equal(obs.garuType, 0, 'precondition: the Garu detonated and freed its slot');
+      assert.equal(b.type, 10, 'the enemy already in obj 0x3D stays a Toroid — it does not become a Spario');
+      assert.equal(b.state, 1, 'the Toroid stays active');
+      assert.equal(b.atCell, true, "the Toroid is moved onto the Garu's cell, as the arcade's _X/_Y copy does");
+      assert.equal(b.vel, '0,-32', "the Toroid takes obj 0x3D's Spario velocity (brag_spario_dX/dY_tbl)");
+      assert.deepEqual([a.type, c.type, d.type], [9, 9, 9], 'the three free slots become Brag Sparios');
+      assert.deepEqual([a.vel, c.vel, d.vel], ['32,0', '-32,0', '0,32'], 'each free slot launches on its cardinal velocity');
+      assert.equal([a, c, d].every((x) => x.atCell && x.state === 1), true, "each Spario is active at the Garu's cell");
+    },
+    // Turn the free-slot test inside the detonation into `type = 9`: the busy Toroid's slot is overwritten
+    // with a Spario again (the pre-fix clobber) and the free slots no longer get one → the assertions bite.
+    negativeMutation: (p) =>
+      mutate.changeListItemEqualsOperand(p, 'Stage', 'slot type', 0, 9, 'garu zakato detonate'),
   },
   {
     key: 'bacura-spawns-into-band-one-per-second',
@@ -3990,6 +4997,75 @@ export const SCENARIOS = [
     // reached, so this bites the CADENCE assertions specifically (gaps collapse from 30 to 1) — proving the
     // period coverage is real, exactly the regression class (a broken period reload) the divergence review flagged.
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'one second cntr', 0),
+  },
+  {
+    // #165: the band is the limit. The admit is clamped at BACURA_BAND_SIZE (16) — a port guard: the arcade's
+    // band is its physical limit and its quotas stay well under it (main_fn_5__inc_num_bacura 5201-5217) — so a
+    // quota that would pass the band spends its increments without admitting, and the init loop never stamps a
+    // slab past the band into the neighbouring slots (ground slot 16 below, the bomb target 33 above).
+    key: 'bacura-admits-stop-at-the-band',
+    behavior:
+      'AIR-11 (.play): with the reserved band one slab short of full and a quota of 3 still to admit, the pump fills the band (16 slabs) and admits no further, spends the rest of the quota, and never writes the slots either side of the band',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      writeVar(vm, 'game-director-state', 'frozen'); // only our pump calls drive the band (as above)
+      const BAND_LO = 16, BAND_HI = 31; // JS indices for Bacura slots 17..32
+      const BELOW = BAND_LO - 1, ABOVE = BAND_HI + 1; // ground slot 16, bomb-target slot 33
+      const type = () => readVar(vm, 'slot-type');
+      const stateList = () => readVar(vm, 'slot-state');
+      for (let s = BELOW; s <= ABOVE; s += 1) {
+        type()[s] = 0;
+        stateList()[s] = 0;
+      }
+      writeVar(vm, 'num-bacura', 15);
+      writeVar(vm, 'bacura-inc-cnt', 3);
+      writeVar(vm, 'one-second-cntr', 2); // the first admit lands on the first pump; the next two a second apart
+      const counts = [];
+      const neighbours = [];
+      for (let i = 0; i < 3 * 30 + 5; i += 1) {
+        callProc(vm, 'Stage', 'pump bacura');
+        step(vm, 1);
+        counts.push(Number(readVar(vm, 'num-bacura')));
+        neighbours.push([type()[BELOW], stateList()[BELOW], type()[ABOVE], stateList()[ABOVE]].map(Number));
+      }
+      const banded = [];
+      for (let s = BAND_LO; s <= BAND_HI; s += 1) if (Number(type()[s]) === 1) banded.push(s);
+      return {
+        maxCount: Math.max(...counts),
+        finalCount: counts[counts.length - 1],
+        incLeft: Number(readVar(vm, 'bacura-inc-cnt')),
+        bandedCount: banded.length,
+        neighboursUntouched: neighbours.every((n) => n.every((v) => v === 0)),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.maxCount, 16, `the count stops at the 16-slot band (max ${obs.maxCount})`);
+      assert.equal(obs.finalCount, 16, 'the count settles at the band size');
+      assert.equal(obs.incLeft, 0, 'the clamped increments are still spent');
+      assert.equal(obs.bandedCount, 16, 'all 16 band slots hold a slab');
+      assert.equal(obs.neighboursUntouched, true, 'the slots either side of the band are never written');
+    },
+    // Lift the clamp (`num bacura < 16` -> `< 99`): the count passes the band and the init loop stamps slabs past
+    // its top into the bomb-target slot, so the count and neighbour assertions bite.
+    negativeMutation: (p) => {
+      const stage = p.targets.find((t) => t.isStage);
+      const vid = Object.keys(stage.variables).find((id) => stage.variables[id][0] === 'num bacura');
+      let patched = 0;
+      for (const b of Object.values(stage.blocks)) {
+        const left = b.inputs && b.inputs.OPERAND1;
+        if (
+          b.opcode === 'operator_lt'
+          && Array.isArray(left) && Array.isArray(left[1]) && left[1][0] === 12 && left[1][2] === vid
+          && Array.isArray(b.inputs.OPERAND2) && Number(b.inputs.OPERAND2[1][1]) === 16
+        ) {
+          b.inputs.OPERAND2 = [1, [4, '99']];
+          patched += 1;
+        }
+      }
+      if (!patched) throw new Error("mutate: no `num bacura < 16` clamp on the Stage");
+    },
   },
   {
     key: 'bacura-drifts-down-the-field-indestructibly',
@@ -4103,6 +5179,186 @@ export const SCENARIOS = [
     },
     // Empty `check shot bacura` so an overlapping shot is never marked → it is never SHOT_BOUNCE → the bounce
     // assertion bites (the slab-alive clause alone would pass vacuously, so the mark is what proves it).
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check shot bacura'),
+  },
+  {
+    key: 'shot-rebounds-off-a-bacura-in-four-ticks',
+    // roadmap-evidence: CAB-05 success  (presentation.reference-art shot: a live shot draws the arcade's own
+    //   flight frame for the tick, and a shot marked for the bounce draws its hit frame at colour 0x23 in place,
+    //   then the four mirrored rebound codes 0x118-0x11B one a tick, backing off 3.75 units a tick, then deletes)
+    behavior:
+      'WPN-01 / CAB-05 (.play): a player shot draws code 0x116 + ((countup >> 2) & 1) at colour 0x23 + ((countup >> 1) & 1) each tick; marked SHOT_BOUNCE by a Bacura it holds its place for the hit tick at colour 0x23, then draws rebound codes 0x118-0x11B mirrored, one a tick, moving back 3.75 units a tick (shot_destroyed, xevious_main.68k 2400-2417: eight frames at two a tick), and deletes',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      suppressGroundSpawns(vm);
+      // Sample every shot clone after each step of its own clone thread: a non-warp loop yields once per
+      // iteration, so each sample is one port tick of that shot (a harness pump runs several ticks).
+      const samples = new Map(); // clone id -> [{ costume, y, tick, state }]
+      const seq = vm.runtime.sequencer;
+      const original = seq.stepThread;
+      seq.stepThread = function hooked(thread) {
+        original.call(this, thread);
+        const t = thread.target;
+        if (!t || t.isStage || t.isOriginal || !t.sprite || t.sprite.name !== 'blaster') return;
+        if (!vm.runtime.targets.includes(t)) return; // the step that deleted it
+        const top = t.blocks.getBlock(thread.topBlock);
+        if (!top || top.opcode !== 'control_start_as_clone') return;
+        const slotVar = Object.values(t.variables).find((v) => v.name === 'clone slot');
+        const slot = Number(slotVar.value) - 1;
+        if (target === null) target = t.id;
+        if (t.id !== target) return;
+        // Keep the flying band and the Bacura band empty, so no detector spends the shot first.
+        for (const s of [...Array(16).keys()].map((i) => 16 + i).concat([58, 59, 60, 61, 62, 63])) {
+          readVar(vm, 'slot-type')[s] = 0;
+          readVar(vm, 'slot-state')[s] = 0;
+        }
+        if (!samples.has(t.id)) samples.set(t.id, []);
+        const trace = samples.get(t.id);
+        trace.push({
+          costume: t.sprite.costumes[t.currentCostume].name,
+          y: t.y,
+          tick: Number(readVar(vm, 'tick')),
+          state: Number(readVar(vm, 'slot-state')[slot]),
+        });
+        // After three flight ticks, mark it as `check shot bacura` does (the detector itself is pinned by
+        // bacura-bounces-the-shot-and-survives); marking inside the hook keeps the shot low on the screen.
+        if (trace.length === 3) readVar(vm, 'slot-state')[slot] = 6; // SHOT_BOUNCE
+      };
+      let target = null;
+      try {
+        keyDown(vm, ' ');
+        for (let i = 0; i < 20 && target === null; i += 1) step(vm, 1);
+        keyUp(vm, ' ');
+        assert.ok(target !== null, 'precondition: a shot was fired');
+        for (let i = 0; i < 40 && vm.runtime.targets.some((t) => t.id === target); i += 1) step(vm, 1);
+      } finally {
+        seq.stepThread = original;
+      }
+      const trace = samples.get(target);
+      const marked = trace.findIndex((sample) => sample.state === 6);
+      return {
+        flight: trace.slice(0, Math.max(marked, 0)),
+        lastFlight: marked > 0 ? trace[marked - 1] : null,
+        rebound: marked >= 0 ? trace.slice(marked) : [],
+        deleted: !vm.runtime.targets.some((t) => t.id === target),
+      };
+    },
+    assert(obs) {
+      assert.ok(
+        obs.flight.length > 0 && obs.lastFlight !== null,
+        `precondition: the shot flew before it was marked (flight ${obs.flight.length}, rebound ${obs.rebound.length})`,
+      );
+      for (const sample of obs.flight) {
+        // countup = 2 * tick: code (countup >> 2) & 1, colour (countup >> 1) & 1, never mirrored on an even countup.
+        const code = Math.floor(sample.tick / 2) % 2 + 1;
+        const clut = sample.tick % 2 ? 'c24' : 'c23';
+        assert.equal(sample.costume, `zapper-shot/fly/0${code}/${clut}/none`, `flight frame at tick ${sample.tick}`);
+      }
+      const [hit, ...frames] = obs.rebound;
+      assert.ok(hit, 'the marked shot drew a hit tick');
+      const hitCode = Math.floor(hit.tick / 2) % 2 + 1;
+      assert.equal(hit.costume, `zapper-shot/fly/0${hitCode}/c23/none`, 'the hit tick draws the shot code at colour 0x23');
+      assert.equal(hit.y, obs.lastFlight.y, 'the hit tick does not move the shot');
+      assert.deepEqual(
+        frames.map((frame) => frame.costume),
+        ['01', '02', '03', '04'].map((code) => `zapper-shot/rebound/${code}/x`),
+        'four rebound ticks: codes 0x118-0x11B, mirrored (the drawn frames are TIMER 1, 3, 5, 7)',
+      );
+      frames.forEach((frame, index) => {
+        assert.equal(frame.y, hit.y - 3.75 * (index + 1), `rebound tick ${index + 1} backs off 3.75 units a tick`);
+      });
+      assert.equal(obs.deleted, true, 'the shot deletes after its fourth rebound tick');
+    },
+    // The old build's length: stepping the rebound clock one frame a tick plays the eight frames twice as long
+    // and twice as far, so the four-tick assertion bites.
+    negativeMutation: (p) => mutate.changeVariableChangeBy(p, 'blaster', 'bounce timer', 2, 1),
+  },
+  {
+    // #165: the two scenarios above prove the detector's mark (with a seeded shot) and the rebound (with a
+    // hand-set mark). This one joins them: a FIRED shot meets a live slab, the real `check shot bacura` marks it,
+    // and the same shot clone then draws its rebound, backs off and deletes; the slab survives, nothing scores.
+    key: 'bacura-detector-bounce-rebounds-and-deletes',
+    behavior:
+      'WPN-01 / AIR-11 (.play): a fired shot that meets a Bacura is marked by the live detector, then rebounds (four mirrored rebound frames, backing off) and deletes, while the slab keeps its slot and nothing is scored',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 2);
+      suppressGroundSpawns(vm);
+      const slab = 20; // JS; a mid-band Bacura slot
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const samples = [];
+      let target = null;
+      const seq = vm.runtime.sequencer;
+      const original = seq.stepThread;
+      seq.stepThread = function hooked(thread) {
+        original.call(this, thread);
+        const t = thread.target;
+        if (!t || t.isStage || t.isOriginal || !t.sprite || t.sprite.name !== 'blaster') return;
+        if (!vm.runtime.targets.includes(t)) return;
+        const top = t.blocks.getBlock(thread.topBlock);
+        if (!top || top.opcode !== 'control_start_as_clone') return;
+        const slot = Number(Object.values(t.variables).find((v) => v.name === 'clone slot').value) - 1;
+        if (target === null) target = t.id;
+        if (t.id !== target) return;
+        const shotState = Number(readVar(vm, 'slot-state')[slot]);
+        samples.push({ costume: t.sprite.costumes[t.currentCostume].name, y: t.y, state: shotState });
+        // Keep the flying band and the rest of the Bacura band empty, and hold ONE live slab on the shot's own
+        // position until the detector marks it, so the walk's next shot pass finds the overlap.
+        for (const s of [...Array(16).keys()].map((i) => 16 + i).concat([58, 59, 60, 61, 62, 63])) {
+          if (s === slab) continue;
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        if (samples.length >= 2 && !samples.some((sample) => sample.state === 6)) {
+          put('slot-type', slab, 1);
+          put('slot-state', slab, 1);
+          put('slot-x', slab, readVar(vm, 'slot-x')[slot]);
+          put('slot-y', slab, readVar(vm, 'slot-y')[slot]);
+          put('slot-dx', slab, 0);
+          put('slot-dy', slab, 0);
+        }
+      };
+      const score0 = Number(readVar(vm, 'eco-score'));
+      try {
+        keyDown(vm, ' ');
+        for (let i = 0; i < 20 && target === null; i += 1) step(vm, 1);
+        keyUp(vm, ' ');
+        assert.ok(target !== null, 'precondition: a shot was fired');
+        for (let i = 0; i < 40 && vm.runtime.targets.some((t) => t.id === target); i += 1) step(vm, 1);
+      } finally {
+        seq.stepThread = original;
+      }
+      const marked = samples.findIndex((sample) => sample.state === 6);
+      return {
+        marked,
+        rebound: marked >= 0 ? samples.slice(marked + 1).map((s) => s.costume) : [],
+        ys: marked >= 0 ? samples.slice(marked).map((s) => s.y) : [],
+        deleted: !vm.runtime.targets.some((t) => t.id === target),
+        slabAlive: Number(readVar(vm, 'slot-type')[slab]) === 1,
+        scoreDelta: Number(readVar(vm, 'eco-score')) - score0,
+      };
+    },
+    assert(obs) {
+      assert.ok(obs.marked > 0, `the live detector marked the fired shot for the bounce (sample ${obs.marked})`);
+      assert.deepEqual(
+        obs.rebound,
+        ['01', '02', '03', '04'].map((code) => `zapper-shot/rebound/${code}/x`),
+        'the marked shot draws its four rebound frames',
+      );
+      for (let i = 1; i < obs.ys.length; i += 1) {
+        assert.ok(obs.ys[i] < obs.ys[i - 1], `the rebounding shot backs off (${obs.ys.join(', ')})`);
+      }
+      assert.equal(obs.deleted, true, 'the shot deletes after the rebound');
+      assert.equal(obs.slabAlive, true, 'the slab survives the bounce');
+      assert.equal(obs.scoreDelta, 0, 'the bounce scores nothing');
+    },
+    // Empty the detector: the shot is never marked, flies on and deletes off the top, so the mark and rebound
+    // assertions bite.
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'check shot bacura'),
   },
   {
@@ -4518,231 +5774,6 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.graftVariableSetOnProc(p, 'Stage', 'update sheonite', 'player hit', 1),
   },
   {
-    key: 'debug-key-cycles-families',
-    behavior:
-      'The temporary debug key (T) brings enemies in through the shared spawner and, spawn by spawn, advances its family cursor through every built family (self-extending to the newly built Zakato entries), so each family can be cycled to for playtesting (tracked for removal)',
-    playtestStep: 4,
-    async drive(vm) {
-      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // Isolate the AIR debug cycle from live ground firers. GND-07's Domogram is self-moving: a path
-      // segment with dx=0 holds it on-screen indefinitely (the terrain scrolls past it) while it fires an
-      // aimed bullet into the flying band every few frames — a steady stream that intermittently re-occupies
-      // the band and blocks the debug wave's field-empty gate, stalling the cursor before it completes. (A
-      // static Logram scrolled off with the terrain and stopped firing, so it never stalled this.) Zero the
-      // ground-type column so no ground family spawns at all — same isolation enemy-bullet-fires uses; it
-      // touches only schedule data, never the debug air wave.
-      suppressGroundSpawns(vm);
-      // Family PRESENCE cannot prove the debug key did anything: normal play eventually scrolls into zones
-      // that spawn every family too (measured with no key held — all of types 12..17 appear within ~80
-      // settling steps, type 15 as early as step ~2), so accumulating seen types is confounded and cannot
-      // make the negative bite. The debug-specific, pacing-invariant signal is the CURSOR itself: the
-      // `debug spawn index` advances one step per fresh debug spawn and wraps mod len(DEBUG_SPAWN_FAMILIES)
-      // (game_director.py install_debug_spawn_wave); NORMAL play never touches it. Hold T, sweep the cursor,
-      // and collect the distinct residues seen — proving it self-extends across every built family rather
-      // than stopping at a fixed set. The exact residue→family binding is pinned structurally in
-      // tests/test_scratch_project.py (DEBUG_SPAWN_FAMILIES); this scenario proves the cursor drives the
-      // whole cycle at runtime.
-      //
-      // The cursor only advances on a FRESH debug spawn — i.e. when the flying band is empty (the debug wave
-      // brings in one solo, then waits for it to leave before the next). But the tail of the cycle includes
-      // the Garu Zakato, whose detonation seeds 4 Brag Sparios — accelerating homers that, against this
-      // harness's stationary, non-firing craft, orbit forever and never cull. Passively held, the cursor
-      // therefore parks at the family after Garu and never completes the cycle (measured: it froze after 9
-      // of 17 residues even over 3000 frames). So we clear the flying band ourselves each frame to reopen
-      // the field-empty gate — this does NOT drive the normal spawner: while T is held the debug wave sets
-      // `formation count`/`formation type offset` every tick before the spawner runs, so the only family
-      // that can enter is the debug wave's current one, and only the debug wave ever writes the cursor.
-      // How far the cursor jumps between our per-frame samples varies (in the opening frames several fresh
-      // spawns land in one settling, so it can step by >1), so "reached the max" is not "saw every residue".
-      // But across successive wraps every residue 0..N-1 is eventually sampled, so we loop until the set is
-      // a complete contiguous run 0..max (no residue skipped) that reaches the last built family. When each
-      // gate reopens is subject to scratch-vm execution jitter (full coverage was measured between ~50 and
-      // ~195 frames across runs), so budget a generous cap (early-exit on completion keeps the common case
-      // fast) and let the count self-extend: a new family just pushes `max` up, no threshold to re-tune.
-      keyDown(vm, 't');
-      const cursors = new Set([readVar(vm, 'debug-spawn-index')]);
-      let anyFlying = false;
-      let maxCursor = 0;
-      for (let i = 0; i < 600; i += 1) {
-        const slotType = readVar(vm, 'slot-type');
-        const slotState = readVar(vm, 'slot-state');
-        for (const s of FLYING_SLOT_INDICES) { slotType[s] = 0; slotState[s] = 0; }
-        step(vm, 1);
-        const cursor = readVar(vm, 'debug-spawn-index');
-        cursors.add(cursor);
-        if (cursor > maxCursor) maxCursor = cursor;
-        const type = readVar(vm, 'slot-type');
-        if (FLYING_SLOT_INDICES.some((s) => type[s] !== 0)) anyFlying = true;
-        // Complete: every residue 0..max collected (contiguous) and reached the last built family (>=16).
-        if (cursors.size === maxCursor + 1 && maxCursor >= 16) break;
-      }
-      keyUp(vm, 't');
-      const contiguous = cursors.size === maxCursor + 1;
-      return { distinctCursors: cursors.size, maxCursor, contiguous, anyFlying };
-    },
-    assert(obs) {
-      assert.equal(obs.anyFlying, true, 'holding the debug key stamps flying enemies through the shared spawner');
-      assert.ok(obs.contiguous, `the debug cursor steps +1 with no skips (residues 0..${obs.maxCursor} with no gaps); saw ${obs.distinctCursors} distinct`);
-      assert.ok(
-        obs.maxCursor >= 16,
-        `the debug cycle self-extends through every built family slot (residues 0..16, incl. the new Giddo Spario, four base Zakato, two Brag Zakato and Garu Zakato entries); reached ${obs.maxCursor}`,
-      );
-    },
-    // Empty `debug spawn wave` so the key never advances its cursor → `debug spawn index` stays 0 →
-    // maxCursor == 0 → the self-extension assertion (maxCursor >= 16) bites (normal play leaves the cursor
-    // untouched, so it cannot mask the mutation).
-    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug spawn wave'),
-  },
-  {
-    key: 'debug-ground-key-cycles-families',
-    behavior:
-      'The temporary debug ground key (G) stamps a built GROUND family into the band through the shared ground seed builders and, spawn by spawn, advances its family cursor through every built ground family (self-extending as later ground families are built), so each can be cycled to for a bomb playtest (tracked for removal, #119)',
-    playtestStep: 4,
-    async drive(vm) {
-      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // The G key is the ground analog of the T key. Family PRESENCE alone cannot make the negative bite — the
-      // area schedule scrolls ground families in on its own — so isolate the debug tool two ways: (1) suppress
-      // every SCHEDULED ground spawn (empty the schedule's ground-type column) so the ONLY ground objects that
-      // can appear are the debug key's, and (2) watch the debug-specific, pacing-invariant signal —
-      // `debug ground index`, which advances one step per FRESH debug ground spawn and wraps mod
-      // len(DEBUG_GROUND_FAMILIES) (game_director.py install_debug_ground_spawn); normal play never touches it.
-      // The exact residue→family binding is pinned in game_director.py (DEBUG_GROUND_FAMILIES); this scenario
-      // proves the cursor drives the whole cycle at runtime and that a fresh spawn actually stamps the band.
-      //
-      // The cursor only advances on a FRESH spawn — i.e. when the ground band is empty (the tool stamps one
-      // family, then defers until it scrolls off). Ground objects always scroll DOWN and cull off the field, so
-      // this never stalls; but to sweep the whole cycle quickly we clear the ground band (JS slots 0..15)
-      // ourselves each frame to reopen the field-empty gate. That does NOT drive the schedule (suppressed
-      // above): only the debug tool ever stamps ground or writes the cursor. How far the cursor jumps between
-      // samples varies (a family may cull within one settling), so we loop until the residues form a complete
-      // contiguous run 0..max that reaches the last built family; a new family just pushes max up, no threshold
-      // to re-tune.
-      suppressGroundSpawns(vm);
-      keyDown(vm, 'g');
-      const cursors = new Set([readVar(vm, 'debug-ground-index')]);
-      let anyGround = false;
-      let maxCursor = 0;
-      const LAST = 6; // Boza Logram is the 7th built ground family (index 6); self-extends as more are built
-      for (let i = 0; i < 600; i += 1) {
-        const slotType = readVar(vm, 'slot-type');
-        const slotState = readVar(vm, 'slot-state');
-        for (let s = 0; s < 16; s += 1) { slotType[s] = 0; slotState[s] = 0; }
-        step(vm, 1);
-        const cursor = readVar(vm, 'debug-ground-index');
-        cursors.add(cursor);
-        if (cursor > maxCursor) maxCursor = cursor;
-        const type = readVar(vm, 'slot-type');
-        for (let s = 0; s < 16; s += 1) if (type[s] !== 0) anyGround = true;
-        // Complete: every residue 0..max collected (contiguous) and reached the last built family (>= 6).
-        if (cursors.size === maxCursor + 1 && maxCursor >= LAST) break;
-      }
-      keyUp(vm, 'g');
-      const contiguous = cursors.size === maxCursor + 1;
-      return { distinctCursors: cursors.size, maxCursor, contiguous, anyGround };
-    },
-    assert(obs) {
-      assert.equal(obs.anyGround, true, 'holding the debug ground key stamps a ground family into the band');
-      assert.ok(obs.contiguous, `the debug ground cursor steps +1 with no skips (residues 0..${obs.maxCursor} with no gaps); saw ${obs.distinctCursors} distinct`);
-      assert.ok(
-        obs.maxCursor >= 6,
-        `the debug ground cycle self-extends through every built ground family (residues 0..6: Barra, Zolbak, Garu Barra, Logram, Derota, Garu Derota, Boza Logram); reached ${obs.maxCursor}`,
-      );
-    },
-    // Empty `debug ground spawn` so the key never stamps or advances → `debug ground index` stays 0 →
-    // maxCursor == 0 and no ground ever appears (the schedule is suppressed) → both the self-extension
-    // (>= 6) and the anyGround assertions bite (normal play never touches the cursor, so nothing masks it).
-    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug ground spawn'),
-  },
-  {
-    key: 'debug-ground-key-isolates-normal-enemies',
-    behavior:
-      'While the temporary debug ground key (G) is held it isolates the ground family under test (parity with the T aerial key): the normal flying-formation stream is suppressed — the formation-wave count is pinned at 0 and the flying band is cleared every tick — so no normal enemies enter the screen and the operator can focus on the ground family alone (tracked for removal, #119)',
-    playtestStep: 4,
-    async drive(vm) {
-      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // The operator's report: holding G still let normal flying waves pour in. The fix makes the G proc
-      // suppress the flying stream every tick it is held (game_director.py install_debug_ground_spawn: zero
-      // `formation count`, clear the flying band) so the spawner below it brings in nothing. Prove it by
-      // holding G through a long window in which normal play WOULD spawn flying enemies — the T-key scenario
-      // (debug-key-cycles-families) measures every flying type appearing within ~80 settling steps with no key
-      // held — and asserting the flying band NEVER populates. We clear the GROUND band each frame only so the
-      // debug tool keeps cycling; that never drives the flying spawner (only the schedule/spawner does, and G
-      // pins its count to 0). Deliberately NO suppressGroundSpawns: the normal stream must stay live so the
-      // negative (which strips the suppression) actually spawns and the assertion can bite.
-      keyDown(vm, 'g');
-      let anyFlying = false;
-      for (let i = 0; i < 140; i += 1) {
-        const slotType = readVar(vm, 'slot-type');
-        const slotState = readVar(vm, 'slot-state');
-        for (let s = 0; s < 16; s += 1) { slotType[s] = 0; slotState[s] = 0; }
-        step(vm, 1);
-        const type = readVar(vm, 'slot-type');
-        if (FLYING_SLOT_INDICES.some((s) => type[s] !== 0)) anyFlying = true;
-      }
-      const formationCount = readVar(vm, 'formation-count');
-      keyUp(vm, 'g');
-      return { anyFlying, formationCount };
-    },
-    assert(obs) {
-      assert.equal(
-        obs.anyFlying,
-        false,
-        'while G is held no normal flying enemy ever enters the flying band (the normal stream is isolated)',
-      );
-      assert.equal(
-        obs.formationCount,
-        0,
-        'while G is held the formation-wave count is pinned at 0 so the flying spawner brings in nothing',
-      );
-    },
-    // Empty `debug ground spawn` so the flying-stream suppression that lives inside it (the formation-count
-    // zero + flying-band clear) is gone → the normal schedule spawns flying formations again within the
-    // window → anyFlying becomes true → the isolation assertion bites. Normal play never suppresses the
-    // stream, so nothing masks the mutation.
-    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug ground spawn'),
-  },
-  {
-    key: 'debug-pause-key-freezes-and-resumes-the-walk',
-    behavior:
-      'The temporary debug pause key (P) is a freeze/resume TOGGLE: a tap freezes the whole tick so the walk stops advancing (letting the operator screenshot a ground-enemy issue), and a second tap resumes it (tracked for removal, #119)',
-    playtestStep: 4,
-    async drive(vm) {
-      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      step(vm, 1); // warm the walk live once so `tick` is advancing
-      // `tick` advances only inside ADVANCE_SLOTS, which runs only while NOT paused (game_director.py wraps
-      // the whole walk-loop body in `if debug paused == 0`, with the pause toggle running first and OUTSIDE
-      // that gate). So a frozen `tick` == a frozen screen. P is a rising-edge TAP toggle, so tapKey (one down
-      // pump, one up pump) flips it exactly once.
-      tapKey(vm, 'p'); // first tap -> paused
-      const paused = readVar(vm, 'debug-paused');
-      const tickAtPause = readVar(vm, 'tick');
-      step(vm, 5); // P no longer held; the walk must stay frozen across every pump
-      const tickWhilePaused = readVar(vm, 'tick');
-      tapKey(vm, 'p'); // second tap -> resume
-      const resumed = readVar(vm, 'debug-paused');
-      step(vm, 3);
-      const tickAfterResume = readVar(vm, 'tick');
-      return { paused, tickAtPause, tickWhilePaused, resumed, tickAfterResume };
-    },
-    assert(obs) {
-      assert.equal(obs.paused, 1, 'a tap of P engages the freeze (debug paused == 1)');
-      assert.equal(
-        obs.tickWhilePaused,
-        obs.tickAtPause,
-        'while frozen the walk does not advance (tick is held across the paused pumps)',
-      );
-      assert.equal(obs.resumed, 0, 'a second tap of P releases the freeze (debug paused == 0)');
-      assert.ok(
-        obs.tickAfterResume > obs.tickAtPause,
-        'after the resume tap the walk advances again (tick climbs)',
-      );
-    },
-    // Empty `debug pause toggle` so a P tap never flips `debug paused` → it stays 0 → the walk runs through
-    // the "paused" pumps → tick advances while we expect it frozen → the freeze assertion bites. (The resume
-    // path is vacuously fine because the walk was never frozen; the freeze assertion is the one that catches.)
-    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'debug pause toggle'),
-  },
-  {
     key: 'blaster-kills-toroid-and-scores',
     behavior:
       'A player shot overlapping a flying Toroid resolves the hit through the single score path: the score rises by the Toroid value and the shot is consumed',
@@ -5115,7 +6146,7 @@ export const SCENARIOS = [
     // player-dead`; the life clones that spawned were created after `director stop` went out, survived it, and
     // then ran the HUD's own director-enter spawn, stacking 2-3 copies of every glyph.
     behavior:
-      'Through a real craft death the HUD is rebuilt exactly once: at player-dead and after the respawn, no two visible HUD glyph clones share a position (stacked duplicates made the HUD text look bold)',
+      'Through a real craft death the HUD is rebuilt exactly once: through the explosion window, player-dead and the respawn, no two visible HUD glyph clones share a position (stacked duplicates made the HUD text look bold)',
     playtestStep: 5,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -5134,17 +6165,24 @@ export const SCENARIOS = [
         }
         return { visible: [...seen.values()].reduce((a, n) => a + n, 0), stacked: [...seen.values()].filter((n) => n > 1).length };
       };
-      // A whole death (explosion -> player-dead -> respawn) can run inside ONE harness step, so player-dead is
-      // not reliably visible at a step boundary. Sample instead after every thread step the sequencer runs
-      // while the state is player-dead (the HUD's director-enter spawn is one of those threads), keeping the
-      // worst stacking seen. On the first player-dead sample, clear the attacker and restore invulnerability
-      // so the respawned craft is not killed again inside the same step.
+      // A whole death (explosion window -> player-dead -> respawning -> playing) can run inside ONE harness
+      // step, so no stage of it is reliably visible at a step boundary. Sample instead after every thread step
+      // the sequencer runs from the hit until the respawn (#158: the window is spent in `playing` with `dying`
+      // up, and player-dead itself now lasts only its epoch check, so the HUD's director-enter spawn lands in
+      // player-dead or respawning), keeping the worst stacking seen. On the first sample, clear the attacker
+      // and restore invulnerability so the respawned craft is not killed again inside the same step.
       const seq = vm.runtime.sequencer;
       const original = seq.stepThread;
       let atDead = null;
+      const inDeath = () => {
+        const st = readVar(vm, 'game-director-state');
+        return (
+          st === 'player-dead' || st === 'respawning' || (st === 'playing' && Number(readVar(vm, 'player-dying')) === 1)
+        );
+      };
       seq.stepThread = function hooked(thread) {
         original.call(this, thread);
-        if (readVar(vm, 'game-director-state') !== 'player-dead') return;
+        if (!inDeath()) return;
         if (atDead === null) {
           atDead = { visible: 0, stacked: 0 };
           put('slot-type', 63, 0);
@@ -5184,16 +6222,19 @@ export const SCENARIOS = [
       };
     },
     assert(obs) {
-      assert.ok(obs.atDead, 'precondition: the craft died and player-dead was observed');
+      assert.ok(obs.atDead, 'precondition: the craft died and the death route was observed');
       assert.equal(obs.craftLost, 1, 'precondition: exactly one craft was lost');
       assert.equal(obs.respawned, 'playing', 'precondition: the next craft respawned');
-      assert.ok(obs.atDead.visible > 0, 'the HUD is on screen at player-dead');
-      assert.equal(obs.atDead.stacked, 0, 'no HUD glyph is stacked on another at player-dead (no bold text)');
+      assert.ok(obs.atDead.visible > 0, 'the HUD is on screen through the death route');
+      assert.equal(obs.atDead.stacked, 0, 'no HUD glyph is stacked on another through the death route (no bold text)');
       assert.equal(obs.afterRespawn.stacked, 0, 'no HUD glyph is stacked on another after the respawn');
     },
-    // Restore the pre-fix ordering — `craft changed` broadcast just before `transition to player-dead` — so the
-    // racing life clones survive the stop and re-run the HUD spawn -> the no-stack assertion fails.
-    negativeMutation: (p) => mutate.insertBroadcastBeforeTransition(p, 'Stage', 'player-dead', 'craft changed'),
+    // Re-create the race — a `craft changed` broadcast just before a death-route transition — so the racing
+    // life clones survive the stop and re-run the HUD spawn -> the no-stack assertions fail. #158: the slice-20
+    // site (before `transition to player-dead`) no longer stacks in the VM, because player-dead now lasts only
+    // its epoch check and the respawning transition's stop clears the survivors at once; the same race before
+    // the respawn's `transition to playing` stacks every glyph and persists into the next life.
+    negativeMutation: (p) => mutate.insertBroadcastBeforeTransition(p, 'Stage', 'playing', 'craft changed'),
   },
   {
     key: 'bomb-crosshair-leads-craft',
@@ -5436,6 +6477,10 @@ export const SCENARIOS = [
             // reveals the ~2s credit overlay), so seeing one in a slot is in scope. Its bomb-to-reveal / hold /
             // min-score behaviour is proved by the dedicated hidden-credit-* scenarios; here we only assert it
             // is not treated as unhandled leakage.
+          } else if (t === 84) {
+            // AREA-02 (area.add-object-dispatch #166, slice 21): the hidden Bonus Flag (0x54) now spawns from the
+            // area 1/3 add_object records into obj slot 0, so seeing one in the band is in scope. Its placement is
+            // proved by add-object-places-idle-drops-busy; here we only assert it is not unhandled leakage.
           } else {
             onlyHandledTypes = false;
           }
@@ -5476,6 +6521,123 @@ export const SCENARIOS = [
     // object is ever stamped → barraSeen / logramSeen fail.
     negativeMutation: (p) =>
       mutate.changeEqualsOperand(p, 'Stage', 'add_ground_object', '__never__'),
+  },
+  {
+    // AREA-02 (area.add-object-dispatch #166): the schedule's 13 add_object records write their type into one raw
+    // arcade object slot (sub_2_fb_0__type_only, xevious_sub.68k:649-659); the main CPU picks it up only from an
+    // idle slot (add_obj_handler, xevious_main.68k:4801-4815), and a busy slot's handler clears _TYPE when it frees,
+    // so the record is lost, never queued. Each record is fired from the real schedule (frozen walk, the area clock
+    // and `place pending object` driven by hand, the garu-node pattern), first onto an empty field, then the area-3
+    // Torkan again with a Toroid already in obj 0x3A.
+    key: 'add-object-places-idle-drops-busy',
+    behavior:
+      'Every add_object record places its object when its slot is idle — the hidden bonus flag in ground slot 0, or a Torkan, Kapi, Terrazi or Garu Zakato in flying slot 0x3A/0x3B — and is dropped, never queued, when that slot is busy',
+    playtestStep: 4,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const handlers = readVar(vm, 'area-schedule-handler').map(String);
+      const rows = readVar(vm, 'area-schedule-trigger-row').map(Number);
+      const gslot = readVar(vm, 'area-schedule-ground-slot').map(Number);
+      const gtype = readVar(vm, 'area-schedule-ground-type').map(Number);
+      const starts = readVar(vm, 'area-schedule-start').map(Number);
+      const ends = readVar(vm, 'area-schedule-end').map(Number);
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      const clearField = () => {
+        for (let s = 0; s < 16; s += 1) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        for (const s of FLYING_SLOT_INDICES) {
+          put('slot-type', s, 0);
+          put('slot-state', s, 0);
+        }
+        writeVar(vm, 'pending-object-type', 0);
+      };
+      // Fire the record at `cursor` from the real schedule: two ticks before its row, then tick the area clock
+      // until the cursor passes it, and read the pending register it left.
+      const fire = (area, cursor) => {
+        const C0 = 256 * (rows[cursor - 1] + 1) + 32;
+        writeVar(vm, 'area-number', area);
+        writeVar(vm, 'area-progress', (((constants.area_counter_init - C0) % 65536) + 65536) % 65536);
+        writeVar(vm, 'area-schedule-cursor', cursor);
+        for (let t = 0; t < 8; t += 1) {
+          callProc(vm, 'Stage', 'advance area');
+          step(vm, 2);
+          if (Number(readVar(vm, 'area-schedule-cursor')) > cursor) {
+            return {
+              type: Number(readVar(vm, 'pending-object-type')),
+              slot: Number(readVar(vm, 'pending-object-slot')),
+            };
+          }
+        }
+        return null;
+      };
+      // The placement proc's random-lateral draw loops, so pump until it has cleared the register.
+      const place = () => {
+        callProc(vm, 'Stage', 'place pending object');
+        step(vm, 2);
+        for (let i = 0; i < 60 && Number(readVar(vm, 'pending-object-type')) !== 0; i += 1) step(vm, 1);
+        return Number(readVar(vm, 'pending-object-type'));
+      };
+      const sample = (js) => ({
+        slotType: Number(readVar(vm, 'slot-type')[js]),
+        slotState: Number(readVar(vm, 'slot-state')[js]),
+        slotFlag: Number(readVar(vm, 'slot-flag')[js]),
+        slotPts: Number(readVar(vm, 'slot-pts')[js]),
+        slotX: Number(readVar(vm, 'slot-x')[js]),
+      });
+      const placed = [];
+      let torkan = null;
+      for (let area = 1; area <= 16; area += 1) {
+        for (let i = starts[area - 1]; i <= ends[area - 1]; i += 1) {
+          if (handlers[i - 1] !== 'add_object') continue;
+          if (gtype[i - 1] === 15) torkan = { area, cursor: i };
+          clearField();
+          const pending = fire(area, i);
+          const pendingAfter = place();
+          // Scratch slot = raw arcade slot + 1, so the JS index is the raw slot itself.
+          placed.push({ area, type: gtype[i - 1], raw: gslot[i - 1], pending, pendingAfter, ...sample(gslot[i - 1]) });
+          // A record left pending already fails; stop rather than burn the full pump bound on every other record.
+          if (pendingAfter !== 0) return { placed, busy: null };
+        }
+      }
+      assert.ok(torkan, 'precondition: a Torkan add_object record exists');
+      clearField();
+      put('slot-type', 58, 10); // a live Toroid already in obj 0x3A
+      put('slot-state', 58, 1);
+      const busyPending = fire(torkan.area, torkan.cursor);
+      const busyAfter = place();
+      return { placed, busy: { pending: busyPending, pendingAfter: busyAfter, ...sample(58) } };
+    },
+    assert(obs) {
+      for (const p of obs.placed) {
+        const at = `area ${p.area} type ${p.type} slot ${p.raw}`;
+        assert.ok(p.pending, `${at}: the record fired`);
+        assert.deepEqual(p.pending, { type: p.type, slot: p.raw + 1 }, `${at}: an idle slot records the pending object`);
+        assert.equal(p.pendingAfter, 0, `${at}: placement clears the register`);
+        assert.equal(p.slotType, p.type, `${at}: the object is placed in its own slot`);
+        assert.equal(p.slotState, 1, `${at}: the placed object is ACTIVE`);
+        if (p.type === 84) {
+          assert.equal(p.slotFlag, 0, `${at}: the flag starts hidden`);
+          assert.equal(p.slotPts, 17, `${at}: the flag scores 1,000 at reveal`);
+          assert.equal(p.slotX, 0, `${at}: the flag enters at the top of the field`);
+        }
+      }
+      const kinds = new Set(obs.placed.map((p) => `${p.type}@${p.raw}`));
+      for (const k of ['84@0', '15@58', '16@58', '17@58', '17@59', '24@59']) {
+        assert.ok(kinds.has(k), `the schedule places ${k}`);
+      }
+      assert.equal(obs.placed.length, 13, 'all 13 add_object records were fired');
+      assert.ok(obs.busy.pending, 'the busy-slot record still fired (the cursor advanced)');
+      assert.equal(obs.busy.pending.type, 0, 'a record that lands on a busy slot is dropped, not held pending');
+      assert.equal(obs.busy.slotType, 10, 'the busy slot keeps its live Toroid');
+      assert.equal(obs.busy.pendingAfter, 0, 'nothing is queued for later');
+    },
+    // Empty `place pending object`: the records are recorded but never placed, so every slot stays empty.
+    negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'place pending object'),
   },
   {
     key: 'ground-object-scrolls-with-terrain',
@@ -7876,92 +9038,64 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.removeClearGraphicEffects(p, 'ground'),
   },
   {
-    // BOSS-01 / andor.lifecycle (#94): the LIVE debug-key summon path (install_debug_ground_spawn) — the one
-    // path the operator actually drives. Every OTHER boss scenario above FREEZES the walk and calls the update
-    // procs by hand, so none of them exercised the debug key's arm/dismiss handler. That gap let a same-tick
-    // self-dismiss ship: the original dismiss read the master slot AFTER the arm stamped it and set the end flag
-    // on the very press that summoned the boss, so the master tore the composite down at START_X before it could
-    // descend — "Andor never shows up; the ground enemies just start over" (operator playtest, 2026-09-27). The
-    // fix gates the dismiss on a FRESH press (rising edge of `debug ground key held`) AND a boss already present
-    // at the start of the tick. This scenario drives the real key end-to-end: HOLD G to summon and hold (the end
-    // flag must stay 0 while held), then RELEASE + a fresh press to dismiss (end flag set -> master retreats off
-    // the top -> composite freed). It is the regression net the frozen-walk scenarios could not be.
-    key: 'boss-summoned-and-dismissed-by-debug-key',
+    // BOSS-01 (andor.lifecycle #94; slice 21 release review): Andor Genesis is armed by its schedule record, not by
+    // a key. With the playtest keys gone (#119), this is the one scenario that arms the boss the way play does:
+    // area 4's `andor_genesis_start` record (op 76, `sub_2_fn_20__andor_genesis_start`) consumed by the real
+    // `advance area`, which bulk-arms the 15 parts into ground obj slots 1..15 in the source order
+    // (ANDOR_GENESIS_DATA), the master last, at the arcade start anchor, the ports taking the schedule-set fire mask.
+    // Driven like live-pressure-adaptive: the walk frozen, the cursor on the record and the clock one tick before
+    // its row, then `advance area` once.
+    key: 'andor-arms-from-the-schedule',
     behavior:
-      "Holding the debug ground key (G) with the family cursor on the Andor entry ARMS all 15 composite parts and the invisible master, which then descends from off the top edge while the key stays held — the end flag stays 0, so the boss is NOT self-dismissed on the press that summoned it; releasing G and pressing it again (a fresh rising edge, boss present) sets the end flag, and the master retreats off the top and frees every boss slot",
+      "BOSS-01: area 4's Andor Genesis start record arms all 15 parts and the master in the source order, at the "
+      + 'arcade start anchor, with the ports on the schedule-set fire mask — no key involved',
     playtestStep: 8,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      // Suppress the scheduled ground stream and clear the live band so the ONLY ground object that can appear is
-      // the debug key's, then park the family cursor on the Andor entry (last in DEBUG_GROUND_FAMILIES) so the
-      // next fresh, field-empty spawn arms the boss.
-      suppressGroundSpawns(vm);
+      step(vm, 2);
+      writeVar(vm, 'game-director-state', 'frozen');
+      step(vm, 1);
       clearGroundBand(vm);
-      const ANDOR_FAMILY_INDEX = 16; // index of (ANDOR_MASTER_TYPE, 'andor') in DEBUG_GROUND_FAMILIES
-      writeVar(vm, 'debug-ground-index', ANDOR_FAMILY_INDEX);
-      const masterJs = ANDOR.BASE_SLOT + 15 - 1; // Scratch slot 16 -> JS index 15
-      const armedCount = () => {
-        const t = readVar(vm, 'slot-type');
-        let n = 0;
-        for (let s = 0; s <= 15; s += 1) {
-          const x = t[s];
-          if ((x >= 0x41 && x <= 0x4b) || (x >= 0x4f && x <= 0x52)) n += 1;
-        }
-        return n;
+      const handlers = readVar(vm, 'area-schedule-handler');
+      const triggers = readVar(vm, 'area-schedule-trigger-row');
+      const start = Number(readVar(vm, 'area-schedule-start')[3]); // area 4's first record, Scratch 1-based
+      const end = Number(readVar(vm, 'area-schedule-end')[3]);
+      let idx = start - 1;
+      while (idx < end - 1 && handlers[idx] !== 'andor_genesis_start') idx += 1;
+      assert.ok(idx < end - 1, "precondition: area 4's schedule has an andor_genesis_start record");
+      const row = Number(triggers[idx]);
+      // scroll row = floor(((0x0D00 - progress) mod 0x10000) / 256); land mid-row after the tick's +32.
+      const after = (((0x0d00 - row * 256 - 128) % 0x10000) + 0x10000) % 0x10000;
+      writeVar(vm, 'area-number', 4);
+      writeVar(vm, 'area-schedule-cursor', idx + 1);
+      writeVar(vm, 'area-progress', after - 32);
+      writeVar(vm, 'fire-mask-andor-genesis', 31); // the schedule-set mask the ports must take
+      writeVar(vm, 'andor-master-x', 12345); // a stale anchor the arm must overwrite
+      callProc(vm, 'Stage', 'advance area');
+      step(vm, 2);
+      const portSlots = [10, 11, 12, 13]; // obj 10..13 -> JS 10..13 (0x52, 0x51, 0x50, 0x4F)
+      return {
+        row,
+        scrollRow: Number(readVar(vm, 'area-scroll-row')),
+        cursorMoved: Number(readVar(vm, 'area-schedule-cursor')) > idx + 1,
+        types: readVar(vm, 'slot-type').slice(1, 16).map(Number),
+        flagSlot: Number(readVar(vm, 'slot-type')[0]),
+        masterX: Number(readVar(vm, 'andor-master-x')),
+        portMasks: portSlots.map((i) => Number(readVar(vm, 'slot-fire-mask')[i])),
       };
-      // SUMMON: hold G. The first field-empty tick arms the composite; subsequent held ticks let the master
-      // descend. Sample the end flag across several held pumps -> it must never be raised while held.
-      keyDown(vm, 'g');
-      step(vm, 1);
-      const armedFirst = armedCount();
-      const masterFirst = readVar(vm, 'slot-type')[masterJs];
-      const endHeld = [readVar(vm, 'andor-genesis-end-flag')];
-      for (let i = 0; i < 3; i += 1) {
-        step(vm, 1);
-        endHeld.push(readVar(vm, 'andor-genesis-end-flag'));
-      }
-      const armedHeld = armedCount();
-      const masterHeld = readVar(vm, 'slot-type')[masterJs];
-      const xHeld = readVar(vm, 'andor-master-x');
-      // DISMISS: release, then a fresh press. The rising edge with the boss present raises the end flag; the
-      // master then retreats off the top and frees every boss slot.
-      keyUp(vm, 'g');
-      step(vm, 1);
-      keyDown(vm, 'g');
-      let endRaised = false;
-      let tornDown = false;
-      for (let i = 0; i < 12 && !tornDown; i += 1) {
-        step(vm, 1);
-        if (readVar(vm, 'andor-genesis-end-flag') === 1) endRaised = true;
-        if (armedCount() === 0) tornDown = true;
-      }
-      keyUp(vm, 'g');
-      return { armedFirst, masterFirst, armedHeld, masterHeld, xHeld, endHeld, endRaised, tornDown };
     },
     assert(obs) {
-      // Summoned: all 15 parts armed, the invisible master typed at Scratch slot 16.
-      assert.equal(obs.armedFirst, 15, 'holding G on the Andor cursor arms all 15 composite parts');
-      assert.equal(obs.masterFirst, ANDOR.MASTER_TYPE, 'the invisible master is typed at Scratch slot 16');
-      // NOT self-dismissed while held: the end flag stays 0 across every held pump — the biting check for the
-      // shipped same-tick self-dismiss bug.
-      for (const e of obs.endHeld) {
-        assert.equal(e, 0, 'the end flag is NOT raised while G is held (no same-tick self-dismiss)');
-      }
-      // Still up and descending after the held pumps (moved off START_X toward the hold row).
-      assert.equal(obs.armedHeld, 15, 'the composite stays armed while G is held (not torn down)');
-      assert.equal(obs.masterHeld, ANDOR.MASTER_TYPE, 'the master stays present while G is held');
-      assert.ok(
-        obs.xHeld > ANDOR.START_X,
-        `the master descends from START_X while held (x=${obs.xHeld} > ${ANDOR.START_X})`,
-      );
-      // Dismissed by a fresh press: the end flag is raised and the whole composite is freed.
-      assert.ok(obs.endRaised, 'a fresh G press with the boss present raises the end flag (dismiss)');
-      assert.ok(obs.tornDown, 'after the dismiss the master retreats off the top and frees every boss slot');
+      assert.equal(obs.scrollRow, obs.row, "precondition: the tick lands on the start record's trigger row");
+      assert.ok(obs.cursorMoved, 'the schedule consumed the start record');
+      assert.deepEqual(obs.types, ANDOR_PART_TYPES_BY_OBJ, 'the 15 parts and the master arm in the source order');
+      assert.equal(obs.flagSlot, 0, 'obj slot 0 (the flag slot) is left alone');
+      assert.equal(obs.masterX, ANDOR.START_X, 'the master anchor starts at the arcade start, off the top');
+      assert.deepEqual(obs.portMasks, [31, 31, 31, 31], 'every gun port takes the schedule-set fire mask');
     },
-    // Reproduce the shipped bug: flip the rising-edge guard from `debug ground key held == 0` to `== 1`, so a
-    // HELD key (held is set to 1 each tick) fires the dismiss every tick -> the boss is self-dismissed on the
-    // press that summons it and torn down before it can hold -> the "armed while held" / "end stays 0" checks bite.
-    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'debug ground key held', 0, 1),
+    // Sever the start dispatch (its handler == comparison never matches): the record is still consumed, but
+    // nothing arms, so the ground band stays empty and the type assertion fails.
+    // roadmap-evidence: BOSS-01 failure  (without the start dispatch the schedule never arms the boss)
+    negativeMutation: (p) => mutate.changeEqualsOperand(p, 'Stage', 'andor_genesis_start', '__never__'),
   },
   {
     // BOSS-02 / andor.defenses (#95): the four gun ports fire on the SHARED periodic gate under the boss fire
@@ -8552,90 +9686,6 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'update andor master'),
   },
   {
-    // BOSS-02/03 debug-summon band protection (operator playtest fix, 2026-09-28: "it retreated in pieces").
-    // A debug-G-summoned Andor Genesis drops into whatever area is live, whose schedule may still have pending
-    // add_ground_object / add_domogram records. The original suppression withheld those stamps only while the G
-    // key was HELD -- but the boss DEPARTS after G is released (its dismiss is a fresh G press, then the master
-    // retreats over the following G-up ticks), so the resuming schedule stamps landed in the boss's own ground
-    // slots (Scratch 2..16) and overwrote the composite one plate at a time as it retreated. The fix ALSO
-    // withholds every schedule ground stamp while the invisible master occupies its slot (andor_boss_present),
-    // for the boss's whole lifecycle -- hold through retreat through teardown. Real play is untouched: in areas
-    // 4/9/14 every add_ground_object record fires above andor_genesis_start and has scrolled off before the boss
-    // arms, so no schedule ground stamp is ever live while the master is present. Driven LIVE (real step() runs
-    // _consume_schedule): with the boss present the area-1 schedule scrolls a stream of ground records past the
-    // band and NONE lands in it; without the guard (negative) the band is cannibalized from the fourth step on.
-    key: 'andor-debug-summon-band-not-cannibalized-by-schedule',
-    behavior:
-      'While a debug-summoned Andor Genesis master occupies its slot, the area schedule\'s own ground stamps (add_ground_object / add_domogram) are withheld from the entire ground band -- so the part slots freed as the composite retreats are never refilled by a foreign ground type. Modelled mid-retreat (master present, its 14 part slots already empty): the live area-1 schedule tries to place its own ground records into those free slots every tick and the boss-present guard withholds every one; with the guard removed the schedule floods the band within a few ticks',
-    playtestStep: 8,
-    async drive(vm) {
-      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
-      const put = slotPutter(vm);
-      clearGroundBand(vm);
-      // Model the boss mid-retreat: the invisible master still occupies its slot (the boss-present guard is live
-      // for the WHOLE lifecycle -- descend, hold, retreat, teardown) while its 14 part slots have already been
-      // freed. Leaving those part slots EMPTY is the deterministic form of the shipped bug's trigger: the live
-      // area-1 schedule below has real ground records to place and free band slots to place them in, so with the
-      // guard OFF it floods the band every tick (58 stray stamps from step 3 in area 1). Holding (end flag 0)
-      // keeps the master stable so the guard stays live across every step -- no pacing-fragile wait for a
-      // retreating slot to free at exactly the tick a schedule record happens to fire (that race passed under one
-      // node runtime and not another; this models the same guarantee without depending on the schedule's timing).
-      put('slot-type', ANDOR.BASE_SLOT + 14, ANDOR.MASTER_TYPE); // master at JS 15 (arcade obj 15)
-      put('slot-state', ANDOR.BASE_SLOT + 14, 1);
-      writeVar(vm, 'andor-master-x', ANDOR.HOLD_X);
-      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y);
-      writeVar(vm, 'andor-genesis-end-flag', 0);
-      writeVar(vm, 'andor-destroyed-timer', 0);
-      const andorTypes = new Set([...ANDOR_PART_TYPES_BY_OBJ, 0x4c]); // the 15 part types + Bragza (0x4C)
-      const foreign = [];
-      let masterPresentEachStep = true;
-      // Keep the passive craft alive + isolate the ground band from the port bullets: clear the enemy-bullet
-      // (JS 39-57) and flying (JS 58-63) bands each frame before stepping.
-      const clearTraffic = () => {
-        const t = readVar(vm, 'slot-type');
-        const s = readVar(vm, 'slot-state');
-        for (let js = 39; js <= 63; js += 1) {
-          t[js] = 0;
-          s[js] = 0;
-        }
-      };
-      // Step live so the schedule genuinely runs beneath the boss; watch the 14 freed part slots (JS 1-14) for any
-      // foreign ground type, and confirm the master held its own slot every tick (so the guard was live throughout).
-      for (let k = 0; k < 20; k += 1) {
-        clearTraffic();
-        step(vm, 1);
-        const t = readVar(vm, 'slot-type');
-        if (t[ANDOR.BASE_SLOT + 14] !== ANDOR.MASTER_TYPE) masterPresentEachStep = false;
-        for (let n = 1; n <= 14; n += 1) {
-          const v = t[ANDOR.BASE_SLOT + n - 1];
-          if (v !== 0 && !andorTypes.has(v)) foreign.push({ step: k, obj: n, type: v });
-        }
-      }
-      const stateAfter = readVar(vm, 'game-director-state');
-      return { foreign, stateAfter, masterPresentEachStep };
-    },
-    assert(obs) {
-      assert.equal(
-        obs.stateAfter,
-        'playing',
-        'the game keeps playing while the boss holds, so the live schedule genuinely ran under it',
-      );
-      assert.ok(
-        obs.masterPresentEachStep,
-        'the invisible master occupied its slot on every step, so the boss-present guard was live throughout -- the band stayed clean because the guard withheld the schedule, not because the master had already gone',
-      );
-      assert.deepEqual(
-        obs.foreign,
-        [],
-        'no foreign (non-Andor) ground type ever lands in the freed part band while the master is present -- the schedule\'s own ground stamps are withheld for the boss\'s whole lifecycle',
-      );
-    },
-    // Disable the boss-present guard (item(16) of (slot type) == 75 -> == 999) so the schedule's ground stamps
-    // resume into the band while the master is present -> the freed band is flooded -> the band-clean (and
-    // master-held) assertions bite.
-    negativeMutation: (p) => mutate.changeListItemEqualsOperand(p, 'Stage', 'slot type', 75, 999),
-  },
-  {
     // SEC-02 / secrets.bonus-flag (#91): reveal-scores-once + fly-over collection (proximity, not a weapon).
     key: 'bonus-flag-revealed-by-bomb-scores-once-then-collected-by-flyover-not-a-weapon',
     behavior:
@@ -8987,16 +10037,16 @@ export const SCENARIOS = [
   },
   {
     // CAB-03 (cabinet.two-player, slice 18): the `swap players` primitive — the port's
-    // swap_curr_other_player (xevious_main 671-679). It exchanges every one of the 14 persistent
+    // swap_curr_other_player (xevious_main 671-679). It exchanges every one of the 15 persistent
     // per-player fields between the current player's live vars and the inactive player's `other <x>`
     // shadow, and touches nothing else. This commit installs the proc with no trigger yet; the
     // alternation that calls it (and its CAB-03 acceptance evidence) arrive in a later commit.
     key: 'player-context-swap',
     behavior:
-      '`swap players` exchanges all 14 persistent per-player fields (score, craft, next bonus, area, ai level, ground-stop row, 8 fire masks) with the inactive-player shadow and leaves the shared RNG seed untouched',
+      '`swap players` exchanges all 15 persistent per-player fields (score, craft, next bonus, area, ai level, ship number, ground-stop row, 8 fire masks) with the inactive-player shadow and leaves the shared RNG seed untouched',
     playtestStep: 1,
     async drive(vm) {
-      // The 14 persistent per-player fields as (live id, shadow id) pairs — the same set the
+      // The 15 persistent per-player fields as (live id, shadow id) pairs — the same set the
       // generator derives from PLAYER_CONTEXT_FIELDS. Seed each live var and its `other <x>` shadow to
       // DISJOINT sentinel ranges (live = 100+i, shadow = 200+i) so that a field left un-swapped, or one
       // whose value leaks in from a different field, is caught by that field's exact assertion. If a
@@ -9008,6 +10058,7 @@ export const SCENARIOS = [
         ['eco-next-bonus', 'other-next-bonus'],
         ['area-number', 'other-area-number'],
         ['difficulty-ai-level', 'other-ai-level'],
+        ['difficulty-ship-number', 'other-ship-number'],
         ['ground-stop-firing-row', 'other-ground-stop-firing-row'],
         ['fire-mask-derota', 'other-fire-mask-derota'],
         ['fire-mask-logram', 'other-fire-mask-logram'],
@@ -9288,15 +10339,15 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.neutralizeProc(p, 'Stage', 'swap players'),
   },
   {
-    // AREA-01 (slice 20) / ARCH-5: the two-player handoff applies the projected near-end checkpoint to the
-    // OUTGOING player's area before the swap, then puts the clock at the area top so the INCOMING player's
+    // AREA-01 (slice 20) / ARCH-5: the two-player handoff applies the near-end checkpoint to the
+    // OUTGOING player's area before the swap (since #158 on the live row the explosion window left behind), then puts the clock at the area top so the INCOMING player's
     // new-life re-top (which runs the same checkpoint first) leaves their area alone. Same director-receiver
     // isolation as two-player-alternation.
     // roadmap-evidence: AREA-01 success  (a two-player death 44 ticks before the end skips the outgoing
     //   player's next area, and the incoming player resumes their own area unadvanced)
     key: 'two-player-checkpoint-outgoing-only',
     behavior:
-      "On a two-player handoff the projected near-end checkpoint advances only the outgoing player's area; the incoming player resumes their own area",
+      "On a two-player handoff the near-end checkpoint advances only the outgoing player's area; the incoming player resumes their own area",
     playtestStep: 5,
     async drive(vm) {
       vm.greenFlag();
@@ -9307,9 +10358,11 @@ export const SCENARIOS = [
       writeVar(vm, 'cabinet-attract', 0);
       writeVar(vm, 'eco-craft', 2);
       writeVar(vm, 'other-craft', 3);
-      writeVar(vm, 'area-number', 5);
+      // #158: the clock as the 44-tick window leaves it after a death at progress 63648 in area 5 — the window
+      // completed area 5 (65056, carried by -65536 to -480) and stopped on row 0x0E of area 6: skip 6 -> 7.
+      writeVar(vm, 'area-number', 6);
       writeVar(vm, 'other-area-number', 9);
-      writeVar(vm, 'area-progress', 63648); // projects to completion + row 0x0E: skip 5 -> 7
+      writeVar(vm, 'area-progress', -480);
       fireBroadcast(vm, 'death complete');
       step(vm, 3);
       return {
@@ -9325,8 +10378,8 @@ export const SCENARIOS = [
     },
     // Pin every `set area progress` to the death position: the handoff no longer puts the clock at the
     // area top, so the incoming player's re-top re-runs the checkpoint on the outgoing player's position
-    // and advances THEIR area (9 -> 11).
-    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'area progress', 63648),
+    // and advances THEIR area (9 -> 10).
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'area progress', -480),
   },
   {
     // CAB-03 (slice 18): solo continuation — when the OTHER player is already out, a craft death does NOT
@@ -9465,6 +10518,265 @@ export const SCENARIOS = [
     // bites the banner specifically, not the handoff.)
     // roadmap-evidence: CAB-03 failure  (the elimination banner never appears)
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'banner player', -1),
+  },
+  {
+    // Slice 21 (#31): the banner is two rows, as the arcade draws it (display_game_over_player_1_2, xevious_main
+    // 845-855): GAME OVER on row 24 and the player line on row 26 under it. With `banner player` raised the GAME
+    // OVER clone (HUD role 7) and the player clone (role 10) both show, the player clone naming the player; lowered,
+    // both hide.
+    // roadmap-evidence: CAB-03 success  (the elimination banner draws GAME OVER and the player line on two rows)
+    key: 'two-player-banner-rows',
+    behavior: 'The two-player elimination banner draws GAME OVER on one row and PLAYER n on the row under it',
+    playtestStep: 5,
+    async drive(vm) {
+      const roleName = variable('hud-role').name;
+      const row = (role) => {
+        const c = cloneReports(vm, 'hud', [roleName]).find((r) => Number(r.vars[roleName]) === role);
+        return c ? { costume: c.costume, visible: c.visible } : null;
+      };
+      assert.ok(reachPlaying2P(vm), 'precondition: a two-player game reaches playing');
+      step(vm, 2);
+      writeVar(vm, 'cabinet-banner-player', 1);
+      step(vm, 2);
+      const raised = { gameOver: row(7), player: row(10) };
+      writeVar(vm, 'cabinet-banner-player', -1);
+      step(vm, 2);
+      return { raised, lowered: { gameOver: row(7), player: row(10) } };
+    },
+    assert(obs) {
+      assert.ok(obs.raised.gameOver && obs.raised.gameOver.visible, 'the GAME OVER row shows while the banner is raised');
+      assert.equal(obs.raised.gameOver.costume, 'banner-game-over', 'the first row reads GAME OVER');
+      assert.ok(obs.raised.player && obs.raised.player.visible, 'the player row shows while the banner is raised');
+      assert.equal(obs.raised.player.costume, 'banner-player-2', 'the second row names player 2');
+      assert.equal(obs.lowered.gameOver.visible, false, 'the GAME OVER row hides when the banner is lowered');
+      assert.equal(obs.lowered.player.visible, false, 'the player row hides when the banner is lowered');
+    },
+    // Re-key the player row's role dispatch (role 10 -> 99): that clone never runs its banner loop, so the second
+    // row never shows.
+    // roadmap-evidence: CAB-03 failure  (a banner without its player row is caught)
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'hud', 'hud role', 10, 99),
+  },
+  {
+    // Slice 21 (#31): the score rows blank their leading zeros as the arcade's display_score does (xevious_main
+    // 1904-1977): the units and tens always show, and place p >= 2 shows only once the score reaches 10^p. A
+    // zero score reads "00"; interior zeros stay.
+    // roadmap-evidence: ECO-02 success  (the HUD score row blanks its leading zeros and keeps interior ones)
+    key: 'hud-leading-zeros-blank',
+    behavior: 'The HUD score row shows "00" for a zero score and blanks every leading zero, keeping the interior zeros',
+    playtestStep: 6,
+    async drive(vm) {
+      const roleName = variable('hud-role').name;
+      const placeName = variable('hud-place').name;
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const read = (value) => {
+        writeVar(vm, 'eco-score', value);
+        step(vm, 2);
+        const shown = [];
+        for (const r of cloneReports(vm, 'hud', [roleName, placeName])) {
+          if (Number(r.vars[roleName]) !== 1 || !r.visible) continue;
+          shown.push([Number(r.vars[placeName]), r.costume]);
+        }
+        return shown.sort((a, b) => a[0] - b[0]);
+      };
+      return { zero: read(0), mid: read(1230), interior: read(100005) };
+    },
+    assert(obs) {
+      const digits = (n, width) => [...String(n).padStart(width, '0')].reverse().map((d, p) => [p, `digit/${d}`]);
+      assert.deepEqual(obs.zero, digits(0, 2), 'a zero score shows only the units and tens, "00"');
+      assert.deepEqual(obs.mid, digits(1230, 4), '1230 shows four digits, no leading zeros');
+      assert.deepEqual(obs.interior, digits(100005, 6), '100005 shows six digits, its interior zeros kept');
+    },
+    // Every place counts as "always shown" (`hud place < 2` -> `< 7`): the leading zeros come back.
+    // roadmap-evidence: ECO-02 failure  (leading zeros drawn on the score row are caught)
+    negativeMutation: (p) => mutate.changeLessThanLiteral(p, 'hud', 2, 7),
+  },
+  {
+    // Slice 21 (#31): the active player's nUP flashes on bit 4 of the frame counter, 16 frames each way, and only
+    // in a real game (sub_fn_6__display_1UP_2UP / flash_1up_2up, xevious_sub.68k 737-775). The port reads the walk's
+    // `tick` (8 ticks = 16 frames) into each label clone's own clock and blanks the label while
+    // floor(clock / 8) mod 2 == 1. In a demo the label stays lit.
+    // roadmap-evidence: ECO-02 success  (the 1UP label flashes on the 16-frame clock in a real game and is steady in a demo)
+    key: 'hud-1up-flash-clock',
+    behavior: 'The 1UP label flashes 16 frames on and 16 off on the game clock in a real game, and stays lit in a demo',
+    playtestStep: 6,
+    async drive(vm) {
+      const roleName = variable('hud-role').name;
+      const clockName = variable('hud-flash-clock').name;
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const labels = () =>
+        cloneReports(vm, 'hud', [roleName, clockName]).filter((r) => Number(r.vars[roleName]) === 4);
+      const real = [];
+      for (let i = 0; i < 30; i += 1) {
+        step(vm, 1);
+        const tick = Number(readVar(vm, 'tick')) + Number(readVar(vm, 'hud-flash-frames'));
+        for (const r of labels()) real.push({ tick, clock: Number(r.vars[clockName]), visible: r.visible });
+      }
+      writeVar(vm, 'cabinet-attract', 1);
+      step(vm, 2);
+      const demo = [];
+      for (let i = 0; i < 8; i += 1) {
+        step(vm, 1);
+        for (const r of labels()) demo.push(r.visible);
+      }
+      return { real, demo, stateAfter: state(vm) };
+    },
+    assert(obs) {
+      assert.ok(obs.real.length >= 30, 'the 1UP label clones were sampled');
+      for (const s of obs.real) {
+        const blank = Math.floor(s.clock / 8) % 2 === 1;
+        assert.equal(s.visible, !blank, `clock ${s.clock}: the label is ${s.visible ? 'lit' : 'blank'}`);
+        assert.ok(Math.abs(s.tick - s.clock) <= 2, `the label's clock ${s.clock} follows the game tick ${s.tick}`);
+      }
+      const seen = new Set(obs.real.map((s) => s.visible));
+      assert.deepEqual([...seen].sort(), [false, true], 'the label was seen both lit and blank');
+      assert.equal(obs.stateAfter, 'playing', 'the demo sample stayed in play');
+      assert.ok(obs.demo.length > 0 && obs.demo.every(Boolean), 'the label stays lit in a demo');
+    },
+    // Hold the label's clock at 0: it never reaches a blank half, so the label never flashes.
+    // roadmap-evidence: ECO-02 failure  (a 1UP label that never flashes is caught)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'hud', 'hud flash clock', 0),
+  },
+  {
+    // Slice 21 (#31): the arcade flashes the 1UP label every frame of a real game (flash_1up_2up, sub 737-775,
+    // gated only on `is_real_game`), so it keeps flashing off the play screen. The walk is off in the last death's
+    // forest wait, so that paced hold counts its own frames into `hud flash frames`, which the label's clock adds
+    // to `tick`.
+    // roadmap-evidence: ECO-02 success  (the 1UP label keeps flashing through the last death's forest wait)
+    key: 'hud-1up-flash-forest-wait',
+    behavior: 'The 1UP label keeps flashing 16 frames on and 16 off through the forest wait after the last death',
+    playtestStep: 6,
+    async drive(vm) {
+      const roleName = variable('hud-role').name;
+      const clockName = variable('hud-flash-clock').name;
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'invuln', 0);
+      writeVar(vm, 'eco-craft', 1);
+      seedCraftHit(vm);
+      const labels = () =>
+        cloneReports(vm, 'hud', [roleName, clockName]).filter((r) => Number(r.vars[roleName]) === 4);
+      // One frame per pump while not playing (the hold is paced), so each pump in player-dead is one frame.
+      const wait = [];
+      let entered = false;
+      for (let t = 0; t < 240; t += 1) {
+        step(vm, 1);
+        if (state(vm) !== 'player-dead') {
+          if (entered) break;
+          continue;
+        }
+        entered = true;
+        const frames = Number(readVar(vm, 'hud-flash-frames'));
+        for (const r of labels()) wait.push({ frames, clock: Number(r.vars[clockName]), visible: r.visible });
+      }
+      return { wait, next: state(vm) };
+    },
+    assert(obs) {
+      assert.ok(obs.wait.length >= 30, `the 1UP label was sampled through the wait (${obs.wait.length} samples)`);
+      for (const s of obs.wait) {
+        const blank = Math.floor(s.clock / 8) % 2 === 1;
+        assert.equal(s.visible, !blank, `clock ${s.clock}: the label is ${s.visible ? 'lit' : 'blank'}`);
+      }
+      const frames = obs.wait.map((s) => s.frames);
+      assert.ok(
+        Math.max(...frames) - Math.min(...frames) >= 30,
+        `the wait counts its frames (${Math.min(...frames)} to ${Math.max(...frames)})`,
+      );
+      const seen = new Set(obs.wait.map((s) => s.visible));
+      assert.deepEqual([...seen].sort(), [false, true], 'the label was seen both lit and blank during the wait');
+      assert.notEqual(obs.next, 'player-dead', 'the wait ended');
+    },
+    // The forest wait stops counting its frames: the label's clock stands still and the label stops flashing.
+    // roadmap-evidence: ECO-02 failure  (a 1UP label frozen through the forest wait is caught)
+    negativeMutation: (p) => {
+      const t = p.targets.find((x) => x.name === 'solv_death');
+      let patched = 0;
+      for (const b of Object.values(t.blocks)) {
+        if (b.opcode === 'data_changevariableby' && b.fields.VARIABLE && b.fields.VARIABLE[1] === 'hud-flash-frames') {
+          b.inputs.VALUE = [1, [4, '0']];
+          patched += 1;
+        }
+      }
+      if (!patched) throw new Error("mutate: no 'change hud flash frames' block on solv_death");
+    },
+  },
+  {
+    // Slice 21 (#31): INSERT COIN shows while bit 4 of the frame counter is set (display_insert_coin_flashing,
+    // xevious_main 857-877), 16 frames each way, on the title (1217-1296) and in the demo (1298-1328); the port
+    // reads `title tick` on the title and the walk's `tick` in the demo. PUSH START BUTTON, once a coin is in, is
+    // drawn once and stays (display_push_start_button 815-826). Title samples accept the clock's count or the one
+    // before it: a pump can end after the Stage counts but before the clone redraws.
+    // roadmap-evidence: CAB-01 success  (INSERT COIN flashes on the 16-frame clock on the title and in the demo; PUSH START is steady)
+    key: 'attract-insert-coin-flash',
+    behavior:
+      'INSERT COIN flashes 16 frames on and 16 off on the title and in the demo; once a coin is in, PUSH START BUTTON stays lit',
+    playtestStep: 1,
+    async drive(vm) {
+      const roleOf = (c) => Object.values(c.variables).find((v) => v.name === 'attract role').value;
+      const clone = (role) =>
+        vm.runtime.targets.find(
+          (t) => !t.isOriginal && t.sprite && t.sprite.name === 'start_screen' && roleOf(t) === role,
+        );
+      const look = (c) => (c ? { costume: c.sprite.costumes[c.currentCostume].name, visible: c.visible } : null);
+      // Paced one frame a pump, and the title reached before sampling (see title-logo-sparkle-and-flash).
+      paceLikeTheEditor(vm);
+      vm.greenFlag();
+      reachTitleClock(vm);
+      writeVar(vm, 'invuln', 1); // the demo craft must live long enough for its INSERT COIN to be sampled
+      const title = [];
+      while (state(vm) === 'title' && title.length < 60) {
+        step(vm, 1);
+        title.push({ n: Number(readVar(vm, 'cabinet-title-tick')), ...look(clone(3)) });
+      }
+      let t = 0;
+      while (!(state(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1) && t < 3000) {
+        step(vm, 1);
+        t += 1;
+      }
+      const demo = [];
+      for (let i = 0; i < 20 && state(vm) === 'playing'; i += 1) {
+        step(vm, 1);
+        demo.push({ tick: Number(readVar(vm, 'tick')), ...look(clone(18)) });
+      }
+      insertCoin(vm, 1);
+      let w = 0;
+      while (state(vm) !== 'title' && w < 40) {
+        step(vm, 1);
+        w += 1;
+      }
+      const credited = [];
+      for (let i = 0; i < 40; i += 1) {
+        step(vm, 1);
+        credited.push(look(clone(3)));
+      }
+      return { title, demo, credited };
+    },
+    assert(obs) {
+      const shown = (k) => Math.floor(k / 8) % 2 === 1;
+      assert.ok(obs.title.length >= 40, 'the title prompt was sampled');
+      for (const s of obs.title) {
+        assert.equal(s.costume, 'insert-coin', 'with no credit the title prompt reads INSERT COIN');
+        assert.ok(
+          [s.n, Math.max(0, s.n - 1)].some((k) => shown(k) === s.visible),
+          `title tick ${s.n}: INSERT COIN is ${s.visible ? 'lit' : 'blank'}`,
+        );
+      }
+      assert.deepEqual([...new Set(obs.title.map((s) => s.visible))].sort(), [false, true], 'the title INSERT COIN flashed');
+      assert.ok(obs.demo.length >= 10, 'the demo INSERT COIN was sampled');
+      for (const s of obs.demo) {
+        assert.equal(s.costume, 'insert-coin', 'the demo shows INSERT COIN');
+        assert.ok(
+          [s.tick, s.tick - 1].some((k) => shown(k) === s.visible),
+          `demo tick ${s.tick}: INSERT COIN is ${s.visible ? 'lit' : 'blank'}`,
+        );
+      }
+      assert.deepEqual([...new Set(obs.demo.map((s) => s.visible))].sort(), [false, true], 'the demo INSERT COIN flashed');
+      for (const s of obs.credited) {
+        assert.ok(s && s.costume === 'push-start' && s.visible, 'with a credit PUSH START BUTTON stays lit');
+      }
+    },
+    // The flash back on the old project-defined 15-tick hold (`clock / 8` -> `clock / 15`): the samples fall off the
+    // 16-frame phase.
+    // roadmap-evidence: CAB-01 failure  (an INSERT COIN flash off the 16-frame clock is caught)
+    negativeMutation: (p) => mutate.changeDivideLiteral(p, 'start_screen', 8, 15),
   },
   {
     key: 'two-player-hud-render',
@@ -9891,6 +11203,164 @@ export const SCENARIOS = [
     negativeMutation: (p) => collapseFlipMod(p, 'toroid'),
   },
   {
+    // Slice 21 presentation.reference-art: the Zakato family, Giddo, Brag Spario and Garu Zakato draw the sprites
+    // rendered from the pin. Bodies take the colour the update kept in `slot flag` (pulsing colour 2, xevious_sub.68k
+    // 208-232, as an index 0..4, or 5 for init_teleport's 0x24 at 4002); the teleport plays zakato_teleport_sprite_tbl
+    // (3969-3984) at TIMER>>2 with the TIMER&3 flip; the self-destruct plays 0x104-0x108 1x1 at the kept colour
+    // (zakato_explode 3931-3959); the Giddo flies on countup (5228-5237) and bursts on its own codes (5241-5252); the
+    // Brag Spario flips on countup & 0x0C (3116-3119). Driven like the air explosion, with the Stage halted, so the
+    // seeded slot, the slot clock and `tick` hold still and each step only lets the render clone draw.
+    key: 'reference-art-enemy-frames',
+    // roadmap-evidence: CAB-05 success  (presentation.reference-art: the Zakato, Brag Zakato, Garu Zakato, Giddo and Brag Spario render clones draw the pinned body, teleport, self-destruct and hit frames for their slot's state, clock and kept colour)
+    behavior:
+      "The Zakato family, Giddo Spario, Brag Spario and Garu Zakato draw the arcade's own sprites: pulsing bodies, the teleport sparkle, the five-frame self-destruct in the body's colour (or the teleport's, if it fired at once), the Giddo's colour-cycling flight and its own burst, and the Brag Spario's spin",
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1); // director enter creates the render clones
+      vm.runtime.stopForTarget(vm.runtime.getTargetForStage()); // halt the walk: the seeded slot and tick hold still
+      const slot = 58; // JS index; Scratch flying slot 59
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-x', 20 * 256); // row 20, inside the window
+      put('slot-y', 15 * 256);
+      const SPRITE = { 18: 'zakato', 22: 'zakato', 8: 'giddo-spario', 9: 'brag-spario', 24: 'garu-zakato' };
+      const cases = [
+        // [type, state, timer, flag, tick, expected costume]
+        [18, 1, 0, 3, 0, 'zakato-body/pulse/c10'], // the Zakato body is one picture at every pulsing colour
+        [22, 1, 0, 2, 0, 'brag-zakato-body/pulse/c12'], // the Brag Zakato's own body at 0x12
+        [22, 1, 0, 4, 0, 'zakato-body/pulse/c10'], // ... whose 0x14 is the Zakato picture
+        [18, 4, 0, 5, 0, 'zakato-teleport/sparkle/01/none'],
+        [18, 4, 2, 5, 0, 'zakato-teleport/sparkle/01/x'], // TIMER&3 = 2: the x flip
+        [22, 4, 6, 5, 0, 'zakato-teleport/sparkle/02/x'],
+        [18, 4, 16, 5, 0, 'zakato-teleport/sparkle/05/none'],
+        [18, 5, 0, 0, 0, 'zakato-self-destruct/burst/01/c10'],
+        [18, 5, 8, 2, 0, 'zakato-self-destruct/burst/03/c12'], // phase TIMER>>2 at the kept colour
+        [22, 5, 18, 4, 0, 'zakato-self-destruct/burst/05/c14'],
+        [18, 5, 8, 5, 0, 'zakato-self-destruct/burst/03/c24'], // fired on its first live frame: 0x24
+        [18, 2, 6, 3, 0, 'air-explosion/burst/02/x'], // the shot kill keeps the shared flipped burst
+        [8, 1, 0, 1, 6, 'giddo-spario/fly/03/c27'], // code = tick mod 4, colour from the flag
+        [8, 1, 0, 3, 1, 'giddo-spario/fly/02/c29'],
+        [8, 2, 4, 3, 0, 'giddo-spario/hit/03/c29'], // its own burst, a code a tick, at the kept colour
+        [8, 2, 0, 0, 0, 'giddo-spario/hit/01/c26'],
+        [9, 1, 0, 0, 0, 'brag-spario/spin/01/none'], // flip bits floor(tick/2) mod 4
+        [9, 1, 0, 0, 2, 'brag-spario/spin/01/y'],
+        [9, 1, 0, 0, 4, 'brag-spario/spin/01/x'],
+        [9, 2, 0, 0, 7, 'brag-spario/spin/01/xy'], // a shot Brag Spario still draws its body
+        [24, 1, 0, 4, 0, 'garu-zakato-body/pulse/c14'],
+        [24, 1, 0, 1, 0, 'garu-zakato-body/pulse/c11'],
+        [24, 2, 4, 1, 0, 'air-explosion/burst/02/none'],
+      ];
+      const frames = [];
+      for (const [type, state, timer, flag, tick, want] of cases) {
+        put('slot-type', type);
+        put('slot-state', state);
+        put('slot-timer', timer);
+        put('slot-flag', flag);
+        writeVar(vm, 'tick', tick);
+        step(vm, 1);
+        const sprite = SPRITE[type];
+        frames.push({ type, state, timer, flag, tick, want, ...cloneRender(vm, sprite, `${sprite}-clone-slot`, slot + 1) });
+      }
+      return { frames };
+    },
+    assert(obs) {
+      for (const f of obs.frames) {
+        const label = `type ${f.type} state ${f.state} timer ${f.timer} flag ${f.flag} tick ${f.tick}`;
+        assert.equal(f.visible, true, `${label} is drawn`);
+        assert.equal(f.costume, f.want, `${label} draws ${f.want}`);
+      }
+    },
+    // roadmap-evidence: CAB-05 failure  (with the self-destruct's colour stride collapsed from 6 to 1, a self-destruct no longer draws its phase at the kept colour)
+    negativeMutation: (p) => {
+      const t = p.targets.find((x) => x.name === 'zakato');
+      let patched = 0;
+      for (const b of Object.values(t.blocks)) {
+        const rhs = b.opcode === 'operator_multiply' && b.inputs.NUM2 && b.inputs.NUM2[1];
+        if (Array.isArray(rhs) && String(rhs[1]) === '6') {
+          b.inputs.NUM2 = [1, [4, '1']];
+          patched += 1;
+        }
+      }
+      if (patched !== 1) throw new Error(`mutate: expected one 'x 6' on zakato, found ${patched}`);
+    },
+  },
+  {
+    // Slice 21 presentation.reference-art: the bodies' colours, kept in `slot flag` by the updates. Every live
+    // Zakato-family frame copies pulsing colour 2 (colour_lut_pulsing_2, xevious_sub.68k 208-232: 0x10 0x11 0x12
+    // 0x13 0x14 0x13 0x12 0x11 by (countup>>3)&7) — the Zakato at 3757, the Garu at 4027 — and the Giddo writes
+    // 0x26 + ((countup>>3)&3) (5233-5237). One tick is two arcade frames, so the step is floor(tick/4). The walk
+    // is frozen and ticked by hand (`advance slots` advances `tick` first, then updates every slot) so each
+    // tick's colour is observed.
+    key: 'reference-art-body-colours-follow-the-clock',
+    // roadmap-evidence: CAB-05 success  (presentation.reference-art: a live Zakato and Garu Zakato keep pulsing colour 2's index and a Giddo its 4-colour cycle, tick by tick)
+    behavior:
+      'A flying Zakato and Garu Zakato pulse through the five body colours and back every 16 ticks, and a Giddo Spario steps through its four colours',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      for (let s = 58; s <= 63; s += 1) put('slot-type', s, 0); // clear the flying band
+      const seeds = { zakato: [58, 18], garu: [59, 24], giddo: [60, 8] }; // JS index, type
+      Object.values(seeds).forEach(([slot, type], i) => {
+        put('slot-type', slot, type);
+        put('slot-state', slot, 1); // SLOT_ACTIVE
+        put('slot-x', slot, 8 * 256); // row 8: in view, far ahead of the craft
+        put('slot-y', slot, (8 + 6 * i) * 256);
+        put('slot-dx', slot, 0);
+        put('slot-dy', slot, 0);
+        put('slot-timer', slot, 0);
+        put('slot-fire-timer', slot, 10000); // a fuse that cannot run out in the window
+        put('slot-flag', slot, 0);
+      });
+      const samples = [];
+      for (let t = 0; t < 36; t += 1) {
+        callProc(vm, 'Stage', 'advance slots');
+        step(vm, 2);
+        const flag = readVar(vm, 'slot-flag');
+        const type = readVar(vm, 'slot-type');
+        samples.push({
+          tick: Number(readVar(vm, 'tick')),
+          zakato: [Number(type[58]), Number(flag[58])],
+          garu: [Number(type[59]), Number(flag[59])],
+          giddo: [Number(type[60]), Number(flag[60])],
+        });
+      }
+      return { samples };
+    },
+    assert(obs) {
+      const pulsing = [0, 1, 2, 3, 4, 3, 2, 1]; // colour_lut_pulsing_2 as an index into 0x10..0x14
+      const seen = new Set();
+      for (const s of obs.samples) {
+        const step4 = Math.floor(s.tick / 4);
+        assert.deepEqual(s.zakato, [18, pulsing[step4 % 8]], `tick ${s.tick}: the Zakato pulses`);
+        assert.deepEqual(s.garu, [24, pulsing[step4 % 8]], `tick ${s.tick}: the Garu Zakato pulses`);
+        assert.deepEqual(s.giddo, [8, step4 % 4], `tick ${s.tick}: the Giddo cycles its colour`);
+        seen.add(s.zakato[1]);
+      }
+      assert.deepEqual([...seen].sort(), [0, 1, 2, 3, 4], 'the window covers every pulsing colour');
+    },
+    // roadmap-evidence: CAB-05 failure  (with the pulsing triangle's abs dropped, the colour leaves 0..4 past the peak)
+    negativeMutation: (p) => {
+      const stage = p.targets.find((x) => x.isStage);
+      let patched = 0;
+      for (const b of Object.values(stage.blocks)) {
+        if (b.opcode !== 'operator_subtract') continue;
+        const lit = b.inputs.NUM1 && b.inputs.NUM1[1];
+        const rhs = b.inputs.NUM2 && stage.blocks[b.inputs.NUM2[1]];
+        if (Array.isArray(lit) && String(lit[1]) === '4' && rhs && rhs.opcode === 'operator_mathop' && rhs.fields.OPERATOR[0] === 'abs') {
+          rhs.fields.OPERATOR = ['floor', null];
+          patched += 1;
+        }
+      }
+      if (!patched) throw new Error('mutate: no 4 - abs(...) on the Stage');
+    },
+  },
+  {
     // CAB-05: the ground explosion is the arcade's own (`handle_bomb_explosion`, xevious_main.68k 4904-4951): codes
     // 60 61 64 68 6C 62 63 a step every 8 frames, then the crater A6/A7 flickering every 4 frames. Driven like the
     // air scenario, with the walk halted, on a bombed Barra in the shared ground pool.
@@ -9936,11 +11406,12 @@ export const SCENARIOS = [
     // CAB-05: the player explosion is the arcade's own (`explode_solvalou`, xevious_main.68k 2034-2075): codes C0 C1
     // C4 C8 C2 C3 CC a step every 8 frames (4 ticks), flipped by `countup & 0x0C` (a new flip every 4 frames = 2
     // ticks), then the 32-frame pause with the craft cleared (`finish_solvalou_exploding` 2079-2090), so nothing
-    // is drawn. Every sample is checked against the frame its own tick count selects.
+    // is drawn. Every sample is checked against the frame its own tick count selects. #158 (slice 21): the walk's
+    // `dying tick` is the clock, and the pause is still inside `playing`.
     key: 'player-explosion-frames-flips-then-hidden',
     // roadmap-evidence: CAB-05 success  (the dying craft draws the 7 player-explosion steps with their flips, then vanishes for the pause)
     behavior:
-      'When the craft dies the death sprite draws the arcade player explosion — step tick // 4 of the seven, its flip changing every 2 ticks through none, mirrored top-to-bottom, mirrored left-to-right and both — then is hidden for the pause before the respawn',
+      'When the craft dies the death sprite draws the arcade player explosion — step tick // 4 of the seven, its flip changing every 2 ticks through none, mirrored top-to-bottom, mirrored left-to-right and both — then is hidden for the pause (ticks 28-43 of the window) and on to the respawn',
     playtestStep: 5,
     async drive(vm) {
       assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
@@ -9951,7 +11422,7 @@ export const SCENARIOS = [
       // tick it was drawn at and the director state.
       const death = vm.runtime.getSpriteTargetByName('solv_death');
       const log = [];
-      const tick = () => Number(readVar(vm, 'solv-death-explosion-tick'));
+      const tick = () => Number(readVar(vm, 'player-dying-tick'));
       const setCostume = death.setCostume.bind(death);
       death.setCostume = (i) => {
         setCostume(i);
@@ -9971,8 +11442,10 @@ export const SCENARIOS = [
       }
       writeVar(vm, 'invuln', 1);
       readVar(vm, 'slot-type')[63] = 0;
-      for (let i = 0; i < 300 && stateOf(vm) !== 'playing'; i += 1) step(vm, 1);
-      return { died, back: stateOf(vm) === 'playing', log };
+      const back = () =>
+        stateOf(vm) === 'playing' && Number(readVar(vm, 'player-dying')) === 0 && log.some((e) => e.state === 'player-dead');
+      for (let i = 0; i < 300 && !back(); i += 1) step(vm, 1);
+      return { died, back: back(), log };
     },
     assert(obs) {
       assert.ok(obs.died, 'precondition: the seeded hit kills the craft');
@@ -9988,15 +11461,175 @@ export const SCENARIOS = [
       });
       assert.ok(flips.has('x') && flips.has('y') && flips.has('xy'), `the explosion flips both ways (${[...flips]})`);
       const last = obs.log.lastIndexOf(frames[frames.length - 1]);
-      const after = obs.log.slice(last + 1).filter((e) => e.state === 'player-dead');
+      const lastDead = obs.log.map((e) => e.state).lastIndexOf('player-dead');
+      const after = obs.log.slice(last + 1, lastDead + 1);
       assert.ok(after.length > 0 && after[0].kind === 'visible' && !after[0].visible, 'the craft is hidden as the explosion ends');
       assert.ok(
         after.every((e) => e.kind === 'visible' && !e.visible),
-        'nothing of the craft is drawn for the rest of the death pause',
+        'nothing of the craft is drawn for the rest of the death pause or the death transition',
       );
+      const pause = new Set(after.filter((e) => e.state === 'playing').map((e) => e.tick));
+      for (let k = 28; k <= 43; k += 1) assert.ok(pause.has(k), `the pause tick ${k} hides the craft, still in play`);
     },
     // roadmap-evidence: CAB-05 failure  (with the flip bits collapsed the dying craft never mirrors)
     negativeMutation: (p) => collapseFlipMod(p, 'solv_death'),
+  },
+  {
+    // #158 (slice 21): the world keeps running through the player's explosion. On a hit the arcade's craft handler
+    // switches to the explosion, but the objects, the scroll, the spawners and the enemy bullets are gated only on
+    // `scroll_disabled` (xevious_main.68k 4764-4772), set at the window's end with the ship number (2079-2090). The
+    // exploding craft is never hit-tested (2005-2033), fires no new shot (2313-2318) and arms no new bomb (2432-2438),
+    // while what is already flying keeps scoring. The walk's `dying tick` write is trapped so every tick of the
+    // window is observed, though a whole window can pass inside one pump.
+    // roadmap-evidence: PLY-02 success  (the hit opens a 44-tick window in play: the clock scrolls every tick, no
+    //   re-hit, no new shot or bomb, a shot already flying scores, the craft is spent and the route runs at its end)
+    key: 'player-dying-window-world-runs',
+    behavior:
+      'When the craft is hit the game stays in play for the 44-tick explosion window: the area clock keeps scrolling every tick, the exploding craft cannot be hit again or fire a new shot or bomb, a shot already flying still scores, and the craft is spent and the death route runs only at the window end',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 3);
+      writeVar(vm, 'eco-craft', 9);
+      const craft0 = readVar(vm, 'eco-craft');
+      const samples = [];
+      let award = 0;
+      let clonesInWindow = 0;
+      let inWindow = false;
+      const blaster = vm.runtime.getSpriteTargetByName('blaster');
+      const makeClone = blaster.makeClone.bind(blaster);
+      blaster.makeClone = () => {
+        if (inWindow) clonesInWindow += 1;
+        return makeClone();
+      };
+      const release = trapStageVar(vm, 'player-dying-tick', (value) => {
+        if (Number(readVar(vm, 'player-dying')) !== 1) return; // a director reset's clear, not a window tick
+        const k = Number(value);
+        samples.push({
+          k,
+          state: stateOf(vm),
+          progress: readVar(vm, 'area-progress'),
+          hit: readVar(vm, 'player-hit'),
+          score: readVar(vm, 'eco-score'),
+          bomb: readVar(vm, 'weapon-bomb-in-flight'),
+          craft: readVar(vm, 'eco-craft'),
+        });
+        if (k === 0) {
+          inWindow = true;
+          keyDown(vm, ' ');
+          keyDown(vm, 'b');
+        }
+        if (k < 44) seedCraftHit(vm); // an attacker parked on the exploding craft every tick
+        if (k === 4) award = seedAirKill(vm, { enemySlot: 62, shotSlot: 36, cellX: 2000, cellY: 2000 });
+        if (k >= 44) {
+          inWindow = false;
+          keyUp(vm, ' ');
+          keyUp(vm, 'b');
+          writeVar(vm, 'invuln', 1);
+          readVar(vm, 'slot-type')[63] = 0;
+        }
+      });
+      try {
+        for (let i = 0; i < 160 && samples.length === 0; i += 1) {
+          writeVar(vm, 'invuln', 0);
+          seedCraftHit(vm);
+          step(vm, 1);
+        }
+        stepUntil(
+          vm,
+          () => samples.some((x) => x.k >= 44) && stateOf(vm) === 'playing' && Number(readVar(vm, 'player-dying')) === 0,
+          300,
+        );
+      } finally {
+        release();
+        blaster.makeClone = makeClone;
+        keyUp(vm, ' ');
+        keyUp(vm, 'b');
+      }
+      return {
+        samples,
+        award,
+        clonesInWindow,
+        craftLost: craft0 - readVar(vm, 'eco-craft'),
+        back: stateOf(vm),
+      };
+    },
+    assert(obs) {
+      const ks = obs.samples.map((x) => x.k);
+      assert.deepEqual(ks, Array.from({ length: 45 }, (_, k) => k), 'the window counts ticks 0..44, once each');
+      assert.ok(obs.samples.every((x) => x.state === 'playing'), 'the game stays in playing through the window');
+      for (let k = 1; k < obs.samples.length; k += 1) {
+        assert.equal(obs.samples[k].progress - obs.samples[k - 1].progress, 32, `the clock scrolls on window tick ${k}`);
+      }
+      assert.ok(obs.samples.every((x) => x.hit === 0), 'the exploding craft is never hit again');
+      assert.equal(obs.clonesInWindow, 0, 'no new shot is fired during the window (fire held)');
+      assert.ok(obs.samples.every((x) => x.bomb === 0), 'no new bomb is armed during the window (bomb held)');
+      assert.ok(obs.award > 0, 'precondition: a shot was seeded in flight onto an enemy');
+      assert.equal(obs.samples[44].score - obs.samples[4].score, obs.award, 'a shot already flying still scores');
+      assert.ok(obs.samples.every((x) => x.craft === obs.samples[0].craft), 'the craft is not spent during the window');
+      assert.equal(obs.craftLost, 1, 'the craft is spent once, at the window end');
+      assert.equal(obs.back, 'playing', 'the next craft respawns into play');
+    },
+    // roadmap-evidence: PLY-02 failure  (a window that ends a tick after the hit — the old death route straight away)
+    negativeMutation: (p) => mutate.raiseGreaterThreshold(p, 'Stage', 43, 0),
+  },
+  {
+    // #158 (slice 21): `check_flag_collected` (xevious_main.68k 3178-3188) reads the craft's shadow position with no
+    // exploding test, so the exploding craft collects a revealed flag; in the 32-frame pause the craft's STATE is
+    // cleared and its shadow parked (`finish_solvalou_exploding` 2079-2090), so it no longer can. Driven with the
+    // walk frozen through `update bonus flag`, the window's counters seeded directly.
+    // roadmap-evidence: PLY-02 success  (a revealed flag under the craft is collected while the explosion is drawn,
+    //   not in the pause after it)
+    key: 'flag-collected-only-while-explosion-drawn',
+    behavior:
+      'A revealed Bonus Flag under the exploding craft is collected while the explosion is still drawn, but not in the pause after it when the craft is no longer drawn',
+    playtestStep: 7,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      const put = (id, i, v) => {
+        readVar(vm, id)[i] = v;
+      };
+      writeVar(vm, 'game-director-state', 'frozen');
+      for (let s = 0; s < 16; s += 1) {
+        put('slot-type', s, 0);
+        put('slot-state', s, 0);
+      }
+      writeVar(vm, 'slot-index', 16);
+      writeVar(vm, 'eco-flag-awards-craft', 0); // observe collection through the 10,000-point arm
+      const trial = (dying, tick) => {
+        put('slot-type', 15, 84);
+        put('slot-state', 15, 2); // revealed flags are held HIT
+        put('slot-flag', 15, 1);
+        put('slot-x', 15, 2 * 256);
+        put('slot-y', 15, 3 * 256);
+        writeVar(vm, 'player-row', 2);
+        writeVar(vm, 'player-col', 3);
+        writeVar(vm, 'player-slot-x', 2 * 256);
+        writeVar(vm, 'player-slot-y', 3 * 256);
+        writeVar(vm, 'player-dying', dying);
+        writeVar(vm, 'player-dying-tick', tick);
+        const s0 = readVar(vm, 'eco-score');
+        callProc(vm, 'Stage', 'update bonus flag');
+        step(vm, 1);
+        return readVar(vm, 'eco-score') - s0;
+      };
+      return {
+        alive: trial(0, 0),
+        exploding: trial(1, 10),
+        lastFrame: trial(1, 27),
+        pause: trial(1, 28),
+        latePause: trial(1, 43),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.alive, 10000, 'precondition: the live craft collects the flag');
+      assert.equal(obs.exploding, 10000, 'the exploding craft collects the flag while its explosion is drawn');
+      assert.equal(obs.lastFrame, 10000, 'the last explosion tick still collects');
+      assert.equal(obs.pause, 0, 'the first pause tick does not collect');
+      assert.equal(obs.latePause, 0, 'the end of the pause does not collect');
+    },
+    // roadmap-evidence: PLY-02 failure  (with the drawn gate closed, the exploding craft no longer collects)
+    negativeMutation: (p) => changeLessThanLiteral(p, 'Stage', 28, 0),
   },
   {
     // CAB-05: the falling bomb is the arcade's own (bomb-active block, xevious_main.68k 2470-2499): code 1C → 1D →

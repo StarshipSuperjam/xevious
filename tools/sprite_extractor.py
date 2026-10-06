@@ -26,6 +26,9 @@ CONTACT_SHEET_PATH = ROOT / "docs" / "images" / "sprite-extraction-proof.png"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 GENERATOR_VERSION = 1
 GENERATED_TARGET = "toroid_sprite_proof"
+# #23: the proof target's draw layer is pinned, so it never depends on which targets another generator has
+# already added (game_director pins its own the same way: the HUD at 16 just below, the world band above).
+GENERATED_LAYER_ORDER = 17
 MANAGED_TARGETS = {"solvalou", GENERATED_TARGET}
 FRAME_NAME = re.compile(r"^[a-z0-9]+(?:[/-][a-z0-9]+)*$")
 # A frame may carry an optional `flips` list: each token emits one costume that is a deterministic
@@ -259,7 +262,11 @@ def _intersects(
 
 
 def _require_keys(
-    value: dict, expected: set[str], label: str, optional: set[str] = frozenset()
+    value: dict,
+    expected: set[str],
+    label: str,
+    optional: set[str] = frozenset(),
+    error: type[Exception] = SpriteExtractionError,
 ) -> None:
     actual = set(value)
     if not (expected <= actual and actual <= expected | optional):
@@ -270,7 +277,7 @@ def _require_keys(
             details.append("missing " + ", ".join(sorted(missing)))
         if unknown:
             details.append("unknown " + ", ".join(sorted(unknown)))
-        raise SpriteExtractionError(f"{label} fields are invalid: {'; '.join(details)}")
+        raise error(f"{label} fields are invalid: {'; '.join(details)}")
 
 
 def validate_manifest(manifest: object) -> dict:
@@ -811,19 +818,10 @@ def expected_project(
         derivative.frame["name"]
         for derivative in derivatives
     } | (prior_frame_names or set())
-    # Preserve the generated target's existing draw layer if it is already in the project, so a
-    # SIBLING target another generator adds (e.g. game_director's gameplay targets) cannot shift it
-    # — otherwise recomputing max(existing)+1 makes the two generators disagree over this one field
-    # and neither reaches a fixpoint (order-independence, arch review 3a). Only when the target is
-    # absent (a first extraction) is a fresh top layer assigned.
-    prior_layer = next(
-        (
-            target.get("layerOrder")
-            for target in project["targets"]
-            if target.get("name") == GENERATED_TARGET and isinstance(target.get("layerOrder"), int)
-        ),
-        None,
-    )
+    # The generated target's draw layer is the pinned GENERATED_LAYER_ORDER, never recomputed from the
+    # targets already present, so a SIBLING target another generator adds (e.g. game_director's gameplay
+    # targets) cannot shift it and a first extraction lands on the same layer as a re-extraction (#23;
+    # order-independence, arch review 3a).
     project["targets"] = [
         target
         for target in project["targets"]
@@ -846,15 +844,7 @@ def expected_project(
             _costume(derivative)
         )
     solvalou["costumes"].extend(by_target.get("solvalou", []))
-    existing_orders = [
-        target.get("layerOrder")
-        for target in project["targets"]
-        if isinstance(target.get("layerOrder"), int)
-    ]
-    generated = _generated_target(
-        by_target.get(GENERATED_TARGET, []),
-        prior_layer if prior_layer is not None else max(existing_orders, default=-1) + 1,
-    )
+    generated = _generated_target(by_target.get(GENERATED_TARGET, []), GENERATED_LAYER_ORDER)
     insertion = next(
         (
             index
@@ -930,32 +920,33 @@ def _overlay_record(manifest: dict, derivative: Derivative) -> dict:
     }
 
 
-def _read_json(path: Path) -> dict:
+# These three helpers are shared with tools/hud_glyphs.py, which passes its own error type and provenance path
+# (#24: it used to carry copies, and its `_prior_output_records` had lost the per-record type check).
+def _read_json(path: Path, error: type[Exception] = SpriteExtractionError) -> dict:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise SpriteExtractionError(f"cannot read JSON {path}: {exc}") from exc
+        raise error(f"cannot read JSON {path}: {exc}") from exc
     if not isinstance(value, dict):
-        raise SpriteExtractionError(f"{path} must contain one JSON object")
+        raise error(f"{path} must contain one JSON object")
     return value
 
 
-def _prior_output_records() -> dict[str, dict]:
-    if not DERIVATIVE_PROVENANCE_PATH.exists():
+def _prior_output_records(
+    path: Path | None = None, error: type[Exception] = SpriteExtractionError
+) -> dict[str, dict]:
+    path = DERIVATIVE_PROVENANCE_PATH if path is None else path
+    if not path.exists():
         return {}
-    prior = _read_json(DERIVATIVE_PROVENANCE_PATH)
+    prior = _read_json(path, error)
     outputs = prior.get("outputs")
     if not isinstance(outputs, dict):
-        raise SpriteExtractionError(
-            f"{DERIVATIVE_PROVENANCE_PATH} has no outputs object"
-        )
+        raise error(f"{path} has no outputs object")
     if any(
         not isinstance(filename, str) or not isinstance(record, dict)
         for filename, record in outputs.items()
     ):
-        raise SpriteExtractionError(
-            f"{DERIVATIVE_PROVENANCE_PATH} has invalid output records"
-        )
+        raise error(f"{path} has invalid output records")
     return outputs
 
 

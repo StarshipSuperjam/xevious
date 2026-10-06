@@ -26,6 +26,20 @@ roadmap = load_module("roadmap", ROOT / "tools" / "roadmap.py")
 closures = load_module("check_roadmap_closures", ROOT / "tools" / "check_roadmap_closures.py")
 
 
+def replanned(manifest: dict, *keys: str) -> dict:
+    # Every leaf is delivered as of the slice-21 release (#170), so a fixture that needs live work re-plans
+    # the release leaves in its own copy: back to `planned`, with no delivering PR.
+    changed = copy.deepcopy(manifest)
+    for leaf in changed["leaves"]:
+        if leaf["key"] in keys:
+            leaf["status"] = "planned"
+            leaf.pop("delivered_by", None)
+    return changed
+
+
+RELEASE_LEAVES = ("release.full-soak", "release.audit")
+
+
 class RoadmapManifestTests(unittest.TestCase):
     def setUp(self) -> None:
         self.manifest = json.loads((ROOT / "docs" / "roadmap" / "manifest.json").read_text())
@@ -39,9 +53,10 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("assigned to both" in item for item in roadmap.validate_manifest(changed)))
 
     def test_unsettled_spec_cannot_gain_executable_leaf(self) -> None:
-        # Every parent is settled as of slice 21, so the test unsettles `release` in its own copy: a
-        # planned leaf under a provisional parent must be rejected, and the committed planned leaf proves it.
-        changed = copy.deepcopy(self.manifest)
+        # Every parent is settled and every leaf delivered as of slice 21, so the test re-plans a release
+        # leaf and unsettles `release` in its own copy: a planned leaf under a provisional parent is rejected.
+        changed = replanned(self.manifest, *RELEASE_LEAVES)
+        self.assertEqual([], roadmap.validate_manifest(changed))
         parent = next(item for item in changed["parents"] if item["key"] == "release")
         leaf = next(item for item in changed["leaves"] if item["key"] == "release.full-soak")
         self.assertEqual("planned", leaf["status"])
@@ -57,10 +72,11 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertTrue(any("blocker cycle" in item for item in roadmap.validate_manifest(changed)))
 
     def test_issue_body_carries_stable_identity_and_closure_contract(self) -> None:
-        # `release` is locked as of slice 21, so its leaves render "Executable now: yes"; a provisional
-        # copy of the same parent must render "no".
-        parent = next(item for item in self.manifest["parents"] if item["key"] == "release")
-        leaf = next(item for item in self.manifest["leaves"] if item["key"] == "release.full-soak")
+        # `release` is locked as of slice 21, so a planned release leaf renders "Executable now: yes"; a
+        # provisional copy of the same parent must render "no".
+        changed = replanned(self.manifest, *RELEASE_LEAVES)
+        parent = next(item for item in changed["parents"] if item["key"] == "release")
+        leaf = next(item for item in changed["leaves"] if item["key"] == "release.full-soak")
         body = roadmap.leaf_body(leaf, parent)
         self.assertIn("<!-- roadmap-key: release.full-soak -->", body)
         self.assertIn("Executable now: **yes**", body)
@@ -97,6 +113,34 @@ class RoadmapManifestTests(unittest.TestCase):
         self.assertIn("7", dependencies["8"])
         self.assertIn("10", dependencies["11"])
         self.assertEqual({"1", "2", "2a", *map(str, range(3, 21))}, set(dependencies["21"]))
+
+    def test_dropped_leaf_is_valid_closed_and_never_delivered(self) -> None:
+        # #116: a cancelled leaf is `dropped` — valid without a delivering PR, refused with one, never executable,
+        # and projected as a closed-as-not-planned issue with the Dropped board role.
+        blocking = {blocker for leaf in self.manifest["leaves"] for blocker in leaf.get("blocked_by", [])}
+        changed = replanned(self.manifest, *RELEASE_LEAVES)
+        leaf = next(item for item in changed["leaves"] if item["status"] == "planned" and item["key"] not in blocking)
+        leaf["status"] = "dropped"
+        self.assertEqual([], roadmap.validate_manifest(changed))
+        parent = next(item for item in changed["parents"] if item["key"] == leaf["parent"])
+        body = roadmap.leaf_body(leaf, parent)
+        self.assertIn("Executable now: **no**", body)
+        self.assertIn("## Dropped", body)
+        self.assertIn("roadmap:dropped", roadmap.issue_labels("leaf", leaf))
+        self.assertTrue(roadmap.closes(leaf))
+        self.assertEqual("not_planned", roadmap.close_reason(leaf))
+        self.assertEqual(("Dropped", "Done"), roadmap.board_fields(leaf))
+        self.assertIn("roadmap:dropped", roadmap.LABELS)
+        leaf["delivered_by"] = 99
+        self.assertTrue(any("never delivered" in item for item in roadmap.validate_manifest(changed)))
+
+    def test_live_work_cannot_wait_on_a_dropped_leaf(self) -> None:
+        changed = replanned(self.manifest, *RELEASE_LEAVES)
+        waiting = next(item for item in changed["leaves"] if item["status"] == "planned" and item.get("blocked_by"))
+        blocker = next(item for item in changed["leaves"] if item["key"] == waiting["blocked_by"][0])
+        blocker["status"] = "dropped"
+        blocker.pop("delivered_by", None)
+        self.assertTrue(any("blocked by dropped leaf" in item for item in roadmap.validate_manifest(changed)))
 
     def test_journal_template_carries_no_migration_state(self) -> None:
         template = roadmap.journal_template({"repository": "o/r", "project": {"node_id": "P"}})
@@ -208,6 +252,19 @@ class ClosureGuardTests(unittest.TestCase):
         event = {"issue": {"number": 12}}
         failures = closures.validate_issue_event(event, self.manifest, self.migration)
         self.assertTrue(any("merged delivering" in item for item in failures))
+
+    def test_dropped_leaf_closes_only_as_not_planned(self) -> None:
+        # #116: like history, a dropped leaf's closure is not a delivery and needs no PR — but only when it is
+        # closed as not planned; closed as completed it would read as delivered, so it is refused (and reopened).
+        manifest = copy.deepcopy(self.manifest)
+        next(leaf for leaf in manifest["leaves"] if leaf["key"] == "ready")["status"] = "dropped"
+        with mock.patch.object(closures, "source_pr_for_closed_issue") as source:
+            self.assertEqual([], closures.validate_issue_event(
+                {"issue": {"number": 12, "state_reason": "not_planned"}}, manifest, self.migration))
+            failures = closures.validate_issue_event(
+                {"issue": {"number": 12, "state_reason": "completed"}}, manifest, self.migration)
+        self.assertTrue(any("must be closed as not planned" in item for item in failures))
+        source.assert_not_called()
 
     def test_main_enforces_even_when_the_journal_has_no_phase(self) -> None:
         # The old phase gate returned 0 (a silent pass) whenever the journal `phase`
@@ -410,17 +467,30 @@ class ApplyConvergenceTests(unittest.TestCase):
         self.assertFalse(roadmap.issue_up_to_date(issue, title="T", body="B", labels=["y", "x"], milestone=9, state="open"))
         self.assertFalse(roadmap.issue_up_to_date(issue, title="T", body="B", labels=["y"], milestone=3, state="open"))
         self.assertFalse(roadmap.issue_up_to_date(None, title="T", body="B", labels=[], milestone=None, state="open"))
+        # #116: a dropped leaf's issue must be closed as not planned, not merely closed.
+        closed = dict(issue, state="closed", state_reason="completed")
+        self.assertFalse(roadmap.issue_up_to_date(closed, title="T", body="B", labels=["x", "y"], milestone=3, state="closed", state_reason="not_planned"))
+        closed["state_reason"] = "not_planned"
+        self.assertTrue(roadmap.issue_up_to_date(closed, title="T", body="B", labels=["x", "y"], milestone=3, state="closed", state_reason="not_planned"))
+
+    def test_patch_issue_sends_the_close_reason(self) -> None:
+        with mock.patch.object(roadmap, "gh", return_value={"number": 5}) as gh:
+            roadmap.patch_issue("o/r", 5, title="T", body="B", labels=[], milestone=None, state="closed", state_reason="not_planned")
+        self.assertIn("state_reason=not_planned", gh.call_args.args)
+        with mock.patch.object(roadmap, "gh", return_value={"number": 5}) as gh:
+            roadmap.patch_issue("o/r", 5, title="T", body="B", labels=[], milestone=None, state="closed")
+        self.assertFalse(any(str(arg).startswith("state_reason=") for arg in gh.call_args.args))
 
     def _journal(self):
-        select = lambda fid, opts: {"id": fid, "type": "ProjectV2SingleSelectField", "options": [{"name": n, "id": i} for n, i in opts]}
+        select = lambda name, fid, opts: {"id": fid, "name": name, "type": "ProjectV2SingleSelectField", "options": [{"name": n, "id": i} for n, i in opts]}
         return {
             "project": {"node_id": "P"},
             "project_fields": {
-                "Roadmap role": select("f1", [("Leaf", "o1"), ("Imported history", "o2"), ("Parent", "o3")]),
-                "Delivery slice": select("f2", [("8", "s8")]),
-                "Proof level": select("f3", [("Playable", "p1")]),
-                "Work type": select("f4", [("Feature", "w1")]),
-                "Status": select("f5", [("Backlog", "b1"), ("Done", "d1")]),
+                "Roadmap role": select("Roadmap role", "f1", [("Leaf", "o1"), ("Imported history", "o2"), ("Parent", "o3")]),
+                "Delivery slice": select("Delivery slice", "f2", [("8", "s8")]),
+                "Proof level": select("Proof level", "f3", [("Playable", "p1")]),
+                "Work type": select("Work type", "f4", [("Feature", "w1")]),
+                "Status": select("Status", "f5", [("Backlog", "b1"), ("Done", "d1")]),
             },
             "parents": {},
             "leaves": {"air.toroid": {"url": "u1", "node_id": "N1"}},
@@ -442,6 +512,28 @@ class ApplyConvergenceTests(unittest.TestCase):
         written, ops = self._sync(cards)
         self.assertEqual(0, written)
         self.assertEqual([], ops)
+
+    def test_sync_gives_a_dropped_leaf_the_dropped_role(self) -> None:
+        # #116: a dropped leaf's card carries the Dropped role (Status Done, as a closed issue), never Leaf.
+        manifest = {"parents": [], "leaves": [{"key": "air.toroid", "slice": "8", "proof": "playable", "status": "dropped"}]}
+        journal = self._journal()
+        journal["project_fields"]["Roadmap role"]["options"].append({"name": "Dropped", "id": "o4"})
+        cards = {"u1": [{"id": "c1", "isArchived": False, "roadmap role": "Leaf", "delivery slice": "8",
+                         "proof level": "Playable", "work type": "Feature", "status": "Backlog"}]}
+        calls: list[list] = []
+        with mock.patch.object(roadmap, "board_items", return_value=cards), \
+             mock.patch.object(roadmap, "graphql_batch", side_effect=lambda ops, **k: calls.append(ops)), \
+             mock.patch.object(roadmap, "write_json"):
+            written = roadmap.sync_project(manifest, journal)
+        ops = [op for batch in calls for op in batch]
+        self.assertEqual(2, written)
+        self.assertTrue(any('singleSelectOptionId:"o4"' in op for op in ops))
+        self.assertTrue(any('singleSelectOptionId:"d1"' in op for op in ops))
+        # A board whose Roadmap role field predates the option fails closed, naming the missing option.
+        with mock.patch.object(roadmap, "board_items", return_value=cards), \
+             mock.patch.object(roadmap, "graphql_batch"), mock.patch.object(roadmap, "write_json"):
+            with self.assertRaisesRegex(roadmap.RoadmapError, "no option Dropped"):
+                roadmap.sync_project(manifest, self._journal())
 
     def test_sync_unarchives_then_updates_only_the_differing_field(self) -> None:
         # Archived card whose Status is wrong (Done, should be Backlog for a planned leaf).
@@ -534,6 +626,19 @@ class DeliverTests(unittest.TestCase):
             with self.assertRaises(roadmap.RoadmapError):
                 roadmap.deliver(self.journal, 20, manifest_path=self.manifest_path)
         self.assertEqual(self.MANIFEST_TEXT, self.manifest_path.read_text())  # unchanged
+
+    def test_skips_a_dropped_leaf(self) -> None:
+        # #116: a dropped leaf is never recorded as delivered, even if a PR names it.
+        text = self.MANIFEST_TEXT.replace(
+            '{"key":"other","status":"planned","proof":"playable"}',
+            '{"key":"other","status":"dropped","proof":"playable"}',
+        )
+        self.manifest_path.write_text(text, encoding="utf-8")
+        with mock.patch.object(roadmap, "gh", return_value=self._merged(12, 14)), \
+             mock.patch.object(roadmap, "validate_manifest", return_value=[]):
+            flipped = roadmap.deliver(self.journal, 20, manifest_path=self.manifest_path)
+        self.assertEqual(["ready"], flipped)
+        self.assertEqual("dropped", self._leaves()["other"]["status"])
 
     def test_an_invalid_result_aborts_the_write(self) -> None:
         with mock.patch.object(roadmap, "gh", return_value=self._merged(12)), \

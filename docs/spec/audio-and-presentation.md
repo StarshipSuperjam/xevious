@@ -48,11 +48,14 @@ clamped, riding at its fixed lead from the craft (`src/xevious_main.68k` `update
 A player shot is retired as it passes arcade row 0, as the arcade deletes it once its position wraps past
 the top (`src/xevious_main.68k` `main_fn_30_shot_fn` 2391–2393, `delete_shot` 2394–2396); rows 0–3 lie
 above the visible window, so the shot keeps hit-testing there while its sprite is hidden. World objects —
-enemies, enemy bullets, ground objects, and the Bonus Flag — are drawn only while their row is on the
-visible screen, rows 4–39: the arcade culls an object at row 40 (`src/xevious_main.68k`
-`check_scroll_offscreen` 4827–4839, which also culls an object past the side edge) and shows rows 4–39 of
-the objects it keeps. Hiding a whole sprite at the row-4 cut line is a port necessity: Scratch cannot clip a
-sprite at a screen edge. Drawn layers run, front to back: the craft and its weapons, the HUD, the bezel
+enemies, enemy bullets, ground objects, and the Bonus Flag — are drawn while any part of them reaches the
+visible screen, rows 4–39, and the screen edge cuts off the part beyond it: the arcade culls an object at
+row 40 (`src/xevious_main.68k` `check_scroll_offscreen` 4827–4839, which also culls an object past the side
+edge) and shows rows 4–39 of the objects it keeps, so a sprite straddling the top or bottom edge is drawn in
+part. The port draws an object while its row is within three rows of that window — the farthest a world
+sprite reaches from its position — and lets the stage edge cut it. Scratch pulls a moving sprite back onto
+the stage at its edge, so each world sprite makes its move at an oversized scale and then takes its drawn
+size, which leaves it where the arcade puts it; that is a port necessity. Drawn layers run, front to back: the craft and its weapons, the HUD, the bezel
 panels, then the world objects. The craft body over the HUD over the world objects follows the reference,
 which gives only the craft body's hardware sprites priority over the objects and redraws its foreground
 text layer over them (its Amiga display setup, `src/amiga/amiga.68k` lines 985–987 in platform_init and
@@ -99,6 +102,6 @@ and the principles' three-marker rule applies to presentation exactly as to mech
 | Recorded animation frame counts appear in the build's data, matching this spec's owning documents | Data/structural fixture over generated animation constants | engine |
 | Cues play at their owning events and complete within their state windows — no cutoffs | Play the built `.sb3` through fire, hit, death, award, and transition moments | operator |
 | The game sounds and looks like Xevious to its owner — music, key effects, and title presentation are present and right | Playtest judgment across a full session | operator |
-| The arcade screen draws at one 1.25 scale in a centred 280×360 window between the bezel panels; the craft stops at the arcade clamp, shots retire at row 0, world objects show only on rows 4–39, and the HUD sits on the arcade text cells inside the window | Headless scenarios drive the craft into each clamp, a shot past row 0, and an object across the cut line; structural fixtures pin the render map, the bezel target and its layer, the in-view gate, the HUD text grid, and the layer order | engine |
+| The arcade screen draws at one 1.25 scale in a centred 280×360 window between the bezel panels; the craft stops at the arcade clamp, shots retire at row 0, world objects are drawn while any part reaches rows 4–39 and are cut at the stage edge, and the HUD sits on the arcade text cells inside the window | Headless scenarios drive the craft into each clamp, a shot past row 0, and an object across the cut line; structural fixtures pin the render map, the bezel target and its layer, the in-view gate, the HUD text grid, and the layer order | engine |
 | The framed playfield reads like the cabinet: nothing covers the craft or the HUD, the bezel frames the window cleanly, and objects enter and leave the screen cleanly | Play the built `.sb3`, driving the craft into every edge and corner during busy play | operator |
 | No presentation element carries invented gameplay meaning without a recorded marker | Fidelity-audit review of presentation elements against this spec | engine |

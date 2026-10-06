@@ -52,6 +52,12 @@ advances a pull request out of draft and never lets a playtest step be skipped.
   covers the random stream. Frame-accurate stepping would need a renderer or a patched VM
   (what Whisker uses); this net deliberately does not depend on it. It never calls
   `vm.start()`.
+- The release soak, [`soak.js`](soak.js), is the one exception. Its runs are compared
+  trace for trace (a second campaign, a reloaded game against a fresh one), and an
+  outcome that rides on how many ticks share a frame drifts with the CPU, so it paces
+  every VM the way the editor runs the game: the sequencer ends each frame after one pass
+  of every thread, as a renderer's redraw request ends it in Scratch 3, and the walk
+  advances one tick per pump.
 
 ## Fidelity caveat
 
@@ -72,6 +78,16 @@ Or in two steps:
 python tools/scratch_project.py build   # writes dist/Xevious.sb3
 cd harness && npm ci --ignore-scripts && node --test
 ```
+
+The release soak (RELEASE-01) is not part of that run: the file is not named
+`*.test.js`, and CI runs it in its own `runtime-soak` job. Locally, after a build:
+
+```bash
+cd harness && node --test soak.js
+```
+
+It plays the whole campaign twice plus the cabinet flow, about half a minute on a laptop.
+Never run it, or the full harness, while `pytest tests/` is rebuilding the project.
 
 The "No storage module present" warnings on load are expected and harmless: without a
 renderer the VM cannot build costume/sound skins, which does not affect logic.

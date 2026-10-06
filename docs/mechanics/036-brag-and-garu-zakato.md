@@ -16,7 +16,7 @@
   detonation is the sole spawner of the Brag Spario ([record 035](035-giddo-and-brag-spario.md)) and a live
   driver of the shared radiating emitter ([record 026](026-enemy-bullets-and-collision-death.md)).
 - Derived behavior: **Brag rnd** (`handle_16_Brag_Zakato_rnd`) runs `init_teleport`, stamps `_PTS` (600 pts),
-  and while teleporting scrolls in place; on completion (`zakato_teleport` clears carry) `brag_zakato_16_main`
+  and while teleporting scrolls with the terrain from its random row 5–20; on completion (`zakato_teleport` clears carry) `brag_zakato_16_main`
   draws a **1-64 fuse** (`pseudo_random_gen`, `and #0x3f`, `addq #1`), stamps `_CODE = 0x12`, aims at the craft
   over `angle_dX_dY_tbl` (the 32-tier), sets `_STATE = 2`, and each active frame — unless shot
   (`_STATE == 3` → `flying_enemy_hit`) — decrements the fuse (`subq.b #1,(_TIMER)`) and at zero jumps to
@@ -35,7 +35,10 @@
   calls `init_garu_zakato_explosion` then `clr _TYPE`/`clr _STATE` — **no burst, no score**.
   `init_garu_zakato_explosion` emits a **16-bullet ring** from angle 0 (`addq #2`, `and #30`), then copies the
   Garu's cell (obj `0x3B`) into the **4 following objects** (`0x3C`-`0x3F`), writes the cardinal velocities from
-  `brag_spario_dX_tbl` / `brag_spario_dY_tbl` and `_TYPE = 9` (Brag Spario) into each.
+  `brag_spario_dX_tbl` / `brag_spario_dY_tbl` and `_TYPE = 9` (Brag Spario) into each. Only an idle object
+  takes the type up (`add_obj_handler` 4801-4815 runs only for an idle slot); an object already alive there
+  keeps its own handler, which never reads `_TYPE`, so it stays what it was — moved onto the Garu's cell with
+  that slot's Spario velocity — and gets no Spario.
 - Reference provenance: `jotd666/xevious@71473685a8c7856c8401c8519276cd97a38d4183`. Line citations are
   `src/xevious_main.68k` unless noted. Brag rnd: `handle_16_Brag_Zakato_rnd` 3863-3889 (`init_teleport`, `_PTS`
   600, the `zakato_teleport` gate, `brag_zakato_16_main` fuse `(rnd & 0x3f) + 1` = 1-64, `_CODE = 0x12`, aim over
@@ -67,14 +70,17 @@
   - **Brag.** `install_init_brag_zakato` clones the base Zakato teleport-in exactly — the craft-independent spawn
     column (`exclude_craft=False` → `gen_random_Y_store_obj`, no craft reject, **with** `init_teleport`'s `+1`-cell
     offset `col_offset=1`, since the Brag teleports in like the base Zakato), `SLOT_TELEPORT` (indestructible),
-    `slot code` = `BRAG_ZAKATO_MAIN_CODE` (`0x12`), and the per-variant
+    `slot code` = `BRAG_ZAKATO_MAIN_CODE` (`0x12`), the random teleport row 5–20 drawn first (slice 21), and the
+    per-variant
     `slot pts` — capturing **no** fire mask and seeding **no** fire timer at spawn (the fuse is drawn later, on
     teleport completion). `install_update_brag_zakato` runs the shared teleport → active → self-destruct machine:
     on completion it aims both variants through `compute aim` over the **32-tier** `aim dx 32` / `aim dy 32`
     tables, commits `SLOT_ACTIVE`, and (rnd only) seeds `slot fire timer` = `(rng mod 64) + 1`. Each active tick
     it checks craft collision, decrements the rnd fuse, and on its trigger (rnd: fuse ≤ 0; close-Y: the craft is
     in the `[-4, 3]` lateral band) calls **`brag zakato shoot`**, flips to `SLOT_SELF_EXPLODE`, and zeroes the
-    velocity; `SLOT_SELF_EXPLODE` and `SLOT_HIT` both play the **shared** `explode toroid tick`. `install_brag_zakato_shoot`
+    velocity; `SLOT_SELF_EXPLODE` and `SLOT_HIT` both play the **shared** `explode toroid tick`. Since slice 21
+    the teleport and self-destruct phases also drift with the terrain and make the base Zakato's one-cell moves
+    ([record 056](056-release-fidelity.md) (7)). `install_brag_zakato_shoot`
     aims at the craft, folds the aim base to a radiating index (`floor(((aim base − 32) mod 256) / 8) mod 32`,
     the arcade `sub #32` / `ror.b #3` / `and #0x1f`), then loops **5 times** calling the shared `emit radiating
     bullet` and stepping `radiating angle` by 2 — all five leave the Brag's own cell.
@@ -92,15 +98,20 @@
     (`slot type`/`slot state` = 0) while restoring `slot index` to the Garu's own slot (both the free target and
     the advance-slots loop cursor).
 
-  All three bodies render through the shared Zakato renderer (a `garu zakato` costume-mirror target added beside
-  the Spario mirrors), one clone per flying slot, drawing the exclude-craft body while active and forwarding to
-  the shared burst frames while hit.
+  Both Brag variants render through the Zakato renderer and the Garu through its own `garu zakato` mirror target
+  (`garu_zakato_blocks`), one clone per flying slot. Since slice 21 (`presentation.reference-art`) they draw the
+  pinned frames. A Brag Zakato draws the teleport sparkle and the self-destruct frames like a base Zakato
+  ([record 034](034-zakato-teleporters.md)). While active it draws its own 0x112 body at the pulsing colour
+  index its update writes after the fire test (`init brag zakato` stamps the 0x24 index; 3887, 3916, 4002).
+  The Garu draws its 0x113 body at the pulsing colour (4027) and the shared air burst when shot down. The
+  arcade Garu's init writes no colour (4010–4021), so its first frame shows whatever colour the slot last held.
+  The port writes the pulsing colour at init instead, a port choice.
 - Scratch evidence: `install_init_brag_zakato`, `install_update_brag_zakato`, `install_brag_zakato_shoot`,
   `install_init_garu_zakato`, `install_update_garu_zakato` and `install_garu_zakato_detonate` (the lifecycle
   procs, reusing `compute aim`, the 32-tier aim tables, the shared `emit radiating bullet`, the shared
   `explode toroid tick`, `init brag spario` and the family move/cull), the Brag OR-branch and Garu branch in
   `install_advance_slots`, the Brag OR-branch in `install_spawn_flying` (and the **absence** of a Garu one — the
-  Garu has no formation entry), the Garu debug-key stamp into the first flying slot, `garu_zakato_blocks` for the
+  Garu has no formation entry), the Garu debug-key stamp into the second flying slot (obj `0x3B`, since slice 21), `garu_zakato_blocks` for the
   render, and the `BRAG_ZAKATO_*` / `GARU_*` tuning constants in `tools/game_director.py`; the structural
   contract `_air08_failures` and its per-clause negatives (`test_special_pairs_slice_authoring_present` /
   `test_special_pairs_slice_negative_fixtures`) in `tests/test_scratch_project.py`, whose clauses pin the two
@@ -111,7 +122,10 @@
   scenarios in `harness/lib/catalog.js` (`brag-zakato-fires-five-bullet-fan` asserting the 5 aimed radiating
   bullets fanned two steps apart with the Brag flipping to self-explode, and
   `garu-zakato-detonates-into-ring-and-four-sparios` asserting the 16-bullet ring, the 4 cardinal-velocity Brag
-  Sparios in the adjacent slots, and the freed Garu), each with a biting negative.
+  Sparios in the adjacent slots, and the freed Garu), each with a biting negative. Slice 21 adds the
+  `garu-pulses`, `zakato-renders-pinned-frames` and `garu-renders-pinned-frames` clauses of
+  `_reference_art_consumer_failures` (biting negatives in `test_reference_art_consumer_negatives`) and the
+  scenarios `reference-art-enemy-frames` and `reference-art-body-colours-follow-the-clock`.
 - Acceptance criteria: A Brag Zakato teleports in indestructible, becomes hittable, and on its trigger (rnd: a
   random fuse; close-Y: the craft drawing level laterally) fires a **5-bullet aimed fan** then vanishes awarding
   nothing, while a Brag shot down while active scores 600 (rnd) / 1,500 (close-Y); a Garu Zakato enters active
@@ -126,10 +140,13 @@
   tables were read at the pin). The behavior matches the reference within the recorded deviations.
 - License status: The reference states no reusable license; only instruction-derived behavior and numeric
   constants are transferred (recorded in [the index](../spec/index.md) and the data files). No source text is
-  reproduced. The three bodies reuse the credited Aerial Enemies Zakato body frame
-  (`src/xevious/assets/provenance.json`, `https://www.spriters-resource.com/arcade/xevious/`, sheet author
-  "CrazyCarl"); the distinct Garu art is deferred to a later art pass, so no new sprite crop was added and no
-  crop rect required operator pixel-verification for this family.
+  reproduced. Until slice 21 the three bodies reused the Aerial Enemies Zakato body frame (CrazyCarl,
+  `https://www.spriters-resource.com/arcade/xevious/`). Since slice 21 the Brag Zakato body (0x112) and the Garu
+  body (0x113) at the pulsing colours are decoded from the pinned reference's graphics data
+  (`assets/amiga/xevious_gfx.c`) by `tools/reference_art_render.py`, credited in
+  `src/xevious/assets/provenance.json` and [the asset credits](../ASSET_CREDITS.md) under the same rights caveat
+  as the terrain. The Brag Zakato at 0x14 draws the same picture as the Zakato body, so the build reuses that
+  costume for it.
 - Known deviations or uncertainty: (1) **Two arcade frames per tick (tick scaling).** The per-frame reference
   rates are doubled for the port's two-frame tick — the teleport and fuse clocks step `TICK_TIMER_STEP = 2` per
   tick and bodies move by the shared `×4` position step — the same tick scaling every family uses. (2) **MSB byte
@@ -139,23 +156,27 @@
   re-entry / overloaded `_STATE = 3` expressed as explicit phase states.** The arcade holds its phase in the
   coroutine resume address and reuses `_STATE = 3` as both the shot-down flag and the post-fire benign flag; the
   port splits these into explicit `slot state` sentinels — `SLOT_TELEPORT` (Brag only, indestructible sparkle),
-  `SLOT_ACTIVE`, `SLOT_HIT` (shot down → shared burst), `SLOT_SELF_EXPLODE` (Brag post-fire, benign → shared
-  burst) — the same explicit-phase mapping recorded for Zakato. (4) **Fixed-adjacency detonation with a one-tick
+  `SLOT_ACTIVE`, `SLOT_HIT` (shot down → shared burst), `SLOT_SELF_EXPLODE` (Brag post-fire, benign → the Zakato
+  self-destruct frames, since slice 21) — the same explicit-phase mapping recorded for Zakato. (4) **Fixed-adjacency detonation with a one-tick
   Sparios head start.** The arcade writes the 4 Brag Sparios into the 4 objects **immediately after** the Garu
   (obj `0x3C`-`0x3F` after `0x3B`); the port reproduces that adjacency by writing into `gslot+1 … gslot+4` in the
-  6-slot flying pool, which requires the Garu to occupy the first flying slot — its only current spawner (the
-  debug key) stamps it there. Because those higher slot indices are reached **later in the same** `advance slots`
-  pass, the 4 Sparios update once on the tick they spawn — a **one-tick head start** (recorded here; the natural
-  add_object spawn that would place a Garu at an arbitrary slot is a deferred follow-up, see (6)). (5) **No enemy
+  6-slot flying pool, and, as the arcade does, gives a Spario only to a free slot: a slot that already holds an
+  enemy has that enemy moved onto the Garu's cell with the slot's Spario velocity (slice 21). Since slice 21
+  the Garu occupies the **second** flying slot, arcade obj `0x3B`, as the
+  arcade places it, so `gslot+1 … gslot+4` is exactly obj `0x3C`-`0x3F` (both the schedule's add_object records
+  and the debug key stamp it there; see [record 056](056-release-fidelity.md) (1)). Because those higher slot
+  indices are reached **later in the same** `advance slots` pass, the 4 Sparios update once on the tick they
+  spawn — a **one-tick head start**. (5) **No enemy
   scroll.** The port has no background-scroll term for flying slots, so the arcade's scroll-during-flight renders
   as pure `slot dx`/`slot dy` motion — the same "no enemy scroll" deviation class recorded for every flying
-  family. (6) **Garu natural-spawn reachability deferred.** In the arcade the Garu Zakato is scheduled by the
-  area `add_object` records (areas 9/10/14), a spawn source the port has not yet built (the schedule-consumer
-  seam is dormant); until it lands, the Garu is reachable for playtest via the **debug key** (which stamps a solo
-  Garu into the first flying slot), and the two Brag variants arrive through the normal formation waves. Recorded
-  so a reviewer does not read the Garu's absence from natural play as a build gap. (7) **Garu art deferred.** The
-  Garu draws the Zakato body frame as a documented stand-in (see License status); the motion, points, fuse and
-  detonation are unaffected.
+  family. The Brags' teleport and self-destruct scroll is no longer part of it: since slice 21 both phases
+  drift with the terrain ([record 056](056-release-fidelity.md) (7)). (6) **Garu natural spawn — resolved in slice 21.** In the arcade the Garu Zakato is scheduled by the
+  area `add_object` records (areas 9/10/14). That spawn source now exists ([record 056](056-release-fidelity.md)
+  (1)): the Garu appears in natural play in those areas, in obj `0x3B`, and is dropped if that slot is busy. The
+  two Brag variants still arrive through the normal formation waves. (7) **Garu art — resolved in slice 21.** The
+  Garu used to draw the Zakato body as a stand-in; it now draws its own pulsing 0x113 body, and the Brag Zakato
+  its own 0x112 body (see License status). The colour is kept as an index in `slot flag` (0–4 pulsing, 5 =
+  0x24), as for the base Zakato ([record 034](034-zakato-teleporters.md) (10)).
 - [x] No assembly or other source code was copied into the Scratch project.
 - [x] No arcade ROM files were acquired, opened, extracted, or distributed.
 - [x] Any transferred graphics or audio are recorded in `src/xevious/assets/provenance.json`.

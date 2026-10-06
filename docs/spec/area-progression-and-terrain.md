@@ -54,7 +54,11 @@ difficulty from the player's score. The named home of the record-kind vocabulary
 names; behaviors are detailed in [Difficulty and formations](difficulty-and-formations.md) and
 [Core game systems](core-game-systems.md).
 Every table ends with a single 0x0D sentinel row that can never trigger, because the area advances at
-row 0x0E first; the extractor proves every table decodes exactly to its sentinel.
+row 0x0E first; the extractor proves every table decodes exactly to its sentinel. Within a frame the
+schedule step runs before the area step — the sub CPU calls its functions in table order
+(`xevious_sub.68k` `sub_fn_jump_tbl_ROM` 109–119) — so on the frame the row reaches 0x0E a record on
+that row still fires for the area that is ending. Area 13's final formation reset is the only such
+record, so area 14 opens with no formation until its own first record.
 
 **Terrain.** Terrain imagery is the arcade map scrolled at the clock above. The map is one picture
 128 tiles wide and 256 rows long (8×8-pixel tiles; the map ROMs in `map_rom.68k`, decoded by

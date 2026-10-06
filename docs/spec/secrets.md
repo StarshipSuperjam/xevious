@@ -48,8 +48,9 @@ object is silently removed instead (`handle_53_Easter_Egg`, `check_copyright_str
 `display_easter_egg` 5985–6048). The build reproduces the *event* — trigger, duration, minimal score —
 but per the reference policy's in-game-text rule the displayed wording is **this project's own original
 text**, never a transcription of the arcade's credit strings (a recorded deviation: the mechanic is the
-secret, not the wording). The catalog's `uncertain` flag on this row stays until arcade observation
-confirms the trigger's presentation details.
+secret, not the wording). The source fixes the presentation: a 128-frame timer, then the wipe and the
+object's removal (`check_copyright_strings` 6001–6015); the arcade's copyright-tamper check is gone from
+the reference itself, and the catalog row carries no uncertain flag.
 
 ## Acceptance criteria
 

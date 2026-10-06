@@ -11,6 +11,7 @@
     "render_row_top": 210,
     "render_stage_top": 180,
     "render_view_first_row": 4,
+    "render_view_margin_rows": 3,
     "render_view_rows": 40,
     "shot_slot_count": 3,
     "slot_units_per_cell": 256,
@@ -1022,11 +1023,6 @@
       "name": "andor part lateral",
       "scope": "Stage"
     },
-    "area-checkpoint-progress": {
-      "kind": "variable",
-      "name": "checkpoint progress",
-      "scope": "Stage"
-    },
     "area-map-column": {
       "kind": "list",
       "name": "area map column",
@@ -1192,6 +1188,11 @@
       "name": "alloc result",
       "scope": "blaster"
     },
+    "blaster-bounce-timer": {
+      "kind": "variable",
+      "name": "bounce timer",
+      "scope": "blaster"
+    },
     "blaster-clone-slot": {
       "kind": "variable",
       "name": "clone slot",
@@ -1347,34 +1348,14 @@
       "name": "swap tmp",
       "scope": "Stage"
     },
+    "cabinet-title-tick": {
+      "kind": "variable",
+      "name": "title tick",
+      "scope": "Stage"
+    },
     "cabinet-two-player": {
       "kind": "variable",
       "name": "two player",
-      "scope": "Stage"
-    },
-    "debug-ground-index": {
-      "kind": "variable",
-      "name": "debug ground index",
-      "scope": "Stage"
-    },
-    "debug-ground-key-held": {
-      "kind": "variable",
-      "name": "debug ground key held",
-      "scope": "Stage"
-    },
-    "debug-pause-key-held": {
-      "kind": "variable",
-      "name": "debug pause key held",
-      "scope": "Stage"
-    },
-    "debug-paused": {
-      "kind": "variable",
-      "name": "debug paused",
-      "scope": "Stage"
-    },
-    "debug-spawn-index": {
-      "kind": "variable",
-      "name": "debug spawn index",
       "scope": "Stage"
     },
     "difficulty-ai-adjust": {
@@ -1390,6 +1371,11 @@
     "difficulty-increment": {
       "kind": "list",
       "name": "difficulty increment",
+      "scope": "Stage"
+    },
+    "difficulty-ship-number": {
+      "kind": "variable",
+      "name": "ship number",
       "scope": "Stage"
     },
     "domogram-frame-ord": {
@@ -1637,6 +1623,16 @@
       "name": "hud divisor",
       "scope": "hud"
     },
+    "hud-flash-clock": {
+      "kind": "variable",
+      "name": "hud flash clock",
+      "scope": "hud"
+    },
+    "hud-flash-frames": {
+      "kind": "variable",
+      "name": "hud flash frames",
+      "scope": "Stage"
+    },
     "hud-is-clone": {
       "kind": "variable",
       "name": "hud is clone",
@@ -1762,9 +1758,34 @@
       "name": "other score",
       "scope": "Stage"
     },
+    "other-ship-number": {
+      "kind": "variable",
+      "name": "other ship number",
+      "scope": "Stage"
+    },
+    "pending-object-slot": {
+      "kind": "variable",
+      "name": "pending object slot",
+      "scope": "Stage"
+    },
+    "pending-object-type": {
+      "kind": "variable",
+      "name": "pending object type",
+      "scope": "Stage"
+    },
     "player-col": {
       "kind": "variable",
       "name": "player col",
+      "scope": "Stage"
+    },
+    "player-dying": {
+      "kind": "variable",
+      "name": "dying",
+      "scope": "Stage"
+    },
+    "player-dying-tick": {
+      "kind": "variable",
+      "name": "dying tick",
       "scope": "Stage"
     },
     "player-hit": {
@@ -1925,11 +1946,6 @@
     "solv-death-director-entry-epoch": {
       "kind": "variable",
       "name": "entry epoch",
-      "scope": "solv_death"
-    },
-    "solv-death-explosion-tick": {
-      "kind": "variable",
-      "name": "explosion tick",
       "scope": "solv_death"
     },
     "solvalou-director-entry-epoch": {

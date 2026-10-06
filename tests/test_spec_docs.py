@@ -494,9 +494,11 @@ class GeneratedAreaClock(unittest.TestCase):
         self.assertEqual(14, prev)
 
     def _completion(self, blocks):
-        # The walk's completion `if/else`: AND(scroll row == 14, area progress > 0).
+        # The walk's completion `if`: AND(scroll row == 14, area progress > 0). Since slice 21 it is a plain `if`
+        # after the schedule consume (record 056 item 12), no longer an `if/else` with the consume as its other arm.
+        found = []
         for block in blocks.values():
-            if block["opcode"] != "control_if_else":
+            if block["opcode"] not in ("control_if", "control_if_else"):
                 continue
             cond = blocks.get((block["inputs"].get("CONDITION") or [None, None])[1])
             if not cond or cond["opcode"] != "operator_and":
@@ -504,8 +506,9 @@ class GeneratedAreaClock(unittest.TestCase):
             parts = [blocks.get(cond["inputs"][s][1]) for s in ("OPERAND1", "OPERAND2")]
             if any(p and p["opcode"] == "operator_equals"
                    and p["inputs"]["OPERAND1"][1][1] == "scroll row" for p in parts):
-                return block
-        raise AssertionError("no area-completion if/else found in the emitted blocks")
+                found.append(block)
+        self.assertEqual(1, len(found), "exactly one area-completion test in the emitted blocks")
+        return found[0]
 
     def test_generated_completion_carries_the_clock(self):
         # roadmap-evidence: AREA-01 success  (the emitted completion fires once per area and carries
@@ -584,32 +587,55 @@ class GeneratedAreaClock(unittest.TestCase):
         return area
 
     def test_generated_checkpoint_matches_arcade_outcome(self):
-        # roadmap-evidence: AREA-01 success  (the emitted projected checkpoint gives every reachable
-        #   death the arcade's area outcome, including the completion-during-explosion skip and the
-        #   no-skip carry window)
-        # Run the SHIPPED checkpoint statements (both sites) for every reachable death-tick progress —
-        # area 1 (0..65024) and a carried area (-480..65024) — and compare the area they leave with the
-        # independent tick-by-tick arcade model above.
+        # roadmap-evidence: AREA-01 success  (the emitted checkpoint, read after the walk has scrolled
+        #   through the 44-tick explosion window, gives every reachable death the arcade's area outcome,
+        #   including the completion-during-explosion skip and the no-skip carry window)
+        # #158 (slice 21): the world keeps running through the explosion, so the walk itself scrolls the 44
+        # ticks (completion live, carrying as `advance area` does) and the SHIPPED checkpoint (both sites)
+        # then reads the live row. Model the walk's window here, run the shipped band statement on the
+        # progress it leaves, and compare with the independent arcade model above for every reachable
+        # death-tick progress — area 1 (0..65024) and a carried area (-480..65024).
         blocks = _stage_blocks(json.loads(PROJECT_JSON.read_text()))
-        starts = [
-            bid for bid, b in blocks.items()
-            if b["opcode"] == "data_setvariableto"
-            and b["fields"]["VARIABLE"][0] == "checkpoint progress"
-        ]
+
+        def is_band(b):
+            if b["opcode"] != "control_if":
+                return False
+            cond = blocks.get((b["inputs"].get("CONDITION") or [None, None])[1])
+            if not cond or cond["opcode"] != "operator_and":
+                return False
+            parts = [blocks.get(cond["inputs"][k][1]) for k in ("OPERAND1", "OPERAND2")]
+            return any(
+                g is not None
+                and g["opcode"] == "operator_gt"
+                and (g["inputs"].get("OPERAND2") or [None, [None, None]])[1][1:2] == [13]
+                for g in parts
+            )
+
+        starts = [bid for bid, b in blocks.items() if is_band(b)]
         self.assertEqual(2, len(starts), "the checkpoint runs at the new-life re-top and the 2P handoff")
+
+        def walk_window(progress, area):
+            for _tick in range(44):
+                progress += 32
+                if ((0x0D00 - progress) % 0x10000) // 0x100 == 14 and progress > 0:
+                    area = 7 if area == 16 else area + 1
+                    progress -= 0x10000
+            return progress, area
+
         outcomes = {}
         for start in starts:
             for area in (5, 16):
                 for progress in range(-480, 65056, 32):
-                    env = {"area progress": progress, "area number": area}
-                    _run_statements(blocks, start, env, limit=3)
+                    end_progress, end_area = walk_window(progress, area)
+                    env = {"area progress": end_progress, "area number": end_area}
+                    _run_statements(blocks, start, env, limit=1)
                     expected = self._arcade_checkpoint(progress, area)
                     self.assertEqual(expected, env["area number"], f"death at {progress}, area {area}")
                     if area == 5:
                         outcomes[progress] = env["area number"] - area
         # The landmarks the records state: a death in the carry window does not skip; a death 37-44
         # ticks before the end completes during the explosion and then skips the next area too; the
-        # band floor moved 44 ticks earlier than the frozen-row read.
+        # band floor sits 44 ticks earlier than a frozen death-tick read would put it.
         self.assertTrue(all(outcomes[p] == 0 for p in range(-480, -255, 32)))
         self.assertEqual(
             [p for p, d in outcomes.items() if d == 2], list(range(63648, 63873, 32))
@@ -619,8 +645,9 @@ class GeneratedAreaClock(unittest.TestCase):
         self.assertEqual(50080, first_advance)
 
     def test_checkpoint_projection_bites(self):
-        # roadmap-evidence: AREA-01 failure  (a checkpoint that reads the frozen death-tick row — no
-        #   projection — misses the completion-during-explosion skip and the moved band floor)
+        # roadmap-evidence: AREA-01 failure  (a checkpoint that reads the death-tick row — a world frozen at
+        #   the hit, the pre-#158 shape without its projection — misses the completion-during-explosion skip
+        #   and the moved band floor)
         def frozen(progress, area):
             row = ((0x0D00 - progress) % 0x10000) // 0x100
             return area + 1 if 14 <= row <= 0x43 else area
@@ -689,12 +716,15 @@ class GeneratedAreaClock(unittest.TestCase):
                 return params["count"]
             return 0
 
-        # GND: the three ground-placement scalars, re-decoded INDEPENDENTLY here — object_type
-        # (the ground dispatch discriminator), slot (0-15), sprite_y (0-255); (0, 0, 0) for every
-        # other handler. BOTH ground-placement handlers carry them at the same JSON locations:
-        # add_ground_object (the static + Grobda families) and GND-07 add_domogram_with_path (the
-        # Domogram). A mis-populated or misaligned ground column fails here, not at play.
+        # GND: the three placement scalars, re-decoded INDEPENDENTLY here — object_type (the dispatch
+        # discriminator), slot, sprite_y (0-255); (0, 0, 0) for every other handler. BOTH
+        # ground-placement handlers carry them at the same JSON locations: add_ground_object (the
+        # static + Grobda families) and GND-07 add_domogram_with_path (the Domogram), with the 0-15
+        # ground-band slot. AREA-02 add_object carries the type and the RAW arcade object slot (0,
+        # 0x3A or 0x3B) and no sprite_y. A mis-populated or misaligned column fails here, not at play.
         def expected_ground(record):
+            if record["handler"] == "add_object":
+                return record["object_type"], record["params"]["slot"], 0
             if record["handler"] not in ("add_ground_object", "add_domogram_with_path"):
                 return 0, 0, 0
             params = record.get("params", {})
@@ -880,6 +910,148 @@ class GeneratedAreaClock(unittest.TestCase):
         self.assertEqual(108, sum(1 for c in exp_counts if c), "all 108 Domogram instances decode a path")
 
 
+class AddObjectDispatch(unittest.TestCase):
+    """AREA-02 (area.add-object-dispatch #166): the schedule's 13 add_object records (sub_2_fb_0__type_only,
+    xevious_sub.68k:649-659) place the bonus flag, Torkan, Kapi, Terrazi and Garu Zakato. The arcade object pass
+    picks a written type up only from an idle slot (add_obj_handler, xevious_main.68k:4801-4815) before the formation
+    refill (main_fn_4, 5171-5186), so the built walk must place after the walk/bomb and before `spawn flying
+    enemies`; the build guard must refuse a record the placement step cannot handle."""
+
+    def _call_chain(self, blocks, proccode):
+        call = next(
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == proccode
+        )
+        # Walk the same stack: back while each parent's `next` is the block below it, then forward.
+        before, prev, cur = [], call, blocks[call]["parent"]
+        while cur and blocks[cur]["next"] == prev:
+            if blocks[cur]["opcode"] == "procedures_call":
+                before.append(blocks[cur]["mutation"]["proccode"])
+            prev, cur = cur, blocks[cur]["parent"]
+        after, cur = [], blocks[call]["next"]
+        while cur:
+            b = blocks[cur]
+            if b["opcode"] == "procedures_call":
+                after.append(b["mutation"]["proccode"])
+            cur = b["next"]
+        return before, after
+
+    def test_walk_places_after_bomb_before_formation_refill(self):
+        # roadmap-evidence: AREA-02 success  (the built walk places a pending add_object record after the walk
+        #   and bomb and before the formation refill, as the arcade object pass precedes main_fn_4)
+        blocks = _stage_blocks(json.loads(PROJECT_JSON.read_text()))
+        before, after = self._call_chain(blocks, "place pending object")
+        self.assertIn("advance bomb", before, "placement runs after the bomb (and so after the walk)")
+        self.assertIn("advance slots", before, "placement runs after the object walk")
+        self.assertIn("spawn flying enemies", after, "placement runs before the formation refill")
+
+    def test_every_schedule_record_is_placeable(self):
+        areas = json.loads((DATA / "area-schedules.json").read_text())["areas"]
+        placed = [
+            (r["object_type"], r["params"]["slot"])
+            for a in areas
+            for r in a["records"]
+            if r["handler"] == "add_object"
+        ]
+        self.assertEqual(13, len(placed), "the reference schedules carry 13 add_object records")
+        self.assertEqual(
+            {(0x54, 0x00), (0x0F, 0x3A), (0x10, 0x3A), (0x11, 0x3A), (0x11, 0x3B), (0x18, 0x3B)},
+            set(placed),
+        )
+        director._check_add_object_records()  # the committed data passes the build guard
+
+    def test_build_guard_refuses_unplaceable_records(self):
+        # roadmap-evidence: AREA-02 failure  (an add_object record the placement step cannot handle — an unbuilt
+        #   type, a wrong slot, or two records sharing one trigger row — stops the build instead of spawning wrong)
+        def guard(records):
+            original = director._load_spec_data
+            director._load_spec_data = lambda name: {"areas": [{"area": 1, "records": records}]}
+            try:
+                director._check_add_object_records()
+            finally:
+                director._load_spec_data = original
+
+        def rec(object_type, slot, row):
+            return {"handler": "add_object", "object_type": object_type, "params": {"slot": slot}, "scroll_row": row}
+
+        guard([rec(0x54, 0x00, 68), rec(0x18, 0x3B, 60)])  # distinct rows, placeable: accepted
+        with self.assertRaises(SystemExit):
+            guard([rec(0x0A, 0x3A, 68)])  # a Toroid is not an add_object type
+        with self.assertRaises(SystemExit):
+            guard([rec(0x18, 0x3A, 68)])  # the Garu lives only at 0x3B
+        with self.assertRaises(SystemExit):
+            guard([rec(0x54, 0x00, 68), rec(0x0F, 0x3A, 68)])  # one pending register per tick
+
+
+class AreaCompletionOrder(unittest.TestCase):
+    """AREA-02 (slice 21 soak finding, record 056 item 12): each frame the arcade's sub CPU runs its function table
+    in index order (sub_fn_jump_tbl_ROM, xevious_sub.68k:109-119; xevious_sub_cpu 80-106), so the schedule step
+    (sub_fn_2__handle_objects, 574-602) runs before the area step (sub_fn_3__handle_next_area, 696-730). On the
+    frame the row reaches 0x0E a record on that row still fires for the outgoing area — area 13's final formation
+    reset. The built `advance area` must consume first and test completion after; the build guard must refuse a
+    schedule whose completion row holds two records (the arcade fires only the first before the area advances)."""
+
+    def _advance_area_statements(self):
+        blocks = _stage_blocks(json.loads(PROJECT_JSON.read_text()))
+        proto = next(
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "procedures_prototype" and b["mutation"]["proccode"] == "advance area"
+        )
+        cur = blocks[blocks[proto]["parent"]]["next"]
+        statements = []
+        while cur:
+            statements.append(blocks[cur])
+            cur = blocks[cur]["next"]
+        return blocks, statements
+
+    def test_consume_runs_before_the_completion_test(self):
+        # roadmap-evidence: AREA-02 success  (on the tick the row reaches 0x0E the schedule consume runs before the
+        #   completion test, so a record on the completion row fires for the outgoing area, as in the arcade)
+        blocks, statements = self._advance_area_statements()
+        opcodes = [s["opcode"] for s in statements]
+        self.assertIn("control_repeat_until", opcodes, "the schedule consume loop is a top-level statement")
+        self.assertNotIn("control_if_else", opcodes, "consume and completion are no longer two arms of one if/else")
+        last = statements[-1]
+        self.assertEqual("control_if", last["opcode"], "the completion test is the last statement")
+        condition = json.dumps({k: blocks[k] for k in self._subtree(blocks, last["inputs"]["CONDITION"][1])})
+        self.assertIn(str(director.AREA_COMPLETE_ROW), condition, "the last statement is the 0x0E completion test")
+        self.assertLess(opcodes.index("control_repeat_until"), len(opcodes) - 1, "the consume runs first")
+
+    def _subtree(self, blocks, root):
+        out, stack = [], [root]
+        while stack:
+            bid = stack.pop()
+            if not isinstance(bid, str) or bid not in blocks:
+                continue
+            out.append(bid)
+            for value in blocks[bid].get("inputs", {}).values():
+                if isinstance(value, list) and len(value) > 1:
+                    stack.append(value[1])
+        return out
+
+    def test_committed_schedule_has_one_completion_row_record(self):
+        rows = director.SCHEDULE_ROWS
+        on_row = [
+            area
+            for area, (start, end) in enumerate(zip(director.AREA_SCHEDULE_START, director.AREA_SCHEDULE_END), start=1)
+            for i in range(start, end)
+            if rows[i - 1] == director.AREA_COMPLETE_ROW
+        ]
+        self.assertEqual([13], on_row, "only area 13's final formation reset sits on the completion row")
+        director._check_completion_row_records()  # the committed data passes the build guard
+
+    def test_build_guard_refuses_two_completion_row_records(self):
+        # roadmap-evidence: AREA-02 failure  (a schedule with two records on an area's completion row stops the
+        #   build, since the arcade fires only the first before the area advances and the port would fire both)
+        complete = director.AREA_COMPLETE_ROW
+        # One area: records at indices 1..3, sentinel (row 0x0D) at 4.
+        director._check_completion_row_records([20, complete, 30, 0x0D], [1], [4])
+        with self.assertRaises(SystemExit):
+            director._check_completion_row_records([20, complete, complete, 0x0D], [1], [4])
+
+
 class AimingTables(unittest.TestCase):
     """AIR-01 / AIR-12: the 32-direction homing-aim tables, modelled over the COMMITTED aiming.json
     independently of the generator. The angle tables are cross-checked against the sine/cosine model
@@ -1053,6 +1225,11 @@ class DifficultyAndFormations(unittest.TestCase):
     # roadmap-evidence: DIF-01 failure  (live-pressure-density negative pins formation count off the table; _live_pressure_failures break_loop_times)
     # roadmap-evidence: DIF-02 success  (harness live-pressure-adaptive: the score adjust crosses the raise-only fold ceiling)
     # roadmap-evidence: DIF-02 failure  (live-pressure-adaptive negative severs the adjust dispatch)
+
+    # Roadmap closure evidence for leaf `difficulty.ship-number-divisor` (slice 21): the re-tune divides the
+    # BCD thousands by the per-player ship number, faithful to the arcade loop, cap and byte add.
+    # roadmap-evidence: DIF-02 success  (DIF-02.ship-divisor: test_score_retune_division_matches_the_arcade_loop; test_score_retune_rule; harness ship-number-divisor and ship-number-lifecycle)
+    # roadmap-evidence: DIF-02 failure  (DIF-02.ship-divisor: ship-number-divisor negative divides by the craft left; ship-number-lifecycle negative freezes the count)
     # roadmap-evidence: DIF-03 success  (test_scratch_project.py::test_live_pressure_contract fire-reload-reads-mask; harness terrazi-fires-under-mask)
     # roadmap-evidence: DIF-03 failure  (test_live_pressure_negative_fixtures break_fire_reload; terrazi-fires-under-mask negative neutralizes the shared gate)
     # roadmap-evidence: FORM-01 success (harness live-pressure-density variation proof; test_live_pressure_contract spawn-gates-empty-slot)
@@ -1102,7 +1279,7 @@ class DifficultyAndFormations(unittest.TestCase):
         ]
 
         def raise_once(ai):
-            ai += inc
+            ai = (ai + inc) % director.AI_LEVEL_WRAP  # add.b: a byte add (sub 324)
             if ai >= director.AI_LEVEL_FOLD_THRESHOLD:
                 ai -= director.AI_LEVEL_FOLD_SUBTRACT
             return ai
@@ -1111,22 +1288,63 @@ class DifficultyAndFormations(unittest.TestCase):
         self.assertEqual(64, raise_once(126))  # 128 -> fold -> 64
         self.assertEqual(65, raise_once(127))  # 129 -> fold -> 65
         self.assertLess(raise_once(127), director.AI_LEVEL_FOLD_THRESHOLD)
+        self.assertEqual(0, raise_once(254), "254 + 2 wraps to 0 in the byte, below the fold")
+
+    @staticmethod
+    def _avg_score_per_solvalou(d1: int, d2: int) -> int:
+        """avg_score_per_solvalou (xevious_sub.68k 360-372), step for step: a 16-step restoring division of
+        the word d1 by the byte d2, the remainder in the byte d0 with the `roxl.b` carry as its ninth bit."""
+        d0 = 0
+        for _ in range(16):
+            x = (d1 >> 15) & 1  # add.w d1,d1: the top bit goes to X
+            d1 = (d1 << 1) & 0xFFFF
+            carry = (d0 >> 7) & 1  # roxl.b #1,d0: X in at the bottom, the top bit out to C
+            d0 = ((d0 << 1) | x) & 0xFF
+            if carry or d0 >= d2:  # jcs 2f / cmp.b d2,d0; jcs 3f
+                d0 = (d0 - d2) & 0xFF
+                d1 = (d1 + 1) & 0xFFFF
+        return d1
+
+    @staticmethod
+    def _bcd_thousands(score: int) -> int:
+        """`move.w (curr_player_score_msb),d1`: the four BCD digits of the score's thousands, read as binary."""
+        k = score // 1000
+        return sum(((k // 10**place) % 10) << (4 * place) for place in range(4))
+
+    def _retune(self, score: int, ship: int, ai: int) -> int:
+        """sub_2_fn_23__adjust_AI_level_based_on_score (sub 344-353) as the port emits it: the BCD dividend,
+        floor division with 0xFFFF for a ship number of 0, the SIGNED cap at 16, the byte add."""
+        dividend = self._bcd_thousands(score)
+        q = director.AI_ADJUST_ZERO_DIVISOR if ship == 0 else dividend // ship
+        if director.AI_ADJUST_CAP < q < director.AI_ADJUST_SIGNED_ESCAPE:
+            q = director.AI_ADJUST_CAP
+        return (ai + q) % director.AI_LEVEL_WRAP
+
+    def test_score_retune_division_matches_the_arcade_loop(self):
+        # The port divides with floor() and special-cases a ship number of 0; prove that closed form IS the
+        # arcade's bit-serial loop, over every divisor byte and dividends spread across the BCD word.
+        dividends = sorted({*range(0, 0x9999 + 1, 97), 0x0020, 0x0999, 0x7FFF, 0x8000, 0x9999})
+        for d2 in range(0x100):
+            for d1 in dividends:
+                want = 0xFFFF if d2 == 0 else d1 // d2
+                self.assertEqual(want, self._avg_score_per_solvalou(d1, d2), f"{d1:#06x} / {d2}")
+        self.assertEqual(director.AI_ADJUST_ZERO_DIVISOR, self._avg_score_per_solvalou(0x0020, 0))
 
     def test_score_retune_rule(self):
-        # DIF-02 score-adaptive re-tune (sub_2_fn_23 / avg_score_per_solvalou): the addend is the
-        # player's score in thousands divided by the craft in reserve, floored, capped at 16, and
-        # only when reserve > 0 (no divide-by-zero). Reserve is the live `craft` count (the reference
-        # divides by solvalou_number with no subtraction).
-        def retune(score, craft):
-            if craft <= 0:
-                return 0
-            return min(16, (score // 1000) // craft)
-
-        self.assertEqual(0, retune(500, 3), "score below 1000 adds nothing")
-        self.assertEqual(1, retune(3000, 3), "3k over 3 craft -> 1")
-        self.assertEqual(5, retune(20000, 4), "20k over 4 craft -> 5")
-        self.assertEqual(16, retune(200000, 3), "66 over 3 = 22, capped at 16")
-        self.assertEqual(0, retune(50000, 0), "zero craft is guarded, adds nothing")
+        # DIF-02 (slice 21, difficulty.ship-number-divisor): the addend is the score's BCD thousands word read
+        # as binary, divided by the ship number (the craft in play, from 1), capped at 16 by a SIGNED compare,
+        # added as a byte. Not the craft left, and not the decimal thousands.
+        self.assertEqual(0x20, self._bcd_thousands(20000), "20,000 points divide as 0x20 = 32")
+        self.assertEqual(0x0999, self._bcd_thousands(999000))
+        self.assertEqual(0, self._retune(500, 1, 0), "under 1,000 points adds nothing")
+        self.assertEqual(10, self._retune(20000, 3, 0), "0x20 / ship 3 = 10 (decimal 20 / 3 would give 6)")
+        self.assertEqual(16, self._retune(20000, 1, 0), "0x20 / ship 1 = 32, capped at 16")
+        self.assertEqual(120 + 16, self._retune(999000, 1, 120), "the re-tune is not folded")
+        self.assertEqual((120 + 0xFFFF) % 256, self._retune(20000, 0, 120), "a ship number of 0 adds 0xFFFF as a byte")
+        self.assertEqual((5 + 0x8000) % 256, self._retune(8000000, 1, 5), "0x8000 passes the signed cap uncapped")
+        self.assertEqual((5 + 0x9999) % 256, self._retune(9999000, 1, 5), "0x9999 adds its low byte uncapped")
+        self.assertEqual(5 + 16, self._retune(9999000, 2, 5), "on ship 2 the top score divides to 0x4CCC, capped")
+        self.assertEqual((250 + 16) % 256, self._retune(999000, 1, 250), "the byte add wraps")
 
     def test_formation_index_in_domain_over_committed_schedules(self):
         # FORM-01 / DIF-01 / DIF-02 range proof: walk the committed schedules in the accelerated
@@ -1140,7 +1358,7 @@ class DifficultyAndFormations(unittest.TestCase):
         # The margin is real, not accidental: consecutive adjusts between raises are few, so the raise's
         # single -0x40 fold always recovers a < 0x80 index; if a future schedule or DIP change broke
         # that, THIS fixture reddens rather than the guard silently freezing the formation.
-        DIF02_MAX_ADDEND = 16  # the score-per-craft re-tune is capped at 16 (docs/spec)
+        DIF02_MAX_ADDEND = director.AI_ADJUST_CAP  # the score-per-ship re-tune is capped at 16 (docs/spec)
         areas = {a["area"]: a["records"] for a in json.loads((DATA / "area-schedules.json").read_text())["areas"]}
         inc = json.loads((DATA / "difficulty.json").read_text())["difficulty_tbl"]["values"][
             director.DIFFICULTY_DIP_INDEX
@@ -1155,13 +1373,15 @@ class DifficultyAndFormations(unittest.TestCase):
             for record in areas[area]:
                 handler = record["handler"]
                 if handler == "raise_ai_level_and_set_formation":
-                    ai += inc
+                    ai = (ai + inc) % director.AI_LEVEL_WRAP  # a byte add (add.b), then the fold
                     if ai >= director.AI_LEVEL_FOLD_THRESHOLD:
                         ai -= director.AI_LEVEL_FOLD_SUBTRACT
                     index = ai
                     raises += 1
                 elif handler == "adjust_ai_level_from_score":
-                    ai += DIF02_MAX_ADDEND  # worst case; the reference does NOT fold this add
+                    # worst case short of the uncapped escape (8,000,000 points or a ship number wrapped to
+                    # 0, where the port's guard is a recorded port necessity); a byte add, not folded
+                    ai = (ai + DIF02_MAX_ADDEND) % director.AI_LEVEL_WRAP
                     adjusts += 1
                     continue  # adjust re-tunes the level but selects no formation
                 elif handler == "set_flying_formation":
@@ -1173,6 +1393,101 @@ class DifficultyAndFormations(unittest.TestCase):
         self.assertGreater(raises, 0, "the raise re-select path must be exercised")
         self.assertGreater(sets, 0, "the set-formation path must be exercised")
         self.assertGreater(adjusts, 0, "the DIF-02 adjust contribution must be exercised")
+
+
+
+class ReleaseSoakWiring(unittest.TestCase):
+    # RELEASE-01 (release.full-soak, StarshipSuperjam/xevious#105, slice 21). The soak itself is a long headless run
+    # over the shipped build, `harness/soak.js`, in its own CI job (`runtime-soak`); it is the live proof, and its
+    # last test is its own negative (a build that skips the schedule consume fails inside area 1). This class holds
+    # the wiring that makes that proof mean what docs/spec/release.md says: the job runs the file, the scenario net
+    # leaves it out, each of the spec's claims has its test, every run is paced as the editor runs it, and the soak's
+    # thresholds are the spec's numbers.
+    # roadmap-evidence: RELEASE-01 success  (harness/soak.js in the runtime-soak job, paced as the editor runs it: the
+    #   campaign 1->16->7 with every schedule consumed, the clone envelope and baselines, repeatability, stop and
+    #   reload; this wiring check)
+    # roadmap-evidence: RELEASE-01 failure  (soak.js's negative fails a consume-less build inside area 1; this check
+    #   refuses a soak missing a claim, run outside its job, unpaced, or with thresholds off the spec)
+    SOAK = ROOT / "harness" / "soak.js"
+    HARNESS = ROOT / "harness" / "lib" / "harness.js"
+    WORKFLOW = ROOT / ".github" / "workflows" / "xevious-project.yml"
+    RELEASE_SPEC = SPEC / "release.md"
+    CLAIMS = {
+        "campaign": "test('campaign: areas 1 to 16 and the loop into 7",
+        "repeatability": "test('repeatability:",
+        "deaths-and-game-over": "test('envelope: deaths and the game over return",
+        "cabinet-envelope": "test('envelope: the title, attract, initials entry and a two-player game",
+        "stop-and-reload": "test('stop and reload:",
+        "negative": "test('negative:",
+    }
+
+    @staticmethod
+    def _job(workflow: str, name: str) -> str:
+        match = re.search(rf"^  {re.escape(name)}:\n((?:    .*\n|\s*\n)*)", workflow, re.MULTILINE)
+        return match.group(1) if match else ""
+
+    def _failures(self, soak: str, workflow: str, spec: str, soak_name: str = "soak.js") -> set[str]:
+        failures = set()
+        # node --test with no arguments picks *.test.js (and the other default patterns); the soak must not be one.
+        if re.search(r"(^|[.\-_])test\.[cm]?js$|^test-", soak_name):
+            failures.add("picked-by-scenario-net")
+        job = self._job(workflow, "runtime-soak")
+        if not re.search(rf"working-directory: harness\n\s+run: node --test {re.escape(soak_name)}\n", job):
+            failures.add("not-run-by-ci")
+        for claim, opening in self.CLAIMS.items():
+            if opening not in soak:
+                failures.add(f"missing-{claim}")
+        limit = re.search(r"Scratch allows (\d+) clones", spec)
+        headroom = re.search(r"the peak stays at least (\d+) clones under that limit", spec)
+        if not (limit and re.search(rf"^const CLONE_LIMIT = {limit.group(1)};", soak, re.MULTILINE)):
+            failures.add("clone-limit-off-spec")
+        if not (headroom and re.search(rf"^const HEADROOM = {headroom.group(1)};", soak, re.MULTILINE)):
+            failures.add("headroom-off-spec")
+        # The campaign must end on the loop from area 16 back into area 7.
+        if "'15->16', '16->7']" not in soak or not re.search(r"^const AREA_CHANGES = 16;", soak, re.MULTILINE):
+            failures.add("campaign-not-to-the-loop")
+        # Every soak VM is paced as the editor runs it, one pass of every thread per frame. Unpaced, a headless pump
+        # runs a machine-dependent number of ticks, and the repeatability and reload comparisons drift with the CPU.
+        # The pacing lives in the shared harness (`paceLikeTheEditor`, harness/lib/harness.js); the soak loads the
+        # build once, through the paced `load`, and wraps every mutated build it loads.
+        mutated = soak.count("await loadMutatedSource(")
+        if ("const load = async () => paceLikeTheEditor(await loadBuild());" not in soak
+                or soak.count("await loadBuild(") != 1
+                or mutated == 0
+                or soak.count("paceLikeTheEditor(await loadMutatedSource(") != mutated
+                or "paceLikeTheEditor," not in soak
+                or "vm.runtime.redrawRequested = true;" not in self.HARNESS.read_text(encoding="utf-8")):
+            failures.add("unpaced")
+        return failures
+
+    def _texts(self):
+        return (
+            self.SOAK.read_text(encoding="utf-8"),
+            self.WORKFLOW.read_text(encoding="utf-8"),
+            self.RELEASE_SPEC.read_text(encoding="utf-8"),
+        )
+
+    def test_soak_is_wired_to_the_release_spec(self):
+        self.assertEqual(self._failures(*self._texts()), set())
+
+    def test_wiring_check_bites(self):
+        soak, workflow, spec = self._texts()
+        cases = {
+            "picked-by-scenario-net": (soak, workflow.replace("node --test soak.js", "node --test soak.test.js"), spec, "soak.test.js"),
+            "not-run-by-ci": (soak, workflow.replace("run: node --test soak.js", "run: node --test"), spec, "soak.js"),
+            "missing-stop-and-reload": (soak.replace("test('stop and reload:", "test('reload:"), workflow, spec, "soak.js"),
+            "missing-negative": (soak.replace("test('negative:", "test('mutation:"), workflow, spec, "soak.js"),
+            "headroom-off-spec": (soak.replace("const HEADROOM = 50;", "const HEADROOM = 20;"), workflow, spec, "soak.js"),
+            "clone-limit-off-spec": (soak, workflow, spec.replace("Scratch allows 300 clones", "Scratch allows 400 clones"), "soak.js"),
+            "campaign-not-to-the-loop": (soak.replace("const AREA_CHANGES = 16;", "const AREA_CHANGES = 15;"), workflow, spec, "soak.js"),
+            "unpaced": (soak.replace("const vm = await load();", "const vm = await loadBuild();", 1), workflow, spec, "soak.js"),
+        }
+        for expected, args in cases.items():
+            with self.subTest(expected):
+                self.assertIn(expected, self._failures(*args))
+        # A mutated build loaded without the pacing wrapper is caught too.
+        unpaced_mutant = soak.replace("paceLikeTheEditor(await loadMutatedSource(", "(await loadMutatedSource(", 1)
+        self.assertIn("unpaced", self._failures(unpaced_mutant, workflow, spec, "soak.js"))
 
 
 if __name__ == "__main__":

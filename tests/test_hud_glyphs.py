@@ -5,7 +5,9 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -32,7 +34,12 @@ class HudGlyphsTests(unittest.TestCase):
         # credited font at the SMALL_TEXT_GEOM cell (glyphs already in SHEET_TEXT_RECTS). 77 + 4 = 81.
         # + the 6 slice-20 PRES-01 best-five costumes on start_screen (the header and the ordinal ranks
         # 1ST..5TH, ATTRACT_TABLE_LABELS); PUSH START became PUSH START BUTTON in place. 81 + 6 = 87.
-        self.assertEqual(87, count)
+        # + the slice-21 "START SPACE KEY" title hint, re-rendered through the same pipeline. 87 + 1 = 88.
+        # + slice 21 (#31): the banner is two rows, so its 2 "GAME OVER PLAYER n" costumes become 3 (GAME OVER,
+        # PLAYER 1, PLAYER 2). 88 + 1 = 89.
+        # + slice 21 audit (CAB-04): the 26 lowercase initials letters glyph/a-z the bomb button selects,
+        # from the arcade's own text tiles (the CC-BY font has no lowercase). 89 + 26 = 115.
+        self.assertEqual(115, count)
 
     def test_rendering_is_byte_deterministic(self) -> None:
         first_glyphs = hg.render_glyphs(self.manifest)
@@ -120,7 +127,7 @@ class HudGlyphsTests(unittest.TestCase):
         # media-only commit, populated from the ECO-02 HUD-render commit on) are
         # game_director.py's territory — see tests/test_scratch_project.py instead.
         self.assertEqual("don't rotate", hud["rotationStyle"])
-        # CAB-03 (slice 18): the two "GAME OVER PLAYER n" banner costumes are appended to the HUD
+        # CAB-03 (slice 18; two rows since slice 21): the three banner costumes are appended to the HUD
         # target AFTER the fixed COSTUME_ORDER glyphs (so the per-glyph indices never shift), in
         # BANNER_LABELS order — the game_director banner clone switches to them by name.
         self.assertEqual(
@@ -175,6 +182,10 @@ class HudGlyphsTests(unittest.TestCase):
         } | {output.filename for output in game_sounds} | attract_filenames | banner_filenames
         self.assertEqual(expected_filenames, set(provenance["outputs"]))
         sheet_license = self.manifest["font_sheet"]["license"]
+        lowercase_filenames = {output.filename for output in hg.render_lowercase_costumes()}
+        self.assertEqual(len(hg.LOWERCASE_GLYPHS), len(lowercase_filenames))
+        self.assertLessEqual(lowercase_filenames, attract_filenames)
+        reference_license = hg._reference_art_sheet()[1]["license"]
         for filename in expected_filenames:
             self.assertIn(filename, overlay)
             record = overlay[filename]
@@ -197,6 +208,14 @@ class HudGlyphsTests(unittest.TestCase):
                 self.assertEqual(sheet_license, record["license"])
                 self.assertIn("did not create the font", record["notes"])
                 self.assertIn("not transcribed ROM text", record["notes"])
+            elif filename in lowercase_filenames:
+                # CAB-04 (slice 21 audit): the lowercase initials letters are NOT from the CC-BY font
+                # (it has none) — they come from the arcade's own text tiles via the reference_art
+                # sheet, so they carry that sheet's no-reusable-license rights and name the pin.
+                self.assertEqual(reference_license, record["license"])
+                self.assertIn("did not create", record["notes"])
+                self.assertIn("71473685a8c7856c8401c8519276cd97a38d4183", record["origin"])
+                self.assertIn("check_lowercase", record["notes"])
             elif filename in attract_filenames:
                 # CAB-01 (slice 17): the attract overlays render from the SAME credited CC-BY sheet,
                 # so they carry the font attribution; their CONTENT (prompts, placeholder initials)
@@ -271,6 +290,33 @@ class HudGlyphsTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(hg.HudGlyphsError, "falls outside the font sheet"):
             hg._binarize_glyph(source, (0, 0, source.width, 5), 128)
+
+    def test_glyph_inked_before_but_blank_after_downscale_is_rejected(self) -> None:
+        # #24: a glyph whose ink survives binarizing but not the downscale must not become an invisible costume.
+        def blank(image, factor):
+            return se.Image(image.width // factor, image.height // factor,
+                            ((0, 0, 0, 0),) * ((image.width // factor) * (image.height // factor)))
+
+        with mock.patch.object(hg, "_downscale_nearest", blank):
+            with self.assertRaisesRegex(hg.HudGlyphsError, "no ink after the downscale"):
+                hg.render_glyphs(self.manifest)
+            with self.assertRaisesRegex(hg.HudGlyphsError, "no ink after the downscale"):
+                hg.render_credit(hg._load_font_sheet(self.manifest), self.manifest["glyph_threshold"])
+
+    def test_shared_readers_raise_this_tools_error(self) -> None:
+        # #24: the readers are the extractor's, but a hud_glyphs failure still names hud_glyphs' error, and the
+        # provenance reader keeps the extractor's per-record type check the old copy had dropped.
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = Path(tmp) / "derivatives.json"
+            bad.write_text(json.dumps({"outputs": {"a.png": "not a record"}}), encoding="utf-8")
+            with mock.patch.object(hg, "DERIVATIVE_PROVENANCE_PATH", bad):
+                with self.assertRaisesRegex(hg.HudGlyphsError, "invalid output records"):
+                    hg._prior_output_records()
+            bad.write_text("[]", encoding="utf-8")
+            with self.assertRaisesRegex(hg.HudGlyphsError, "one JSON object"):
+                hg._read_json(bad)
+        with self.assertRaisesRegex(hg.HudGlyphsError, "missing name"):
+            hg._require_keys({"rect": []}, {"name", "rect"}, "glyph")
 
     def test_expected_project_requires_existing_hud_target(self) -> None:
         project = json.loads(hg.PROJECT_PATH.read_text(encoding="utf-8"))

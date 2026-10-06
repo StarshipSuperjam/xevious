@@ -25,7 +25,7 @@ demonstration play → title …. On boot, when no credit is waiting, the main t
 title stage (`main_thread_main_loop` 348–357), and each frame dispatches on the current stage — index
 stage − 1 — through the jump table (`attract_mode_main_loop` 359–370, `attract_mode_jump_tbl` 1211); the
 demonstration stage appears twice per cycle because two table slots share its handler. The title stage runs
-~744 frames (~12.4 s: an initial hold, a sparkle appear/move/disappear sequence, then a flashing-logo phase
+~740 frames (~12.3 s: an initial hold, a sparkle appear/move/disappear sequence, then a flashing-logo phase
 — derived by tracing the stage's frame gating, recorded medium-confidence). The demonstration stage has no
 timer: the attract pilot (a random walk drawing from the shared stream, with a 1-in-16 chance of a
 simulated fire press per frame — `gen_rnd_dir` 2156–2165, `gen_rnd_shot` 2351–2354) plays until the
@@ -53,8 +53,11 @@ returns to player 1, and the cabinet resumes attract (556–591).
 
 **High-score entry (CAB-04).** A score reaching or beating fifth place in the best-five table enters
 initials (a score tying the fifth entry still places, shifting it down): ten
-characters from a 27-symbol set (A–Z and space, wrapping both directions; a lowercase variant exists
-behind a DIP bit recorded as uncertain in practical reach), with entry auto-completing on the tenth
+characters from a 27-symbol set (A–Z and space, wrapping both directions). Holding the bomb button
+turns the letter lowercase: `check_lowercase` (1784–1792) reads the bomb bit and adds 0x2C to the letter
+code, on the active cell drawn (1717) and on the letter stored (1747); a space becomes the full stop (0x24 +
+0x2C = 0x50, the full stop of "M.N" in `ROM_high_score_tbl_normal` 1588–1601); a timeout stores the capital. (Earlier
+prose put this behind a DIP bit; the source reads the bomb button.) Entry auto-completes on the tenth
 character or when a fixed overall time limit of roughly 68 seconds — counted from when entry begins and
 **not** reset by input — runs out (derived from the compound frame gating, medium-confidence)
 (`check_for_high_score` through name entry 1618–1793). Insertion shifts lower entries

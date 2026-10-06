@@ -59,6 +59,10 @@ EXPECTED_SHA256 = {
     "assets/amiga/xevious_gfx.c": (
         "3028308f85c742b1cf5569bb031ebb9c06df22943ddf3494ca5bda0c59cf66d4"
     ),
+    # the title logo's tile strings (tools/reference_art_render.py); the hash tools/reference_extract.py pins
+    "src/xevious_main.68k": (
+        "bd23912e5cc25dfe7ebb69c043ab098fead300949b066ece972d5ddda29de77e"
+    ),
 }
 
 GFX_C = "assets/amiga/xevious_gfx.c"

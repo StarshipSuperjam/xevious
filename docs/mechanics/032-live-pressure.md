@@ -22,7 +22,8 @@
     The structural guard `test_live_pressure_contract` (`_live_pressure_failures`) pins the wiring: the
     refill loop repeats `formation count` times and fills only empty slots.
   - **DIF-02 — scoring well raises pressure past the raise ceiling.** The `adjust_ai_level_from_score`
-    record adds `floor(floor(score / 1000) / craft)` (capped 16, guarded on craft > 0) to the AI level
+    record adds the score's thousands divided by the ship number (capped 16; the slice-21 arithmetic of
+    [record 056](056-release-fidelity.md) item 4) to the AI level
     and — unlike a raise — does **not** fold it back. Because raises fold at 0x80, the AI level from
     raises alone can never be observed ≥ 128; the score adjust is the only path across that ceiling. The
     `live-pressure-adaptive` scenario injects a heavy score with craft in reserve, pumps area 1, and
@@ -111,4 +112,4 @@ Second, a known error in DIF-02 is now tracked: the arcade's score-per-craft adj
 ([record 021](021-score-adaptive-ai-level.md)). The dividend differs too: the arcade reads the score's
 thousands digits as a raw binary number (`curr_player_score_msb` at `sub_2_fn_23__adjust_AI_level_based_on_score`
 346, the source noting it at 356), so 20,000 points counts as 32, where the port uses the decimal thousands. The correction, with its amendment to the locked difficulty
-description, is the slice-21 leaf `difficulty.ship-number-divisor`.
+description, is the slice-21 leaf `difficulty.ship-number-divisor`, built in [record 056](056-release-fidelity.md) item 4.

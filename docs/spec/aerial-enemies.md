@@ -38,9 +38,9 @@ one-time re-aim it verified against the source, under the operator's guardrail a
 remaining families (Zoshi, Jara, the Zakato line, Brag/Garu Zakato, Sheonite, the Sparios, Bacura) were
 each verified line-by-line against the reference by their own build slice (10–11), and this document was
 amended where it diverged, under the operator's acknowledgement; every family below is now checked ground.
-Known port gaps that remain are tracked as slice-21 leaves, not as unverified prose: the scheduled `add_object` spawns of Garu Zakato and the extra
-Torkan/Kapi/Terrazi (`area.add-object-dispatch`), and the remaining reference art
-(`presentation.reference-art`).
+The scheduled `add_object` spawns of Garu Zakato (in arcade object slot 0x3B) and the single
+Torkan/Kapi/Terrazi are built (`area.add-object-dispatch`, slice 21). The known port gap that remains is
+tracked as a slice-21 leaf, not as unverified prose: the remaining reference art (`presentation.reference-art`).
 
 ## Behavior
 
@@ -148,10 +148,10 @@ under the Kapi mask (**no** fire suppression, unlike Terrazi's glide). `_dX`/`_Y
 lateral axes (`dir_delta_tbl` 2172, `set_solvalou_dXdY` 2147); the older "vertical acceleration toward
 the craft / horizontal deceleration" reading inverted **both** axes and the direction. A seven-code
 animation (0x20–0x26) advances every eight frames in forward order regardless of side, the eighth
-animation slot holding the last frame (`loc_2455` 3654–3665). Its initial fire-delay constant carries a
-recorded uncertainty: the reference's code and its own comment disagree (an unmasked double-add versus
-the commented 48–111 range), noted as a probable transcription slip in the reference; the build follows
-the commented range and records the deviation.
+animation slot holding the last frame (`loc_2455` 3654–3665). Its initial fire delay is an accepted
+deviation: the code adds 63 and then 48 to a random byte with no mask (3610–3613), so the timer can start
+anywhere in the byte's range, while the reference's own comment gives 48–111; the build follows the
+commented range (mechanics record 028, deviation 3).
 
 **Terrazi (AIR-06).** Aimed approach at 3 px/frame, firing under the Terrazi mask while distant; when it
 draws nearly level with the craft **laterally** (a narrow window on `_Y`, offset ~[−4, 3], derived — the
@@ -164,7 +164,10 @@ catalog's older description of a distinctive "expand" attack is unsupported by t
 recorded as ruled out.
 
 **Zakato line (AIR-07).** All Zakatos teleport in with a ~20-frame sparkle during which they cannot be
-hit (`init_teleport` 3961–4006), then live briefly and fire **exactly once**: firing is terminal — the
+hit (`init_teleport` 3961–4006). They appear mid-field, on a random row 5–20 (`(rnd & 0x0F) + 5`) and a
+random column, and drift down with the terrain while they sparkle and again while they self-destruct
+(`scroll_sprite_X` 4849–4854, called from `handle_12_Zakato_slow` 3733–3742 and
+`zakato_explode_and_remove` 3766–3771). They then live briefly and fire **exactly once**: firing is terminal — the
 Zakato launches its single aimed bullet and immediately self-destructs through its own ~20-frame flash,
 awarding nothing (`zakato_shoot` 3761–3771, `zakato_explode` 3931–3950). Points are scored only by
 killing it first. Variants: slow (1 px/frame drift, random 1–256-frame fuse), close-Y (same drift, fires
@@ -179,8 +182,9 @@ variant on a 1–64-frame fuse, the proximity variant when level with the craft 
 teleport-in — recorded as a correction to the catalog's older phrasing): drifts at 3 px/frame on a
 32–63-frame fuse (4010–4029). Shot in time, it dies normally and scores. Left alone, it detonates into a
 full 16-bullet 360° ring at 3 px/frame plus four Brag Sparios launched in the cardinal directions at
-2 px/frame (5075–5116), awards nothing, and vanishes without an explosion animation. (A stray "500"
-in the reference's comment has no code path; recorded uncertain.)
+2 px/frame (5075–5116), awards nothing, and vanishes without an explosion animation. (The comment above
+the handler reads 1,000/500: the Garu Zakato itself scores 1,000 (points index 48 at 4014), and 500 is
+what a Brag Spario it launches scores when shot (points index 33, `handle_09_Brag_Spario` 3080–3088).)
 
 **Sheonite (AIR-09).** The indestructible escort pair around the Andor Genesis encounter: born in the
 benign state, never hit-tested, started and ended by their schedule records. Each homes at 4 px/frame on
@@ -192,8 +196,12 @@ and the left simply vanishes; the asymmetry is retreat-versus-vanish, not the dw
 **Giddo Spario and Brag Spario (AIR-10).** Giddo Spario is the fast flyby: aimed once at spawn at
 4 px/frame — the fastest tier — with no firing and its own short ~8-frame hit explosion (5219–5257).
 Brag Spario is the accelerating homer: it re-aims continuously, accelerating toward the craft's current
-position without bound (3080–3129); it arrives scheduled or four-at-a-time from a Garu Zakato
-detonation.
+position without bound (3080–3129). A shot never destroys it: its handler has no hit branch and sets
+it back to active every frame, so a hit scores 500 and uses up the shot while it keeps flying, and it
+leaves only off-screen (`handle_09_Brag_Spario` 3092, `check_flying_enemies_shot` 2516–2545,
+`check_scroll_offscreen` 4826–4839). It arrives only four at a time from a Garu Zakato detonation
+(`init_garu_zakato_explosion` 5075–5103); type 0x09 is in neither flying-type table and no schedule
+record.
 
 **Bacura (AIR-11).** The indestructible spinning slab: spawned one per second up to the area's scheduled
 quota (`main_fn_5__inc_num_bacura` 5201–5217; quota set per schedule record), drifting at 1 px/frame.
@@ -213,6 +221,6 @@ which patterns.
 | Each family plays its recorded pattern — approach, trigger, fire rule, exit | Play scheduled waves of each family in the built `.sb3` against this document's descriptions | operator |
 | A Zakato that fires its shot self-destructs scoring nothing; one killed first scores | Play: let one fire, kill one early | operator |
 | A Garu Zakato left alone rings 16 bullets and releases four Brag Sparios | Play (or seeded fixture) the detonation | operator |
-| Sheonites cannot be killed and track the craft in the recorded pincer-and-dock pattern | Play the area-9 Sheonite spawn (or the T-key debug spawn) in the built `.sb3` | operator |
+| Sheonites cannot be killed and track the craft in the recorded pincer-and-dock pattern | Play the area-9 Sheonite spawn in the built `.sb3` | operator |
 | All families share one blaster hit window and one explosion; Giddo Spario's short variant excepted | Structural fixture over the build's collision and animation data | engine |
 | Fire timing draws from the shared stream under the family mask (seeded waves repeat exactly) | Seeded fixture: identical seeds reproduce identical wave behavior | engine |

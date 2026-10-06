@@ -34,8 +34,20 @@ OUTCOME_ID = "game-director-death-outcome"
 ALLOWED_ID = "game-director-allowed-transitions"
 SOLVALOU_EPOCH_ID = "solvalou-director-entry-epoch"
 DEATH_EPOCH_ID = "solv-death-director-entry-epoch"
-# CAB-05: the death sprite's own count of ticks into the player explosion (it picks the frame and the flip).
-DEATH_EXPLOSION_TICK_ID = "solv-death-explosion-tick"
+# CAB-05's death-sprite explosion counter, retired by #158 (the walk's `dying tick` drives the frames now).
+RETIRED_DEATH_EXPLOSION_TICK_ID = "solv-death-explosion-tick"
+# The T/G/P playtest keys' Stage variables, retired with the keys in slice 21 (#119). Generation preserves
+# unowned Stage variables, so these are dropped by name (idempotent).
+RETIRED_PLAYTEST_KEY_VARIABLE_IDS = (
+    "debug-spawn-index",
+    "debug-ground-index",
+    "debug-ground-key-held",
+    "debug-paused",
+    "debug-pause-key-held",
+)
+# The title logo/sparkle clones' own tick counter, retired in slice 21 when the Stage `title tick` clock took over
+# (the clones only read that). Generation preserves unknown sprite variables, so it is dropped by name (idempotent).
+RETIRED_ATTRACT_TICK_ID = "attract-display-tick"
 # Weapon state cleared by the reset scopes (never director `game state`). The bomb
 # guard is a Stage variable so the one-bomb poller and the in-flight bomb — which may
 # run on different threads — share it; the reload counter is blaster-local.
@@ -55,6 +67,10 @@ RELOAD_TICKS = 10  # arcade 20-frame blaster reload (player-craft WPN-01)
 EXPLOSION_STEPS = 7  # 7 costume cycles ...
 EXPLOSION_HOLD_TICKS = 4  # ... of 8 arcade frames each = 56 frames = 28 ticks (PLY-02)
 POST_DEATH_PAUSE_TICKS = 16  # arcade 32-frame post-explosion pause (PLY-02)
+# #158: the whole explosion-plus-pause window the walk runs through in `playing` (88 arcade frames).
+EXPLOSION_TICKS = EXPLOSION_STEPS * EXPLOSION_HOLD_TICKS  # 28: the craft is drawn (exploding) for these
+DYING_WINDOW_TICKS = EXPLOSION_TICKS + POST_DEATH_PAUSE_TICKS
+assert DYING_WINDOW_TICKS == 44, DYING_WINDOW_TICKS
 # CAB-05 player explosion (`explode_solvalou` xevious_main.68k 2034-2075): solv_death's costumes after its
 # historical explode_01..08 are player-explosion/burst/01..07, four flip costumes each (none, x, y, xy). The
 # flip is `countup & 0x0C`, which steps every 4 frames = every 2 ticks.
@@ -64,6 +80,8 @@ PLAYER_EXPLOSION_FLIP_TICKS = 2
 READY_HOLD_TICKS = 32  # port READY beat, sized to the arcade's 64-frame post-death forest wait (511, 535-536;
 # CAB-05). The arcade runs that wait only after a death (scroll is off only then, 2087) and draws no craft in it;
 # the port keeps its READY hold on the first life too and shows the craft, a port reading recorded in 055.
+FOREST_WAIT_TICKS = 32  # PLY-02.forest-wait: the arcade's 64-frame forest wait after the LAST death (511, 535-536),
+# held in paced frames in `player-dead` (the walk is off there) before the game-over route or the 2P handoff.
 GAME_OVER_HOLD_TICKS = 64  # arcade 128-frame GAME OVER hold (`game_over` 549-591; ECO-04)
 
 # SYS-04 shared pseudo-random stream. The update rule and its golden fixtures are the
@@ -189,6 +207,8 @@ CLONE_SLOT_ID = "blaster-clone-slot"
 # top, where Scratch's fence would hold the sprite back on stage, so the shot's travel, slot mirror, expiry and
 # hide all read this variable rather than the sprite's y position.
 SHOT_DEPTH_ID = "blaster-shot-depth"
+# Slice 21: each shot clone's own rebound clock, the arcade shot's _TIMER after a Bacura hit (BACURA_BOUNCE_*).
+BOUNCE_TIMER_ID = "blaster-bounce-timer"
 ALLOC_SHOT_PROCCODE = "alloc shot slot"
 
 # SYS-03 collision groups and single-hit resolution. Exactly five groups (below), no
@@ -344,6 +364,12 @@ HUD_DIVISOR_ID = "hud-divisor"
 HUD_LIFE_INDEX_ID = "hud-life-index"
 HUD_LIFE_COUNT_ID = "hud-life-count"
 HUD_IS_CLONE_ID = "hud-is-clone"
+# Slice 21 (#31): the 1UP label's flash clock, in port ticks (see HUD_FLASH_HALF_TICKS).
+HUD_FLASH_CLOCK_ID = "hud-flash-clock"
+# Slice 21 (#31): the frames the real game spends in its paced holds off the play screen (the two-player banner,
+# the last death's forest wait, initials entry), one a frame. The 1UP clock is `tick` plus this, so the label keeps
+# flashing where the walk is off (Stage global: the forest wait runs in solv_death).
+HUD_FLASH_FRAMES_ID = "hud-flash-frames"
 # Role tags snapshotted into each clone at creation (the blaster clone-slot idiom): which of the
 # five clone kinds this clone is. 0 (unset) never matches any role, so it also doubles as the
 # original sprite's permanent "I am not a clone" marker for `hud is clone` gating.
@@ -353,7 +379,7 @@ HUD_ROLE_LIFE = 3
 HUD_ROLE_LABEL_1UP = 4
 HUD_ROLE_LABEL_HIGH_SCORE = 5
 HUD_ROLE_GAME_OVER_GLYPH = 6  # ECO-04: the "GAME OVER" text, distinct from every other role
-HUD_ROLE_BANNER = 7  # CAB-03: the "GAME OVER PLAYER n" two-player elimination banner, gated on `banner player`
+HUD_ROLE_BANNER = 7  # CAB-03: the GAME OVER line of the two-player elimination banner, gated on `banner player`
 # ECO-02 two-player HUD (slice 18). The PRIMARY group (score digits + the flashing LABEL_1UP) always shows the
 # ACTIVE player: its digits read the live `score`, and its label's leading glyph is `digit/(curr player + 1)`, so
 # it reads "1UP" when player 1 is active and "2UP" when player 2 is. The SECONDARY group is spawned ONLY in a
@@ -366,6 +392,7 @@ HUD_ROLE_BANNER = 7  # CAB-03: the "GAME OVER PLAYER n" two-player elimination b
 # player always 0 -> a flashing "1UP" over the live score) is byte-identical to before this slice.
 HUD_ROLE_OTHER_SCORE_DIGIT = 8  # ECO-02: a secondary score-row digit reading `other score` (two-player only)
 HUD_ROLE_LABEL_2UP = 9  # ECO-02: the secondary (other-player) steady nUP label (two-player only)
+HUD_ROLE_BANNER_PLAYER = 10  # CAB-03 (slice 21): the banner's PLAYER n line, on its own row under GAME OVER
 HUD_DIGIT_PLACES = 7  # 0 (units) .. 6 (millions) — SCORE_CAP (9,999,990) is 7 BCD digits
 # PRES-01 (docs/mechanics/054): the HUD sits on the arcade's text layer, exactly where the arcade writes it.
 # A text offset is MSB = 31 - col, LSB = row (display_char, xevious_main.68k 1912-1923); each 8-px cell is
@@ -412,13 +439,17 @@ HUD_LIFE_MAX = 28
 # text costume — the HUD glyphs (manifest downscale 5), the two-player banner and the attract text
 # (SMALL_TEXT_GEOM), the hidden credit — at its drawn size, one 20-px column at bitmap resolution 2 =
 # TEXT_COSTUME_COLUMN_UNITS, so text draws at 100% and is resampled only once. The size is still set, as a
-# clone inherits its parent's (start_screen's parent draws the logo at ATTRACT_LOGO_SIZE). The 16-px
+# clone inherits its parent's (start_screen's parent draws the logo at SPRITE_RENDER_SIZE). The 16-px
 # resolution-1 life icon is art, not text, and keeps its run-time scale.
 TEXT_COSTUME_COLUMN_UNITS = 10
 HUD_GLYPH_SIZE = round(100 * HUD_TEXT_PITCH / TEXT_COSTUME_COLUMN_UNITS)
 HUD_LIFE_SIZE = 62.5
 HUD_BANNER_SIZE = HUD_GLYPH_SIZE
-HUD_1UP_FLASH_HOLD_TICKS = 15  # project-defined flash cadence, no reference basis
+# Slice 21 (#31): the 1UP and INSERT COIN flash. The arcade blanks the active nUP label while bit 4 of its frame
+# counter is set, in a real game only (sub_fn_6__display_1UP_2UP / flash_1up_2up, xevious_sub.68k 737-775), and
+# shows INSERT COIN while the same bit is set (display_insert_coin_flashing, xevious_main.68k 857-877): 16 frames
+# each way, so 8 port ticks. A clock c (port ticks) is in the flash's "set" half when floor(c / 8) mod 2 == 1.
+HUD_FLASH_HALF_TICKS = 8
 # (glyph costume, slot) pairs — slot spacing leaves a gap for the untyped space in "HIGH SCORE".
 HUD_1UP_LABEL = (("digit/1", 0), ("glyph/U", 1), ("glyph/P", 2))
 # "HIGH SCORE" renders in the yellow hs/* costume set (arcade fidelity: that one HUD label is
@@ -437,18 +468,19 @@ HUD_GAME_OVER_LABEL = (
     ("glyph/G", 0), ("glyph/A", 1), ("glyph/M", 2), ("glyph/E", 3),
     ("glyph/O", 5), ("glyph/V", 6), ("glyph/E", 7), ("glyph/R", 8),
 )
-# CAB-03: the two-player "GAME OVER PLAYER n" banner is a single WHOLE-STRING costume (rendered by
-# tools/hud_glyphs.py render_banner_costumes on the same credited HUD font sheet; the 18-char line uses that
-# module's SHEET_TEXT_RECTS, which has every glyph, and its credit downscale so the line stays on the 480-wide
-# stage). One banner clone (HUD_ROLE_BANNER) switches to the costume for the eliminated player and shows it,
-# centered on the field, while `banner player` is set; unlike the per-glyph GAME OVER row above it needs no
-# slot table. Costume names by player index: 0 -> "game-over-player-1", 1 -> "game-over-player-2".
-HUD_BANNER_COSTUME_PREFIX = "game-over-player-"
-# The 18-character banner starts on the GAME OVER cell (col 14, row 24) and so ends on col 31, the last visible
-# column; the clone sits at the line's centre (col 22.5). The arcade writes "PLAYER ONE/TWO" on its own row 26
-# (display_game_over_player_1_2 845-855); the port's one-line banner is its slice-18 simplification.
-HUD_BANNER_X = text_cell_x(22.5)
+# CAB-03: the two-player elimination banner, two rows as the arcade writes it (display_game_over_player_1_2,
+# xevious_main.68k 845-855): "GAME OVER" from offset 0x1118 (col 14, row 24, nine characters), then the player's
+# line from 0x121A (col 13, row 26, a ten-character run). Each row is a whole-string costume (rendered by
+# tools/hud_glyphs.py render_banner_costumes on the credited HUD font sheet) worn by its own clone, placed at the
+# run's centre: GAME OVER at col 18; the player line, the port's eight-letter "PLAYER n", centred on the arcade's
+# ten-character run at col 17.5. Both show while `banner player` names a player; the player line wears
+# "banner-player-<banner player + 1>".
+HUD_BANNER_GAME_OVER_COSTUME = "banner-game-over"
+HUD_BANNER_COSTUME_PREFIX = "banner-player-"
+HUD_BANNER_X = text_cell_x(14 + (9 - 1) / 2)
 HUD_BANNER_Y = text_cell_y(24)
+HUD_BANNER_PLAYER_X = text_cell_x(13 + (10 - 1) / 2)
+HUD_BANNER_PLAYER_Y = text_cell_y(26)
 HUD_SPAWN_CRAFT_PROCCODE = "hud spawn craft"
 
 # ECO-01 scoring path (docs/spec/scoring-lives-and-game-over.md). Every award routes through
@@ -460,9 +492,11 @@ SCORE_ID = "eco-score"
 HIGH_SCORE_ID = "eco-high-score"
 # The resolved point value to add — a MACHINERY seam (parallel to `hit slot`): set by the
 # collision detector the enemy slice (slice 8) wires, so it is not write-forbidden to sprites.
-# The debug scoring fixture below sets it this slice so the economy is operator-verifiable.
 AWARD_VALUE_ID = "eco-award-value"
 SCORE_CAP = 9_999_990  # set_score_to_9999990: three BCD bytes, x10 implicit
+# next_bonus_life_Ks is a four-digit BCD thousands word; its add (check_for_extra_solvalou 163-171)
+# drops the carry out of the top digit, so the threshold in points wraps modulo 10,000,000.
+BONUS_THRESHOLD_WRAP = 10_000_000
 HIGH_SCORE_START = 40_000  # top default best-five entry (high_score_defaults[0])
 CHECK_BONUS_PROCCODE = "check bonus life"
 # The 22 object point values in table order (docs/spec/data/scores.json master_value_table,
@@ -619,18 +653,11 @@ AREA_COMPLETE_PROGRESS = _first_completion_progress()
 assert AREA_COMPLETE_PROGRESS == 65056, AREA_COMPLETE_PROGRESS
 # The near-end checkpoint (docs/mechanics/003, 013). The arcade keeps scrolling through the craft's
 # explosion and the pause after it, then reads the row (`main_gameplay_loop` xevious_main.68k 507-521:
-# MSB - 14 < 54, i.e. row in [0x0E, 0x43], advances the area). The port freezes the screen at the death
-# tick instead, so the checkpoint PROJECTS: it adds the 88 frames (44 ticks) the arcade would have
-# scrolled, completes the area first if that projection passes AREA_COMPLETE_PROGRESS (carrying, exactly
-# as the walk does), and then applies the row band to the projected row. Every death therefore has the
-# arcade's area outcome; only the frozen picture during the explosion differs (recorded divergence).
+# MSB - 14 < 54, i.e. row in [0x0E, 0x43], advances the area). Since #158 (slice 21) the port's walk scrolls
+# through that same 44-tick window, so the checkpoint reads the live row; the slice-20 projection is gone.
 # Checked as `row > 13 AND row < 68` (Scratch has no <=).
-AREA_DEATH_SCROLL_TICKS = 44  # 88 arcade frames of scrolling between the death and the checkpoint read
-AREA_CHECKPOINT_PROJECTION = AREA_DEATH_SCROLL_TICKS * AREA_PROGRESS_STEP  # 1408
-AREA_CHECKPOINT_LOW_EXCL = 0x0D  # 13; the projected row must be strictly greater (>= 0x0E)
-AREA_CHECKPOINT_HIGH_EXCL = 0x44  # 68; the projected row must be strictly less (<= 0x43)
-# Stage-internal working register for the projection (custom blocks have no locals).
-CHECKPOINT_PROGRESS_ID = "area-checkpoint-progress"
+AREA_CHECKPOINT_LOW_EXCL = 0x0D  # 13; the row must be strictly greater (>= 0x0E)
+AREA_CHECKPOINT_HIGH_EXCL = 0x44  # 68; the row must be strictly less (<= 0x43)
 
 SPEC_DATA_DIR = ROOT / "docs" / "spec" / "data"
 
@@ -674,9 +701,8 @@ AREA_MAP_COLUMNS = _load_terrain_columns()
 # the runtime consume reads an area's slice by indexing the lists with the live `area number` — no code
 # path is per-area (that is why slice 6 moves no runtime block). Every handler's variable `params`
 # (slot/sprite_y, mask, row, count, formation_offset, path, ...) is carried faithfully as an opaque JSON
-# PAYLOAD so no field is dropped and the schema never has to grow; the handlers themselves (spawn,
-# formation, difficulty, boss) arrive with the enemy slices (8+), so the per-record dispatch is an empty
-# seam.
+# PAYLOAD so no field is dropped and the schema never has to grow; `_consume_schedule` dispatches each
+# record on its handler name to the spawn, formation, difficulty, boss and add_object steps.
 SCHEDULE_HANDLER_ID = "area-schedule-handler"
 SCHEDULE_TRIGGER_ROW_ID = "area-schedule-trigger-row"
 SCHEDULE_PAYLOAD_ID = "area-schedule-payload"
@@ -706,6 +732,16 @@ FORMATION_COUNT_ID = "formation-count"
 FORMATION_TYPE_OFFSET_ID = "formation-type-offset"
 FORMATION_INDEX_ID = "formation-index"  # transient lookup index (machinery)
 AI_ADJUST_ID = "difficulty-ai-adjust"  # DIF-02 transient score re-tune addend (machinery)
+# DIF-02 (slice 21, difficulty.ship-number-divisor): the arcade's per-player `solvalou_number` (xevious_ram 176,
+# inside the swapped 64-byte block) — the craft in play, counted from 1 at the game start (main 444) and up by one
+# as each death's pause ends (finish_solvalou_exploding 2086). A byte, so it wraps at 256. The score re-tune
+# divides by it (not by the craft left). Difficulty-director state: Stage-written, write-forbidden.
+SHIP_NUMBER_ID = "difficulty-ship-number"
+SHIP_NUMBER_WRAP = 0x100  # `solvalou_number` is a byte (addq.b)
+AI_LEVEL_WRAP = 0x100  # `enemy_AI_level` is a byte: the raise and the re-tune both `add.b` (sub 324, 352)
+AI_ADJUST_CAP = 16  # the re-tune's limit (sub 349-351: `cmp.w #16,d1; jle`)
+AI_ADJUST_SIGNED_ESCAPE = 0x8000  # a quotient >= 0x8000 is negative to the SIGNED `jle`, so it escapes the cap
+AI_ADJUST_ZERO_DIVISOR = 0xFFFF  # avg_score_per_solvalou (sub 360-372) yields 0xFFFF for a divisor of 0
 SCHEDULE_ARG_ID = "area-schedule-arg"  # 4th parallel schedule column (runtime scalar)
 # GND dispatch: an add_ground_object record needs THREE runtime scalars the single `schedule arg`
 # column cannot carry, so they ride three more parallel schedule columns — object type (the ground
@@ -739,6 +775,10 @@ ADD_GROUND_OBJECT_HANDLER = "add_ground_object"
 # (object_type + params.slot + params.sprite_y), but it ALSO carries a scripted path (params.path = a list of
 # {duration, vector_index} steps, params.path_step_count = its length) the follower consumes.
 ADD_DOMOGRAM_HANDLER = "add_domogram_with_path"
+# AREA-02 (area.add-object-dispatch #166): the type-only spawn handler (arcade opcode 0, sub_2_fb_0__type_only
+# xevious_sub.68k:649-659: `move.b (-1,a0),(_TYPE,a5)` at obj slot byte3). It carries object_type + params.slot (the
+# RAW arcade object slot: 0 for the bonus flag, 0x3A/0x3B for the flying singles) and nothing else.
+ADD_OBJECT_HANDLER = "add_object"
 # AIR-11 (air.bacura #81): the two Bacura schedule handlers. `set_bacura_count` (arcade opcode 0x22,
 # sub_2_fn_6__set_bacura_inc_cnt $075D: `move.b (a0)+,(bacura_inc_cnt)`) sets the per-window increment
 # quota; `reset_bacura_count` (opcode 0x23, sub_2_fn_7__reset_num_bacura $05D8: `clr.b (num_bacura)`)
@@ -799,6 +839,14 @@ FIRE_MASK_DOMOGRAM_ID = next(i for s, n, i in FIRE_MASK_FAMILIES if s == "domogr
 # observable AI-level growth), so its growth RATE is placeholder-driven and is NOT a
 # fidelity claim — only the growth MECHANISM is. Recorded in docs/mechanics/019.
 DIFFICULTY_DIP_INDEX = 0
+# DIF-01 (slice 21 review fix): each real-game death lowers the AI level. As the forest fills at a death
+# (`main_gameplay_loop` xevious_main.68k 522-533) the arcade reads the same two `dswb` bits the raise reads
+# (`not.b; rol.b #3; and #3`, sub 318-321 — the source comment calls them "starting lives", but the bits and the
+# inversion are the difficulty switch's), subtracts `enemy_AI_dec_value[index]` (1204-1205) from `enemy_AI_level`
+# with `sub.b`, and clears it on a borrow (`jcc 3f; clr.b d1`). The table is indexed by the same placeholder
+# DIP index as the raise, so the port's drop is 0x10 a death, floored at 0.
+AI_DEATH_DROP_TABLE = (0x10, 0x18, 8, 0)
+AI_DEATH_DROP = AI_DEATH_DROP_TABLE[DIFFICULTY_DIP_INDEX]
 AI_LEVEL_FOLD_THRESHOLD = 0x80  # a raise reaching >= 128 folds back (never clamps)
 AI_LEVEL_FOLD_SUBTRACT = 0x40  # ... by subtracting 64 once
 FORMATION_MIN_INDEX = -32  # formations.json domain lower bound (bytes before the label)
@@ -1056,8 +1104,7 @@ UPDATE_GROBDA_PROCCODE = "update grobda"
 # once bombed (HIT) it craters PERSISTENTLY like the Barra (handle_bomb_explosion) via `advance ground`.
 UPDATE_DOMOGRAM_PROCCODE = "update domogram"
 # BOSS-01 (andor.lifecycle #94): the invisible Andor Genesis master's per-tick update. In THIS commit it is
-# minimal — it consumes the end flag and tears the whole composite down (so the debug summon can be dismissed
-# and the non-scrolling boss never jams the ground-key cycle). The full descend->hold->leave state machine and
+# minimal — it consumes the end flag and tears the whole composite down. The full descend->hold->leave state machine and
 # the per-part alignment come in a later commit; this proc is the seam they extend.
 UPDATE_ANDOR_MASTER_PROCCODE = "update andor master"
 # BOSS-01 (andor.lifecycle #94): the shared per-part alignment update (C3). One proc for all 14 visible parts
@@ -1074,12 +1121,19 @@ UPDATE_ANDOR_BRAGZA_PROCCODE = "update andor bragza"
 # player-hit flag it (and the flying-enemy craft check) raise for the non-warp walk thread to act on.
 UPDATE_BULLET_PROCCODE = "update bullet"
 PLAYER_HIT_ID = "player-hit"
-# Debug/test invulnerability flag (default 0). When 1, the walk still RAISES `player hit` on contact
+# Test-only invulnerability flag (default 0). When 1, the walk still RAISES `player hit` on contact
 # but the death is not triggered — a dormant hook the headless harness sets so its agency-less craft
 # survives while it observes the schedule/spawner (a stationary craft with no shooting/dodging is
 # killed by homing enemies within one headless pump). Never set by game logic, so real play is
-# unaffected; it is the seam a future "invulnerability" easter-egg key could toggle.
+# unaffected (tests/test_release_audit.py fails a build that writes it).
 INVULN_ID = "invuln"
+# #158 (PLY-02): the player-explosion window. The arcade keeps the whole world running through the craft's
+# explosion and the pause after it (`explode_solvalou` .. `finish_solvalou_exploding`, xevious_main.68k
+# 2033-2090); only the craft's own inputs, its hit check, new shots and new bomb presses stop. The port stays
+# in `playing` and the walk owns the window: `dying` = 1 from the hit, `dying tick` counts the walk ticks into
+# it (held at 0 outside it), and at DYING_WINDOW_TICKS the old death route (demo ends / player-dead) runs.
+DYING_ID = "player-dying"
+DYING_TICK_ID = "player-dying-tick"
 BULLET_INIT_CODE = 0  # enemy-bullet sprite code at spawn (renderer stand-in ignores the pulse)
 
 # The spawner's own sweep cursor (like the bullet allocator's — never the shared `slot index`); the
@@ -1115,40 +1169,9 @@ UPDATE_BACURA_PROCCODE = "update bacura"  # AIR-11: craft-touch death + drift do
 PUMP_BACURA_PROCCODE = "pump bacura"  # AIR-11: per-tick inc->init live spawn pump (main_fn_5 + main_fn_3)
 FIRE_GATE_PROCCODE = "fire permission gate"  # the shared, family-agnostic periodic-fire gate
 CULL_SLOT_PROCCODE = "cull slot"
-# DEBUG (temporary playtest tool, tracked for removal): while the debug key is held, force the flying
-# formation to a Terrazi wave so a family that only spawns at high AI levels is reachable for a
-# playtest. Amends the locked control mapping (needs guardrail-ack). See docs/spec/core-game-systems.md
-# and the removal issue #119 (remove once all aerial families are built and playtested).
-DEBUG_SPAWN_PROCCODE = "debug spawn wave"
-DEBUG_SPAWN_KEY = "t"  # T = cycle a single debug enemy through the buildable families
-DEBUG_SPAWN_INDEX_ID = "debug-spawn-index"  # which DEBUG_SPAWN_FAMILIES entry T brings in next
-# DEBUG (temporary playtest tool, tracked for removal #119): the GROUND analog of the T key. Ground objects
-# only enter by scrolling up from the area schedule — a narrow, one-shot, non-repeatable window — so a
-# specific ground family (a five-slot Boza composite especially) is impractical to reach for a bomb test.
-# While the debug ground key (G) is held, CYCLE the built ground families one at a time into the ground band
-# from the top of the field, so each family's whole lifecycle (enter, scroll, fire if it fires, bomb ->
-# crater/score) is reachable in isolation and repeatably. Like the T key it self-gates on the key (normal
-# play untouched) and amends the LOCKED control mapping (docs/spec/core-game-systems.md; needs guardrail-ack).
-DEBUG_GROUND_SPAWN_PROCCODE = "debug ground spawn"
-DEBUG_GROUND_KEY = "g"  # G = cycle a single debug GROUND family (G for ground; freed when the death fixtures went)
-DEBUG_GROUND_INDEX_ID = "debug-ground-index"  # which DEBUG_GROUND_FAMILIES entry G brings in next
-DEBUG_GROUND_KEY_HELD_ID = "debug-ground-key-held"  # previous-tick G sample; the boss DISMISS fires only on a
-# fresh press (rising edge), never on the same press that armed the boss (see install_debug_ground_spawn)
-DEBUG_GROUND_SPRITE_Y = 112  # lateral column for the debug spawn — a central, common column (schedule median)
-# DEBUG (temporary playtest tool, tracked for removal #119): a PAUSE/FREEZE key so the operator can stop the
-# action on a single frame and take an OS screenshot of a ground- or air-enemy issue to report. It is a TOGGLE
-# on the P key (tap to freeze, tap again to resume) — deliberately a toggle, not a hold, so the operator has
-# both hands free to drive the OS screenshot tool while the frame is held. While paused, the whole per-tick
-# walk (input, area clock, object walk, bomb, spawns, death) is skipped; only the toggle's own rising-edge
-# detector runs each tick, so a second tap resumes. It amends the LOCKED control mapping (needs guardrail-ack)
-# and is never pressed by the headless harness (`debug paused` defaults 0), so automated play is unaffected.
-DEBUG_PAUSE_PROCCODE = "debug pause toggle"
-DEBUG_PAUSE_KEY = "p"  # P = pause/resume (toggle) for the playtest
-PAUSED_ID = "debug-paused"  # 1 while frozen, 0 while running; the walk body is gated on == 0
-PAUSE_KEY_HELD_ID = "debug-pause-key-held"  # previous-tick P sample, for a rising-edge (tap) toggle
 # CAB-02 (cabinet.attract-credits, slice 17): coins and the one-player credit gate. There is no coin-box
-# hardware in this port, so a keyboard key inserts a coin (a port necessity, like the debug keys stand in
-# for hardware the port lacks) — an amendment to the LOCKED control mapping (see core-game-systems.md).
+# hardware in this port, so a keyboard key inserts a coin (a port necessity: it stands in for hardware the
+# port lacks) — an amendment to the LOCKED control mapping (see core-game-systems.md).
 # The arcade reads coins + start together in a NAMCO-chip replacement routine
 # (`src/xevious_sub.68k` `sub_fn_4__handle_credits_and_start` 171-206); the port splits that into an
 # always-on C-key coin poll (here) and the credit-gated Space start (the title->ready hat). The arcade
@@ -1173,7 +1196,8 @@ COIN_EDGE_ID = "cabinet-coin-edge"  # 1 on the tick a coin was inserted (rising 
 # * `keep sounds` — set by the death-complete handler so the ONE transition it runs (respawn, initials entry or
 #   GAME OVER) skips every stop-all-sounds, letting the 1.81 s death cue finish (update_solvalou 2030; the arcade
 #   stops only the flight tune at 2026 and the cue then plays out through the forest wait, 511/535-536). The
-#   transition clears it after its stop phase, so it covers exactly one transition.
+#   transition clears it after its stop phase, so it covers exactly one transition. Since #158 the end of the
+#   explosion window sets it too, for the transition into `player-dead` (the cue started at the hit).
 # * `death cue playing` — 1 while the Stage's death-cue thread is inside its play-until-done, so every stop-all is
 #   also skipped until the cue has actually ended. The keep alone counts transitions, not time: the post-death pause
 #   and the READY hold are collapsing `hold_ticks`, so in a browser with nothing else redrawing the respawning ->
@@ -1232,7 +1256,7 @@ ATTRACT_DISPLAY_ROW_ID = "attract-display-row"  # CAB-04: a table cell's best-fi
 ATTRACT_DISPLAY_CHAR_ID = "attract-display-char"  # CAB-04: a name cell's current letter, cached per tick
 ATTRACT_ROLE_CREDIT_LABEL = 1  # the static "CREDIT" word
 ATTRACT_ROLE_CREDIT_DIGIT = 2  # one credit-counter digit (reads `credits`); place 0 = units
-ATTRACT_ROLE_PROMPT = 3  # flashing PUSH START (credits>=1) / INSERT COIN (credits==0)
+ATTRACT_ROLE_PROMPT = 3  # steady PUSH START (credits>=1) / flashing INSERT COIN (credits==0)
 # CAB-04 (slice 19): the LIVE best-five table. Role 4 (the single pre-baked `best-five` costume) is
 # retired — an arbitrary live table and typed names cannot be pre-rendered, so each cell is its own
 # per-glyph clone (the HUD score-digit idiom), reading the two Stage lists. Three cell roles, one per
@@ -1255,12 +1279,51 @@ def text_run_x(first_col: int, chars: int) -> float:
     return text_cell_x(first_col + (chars - 1) / 2)
 
 
-# The title logo (the original start_screen costume, 304 x 103 units at 100% centred 51.5 units above its rotation
-# point) drawn at the arcade logo's width: cols 8..27 x rows 9..16 (display_xevious_logo_flashing xevious_main.68k
-# 891-1019) = 200 units, centred on (0, 50). It glides in from ATTRACT_LOGO_START_Y as before.
-ATTRACT_LOGO_SIZE = round(100 * 200 / 304, 2)
-ATTRACT_LOGO_Y = round(50 - 51.5 * ATTRACT_LOGO_SIZE / 100)
-ATTRACT_LOGO_START_Y = 250
+# Slice 21 (CAB-01/CAB-05): the title logo is the arcade's own tile art, rendered from the pin
+# (tools/reference_art_render.py title-logo/, 160 x 64 px cells spanning text columns 8..27 and rows 10..17 of
+# display_xevious_logo_flashing xevious_main.68k 891-1019), drawn at the sprite scale so one 8-px character is one
+# 10-unit text cell, and centred on that block: x = text_cell_x(17.5) = 0, y = text_cell_y(13.5) = 40. It is
+# drawn in place from the first frame, as the arcade draws it — the baseline's one-second glide is retired.
+#   * background (BG tile layer, opaque, drawn by the original): title, best five and coined-up;
+#   * outline (FG text layer, a clone above the sparkle): red 0x1A at rest (1004), and on the title the eight
+#     xevious_flashing_logo_colour_tbl colours (1207-1208) once the sparkle has gone (animate_flashing_logo
+#     1276-1290); static red with a credit banked (coined_up 377-388) and on the best five (1465-1468);
+#   * yellow (FG only, display_xevious_logo_yellow 1036-1086): over the demo (attract_mode_gameplay 1319).
+# The costumes sit on start_screen right after its preserved baseline logo (costume 1), at fixed ordinals.
+TITLE_LOGO_X = 0
+TITLE_LOGO_Y = 40
+TITLE_LOGO_BG_COSTUME = "title-logo/background/01"
+TITLE_LOGO_YELLOW_COSTUME = "title-logo/yellow/01"
+TITLE_LOGO_BG_ORDINAL = 2
+TITLE_LOGO_OUTLINE_BASE_ORDINAL = 3  # outline/01 (red, colour-table index 0) .. outline/08 (index 7)
+TITLE_LOGO_COLOURS = 8
+TITLE_LOGO_YELLOW_ORDINAL = TITLE_LOGO_OUTLINE_BASE_ORDINAL + TITLE_LOGO_COLOURS  # 11
+TITLE_SPARKLE_BASE_ORDINAL = TITLE_LOGO_YELLOW_ORDINAL + 1  # twinkle/01 (code 0x130) = 12 .. twinkle/16 = 27
+TITLE_ART_FAMILIES = ("title-logo/", "title-sparkle/")
+# The sparkle (attract_mode_title_screen 1217-1274), in port ticks n from the title's entry (tick n shows arcade
+# frame 2n). The 0x40 countdown runs out at frame 63; the sparkle appears for 15 frames (timer 1..15, code
+# 0x30 + ((timer >> 1) & 7)), moves for 135 (timer 0x79.., code 0x38 + (timer & 7), _Y - 0x20 a frame) and
+# disappears for 15 (timer 15..1); it is removed on frame 228, and the outline's first flash step falls on frame
+# 229. So: hidden below tick 32; appearing on ticks 32..38 (twinkle/(n - 30)); moving on ticks 39..106
+# (twinkle/(9 + ((2n + 43) & 7))); disappearing on ticks 107..113 (twinkle/(115 - n)); gone from tick 114, and
+# the outline flashing from tick 115.
+TITLE_SPARKLE_APPEAR_TICK = 32
+TITLE_SPARKLE_MOVE_TICK = 39
+TITLE_SPARKLE_DISAPPEAR_TICK = 107
+TITLE_FLASH_TICK = 114
+# Screen position (the render map, stage x = 1.25 * (128 - (_Y / 32 + 8)), y = 210 - 1.25 * _X / 32): it starts
+# at _X 0xD60 / _Y 0x1660, so (-73.75, 76.25); from frame 78 it moves 1.25 units a frame, so on frame f = 2n it
+# sits at 1.25 * (f - 136) = 2.5n - 170, ending at 95 on tick 106, where it disappears.
+TITLE_SPARKLE_START_X = -73.75
+TITLE_SPARKLE_Y = 76.25
+TITLE_SPARKLE_STEP_X = 2.5
+TITLE_SPARKLE_X_ORIGIN = -170
+TITLE_SPARKLE_END_X = TITLE_SPARKLE_STEP_X * (TITLE_SPARKLE_DISAPPEAR_TICK - 1) + TITLE_SPARKLE_X_ORIGIN  # 95
+# The port's start-key hint (tools/hud_glyphs.py "start-hint"), once baked into the baseline logo, on its own text
+# row under the logo, centred like the prompts (cols 11..25, centre 18).
+ATTRACT_COSTUME_START_HINT = "start-hint"
+ATTRACT_START_HINT_X = text_run_x(11, 15)
+ATTRACT_START_HINT_Y = text_cell_y(20)
 # "CREDIT" at (22,35) with its two digits at (29,35)/(30,35) (display_credits xevious_main.68k 774-787).
 ATTRACT_CREDIT_LABEL_X = text_run_x(22, 6)
 ATTRACT_CREDIT_LINE_Y = text_cell_y(35)
@@ -1274,7 +1337,12 @@ ATTRACT_PUSH_START_X = text_run_x(10, 17)
 ATTRACT_PUSH_START_Y = text_cell_y(23)
 ATTRACT_INSERT_COIN_X = text_run_x(13, 11)
 ATTRACT_INSERT_COIN_Y = text_cell_y(28)
-ATTRACT_PROMPT_FLASH_HOLD_TICKS = 15  # project-defined flash cadence (matches the HUD 1UP flash)
+# Slice 21 (#31): INSERT COIN shows while bit 4 of the frame counter is set and is wiped while it is clear
+# (display_insert_coin_flashing, xevious_main.68k 857-877), 16 frames each way — the HUD_FLASH_HALF_TICKS clock,
+# shown when floor(clock / 8) mod 2 == 1. It flashes on the title and in the demo (flash_insert_coin_and_check_
+# credits, attract_mode_title_screen 1217-1296 and attract_mode_gameplay 1298-1328), not on the best five
+# (attract_mode_high_score_table 1336-1345, check_credits only). PUSH START BUTTON is drawn once and stays (coined_up 377-388, display_push_start_button 815-826), so it does not flash.
+ATTRACT_INSERT_COIN_HALF_TICKS = HUD_FLASH_HALF_TICKS
 # CAB-04 (slice 19): the live best-five grid, in the arcade's layout (display_high_score_table 1475-1541): the five
 # rows on text rows 24, 26, .., 32 under a header on row 21, with the title logo above (flash_logo_and_high_score_
 # table 1464-1469). The arcade writes the 3-letter ordinal at col 6, the seven score digits from col 11, and the
@@ -1294,6 +1362,11 @@ ATTRACT_TABLE_SCORE_COL0 = 11 + ATTRACT_TABLE_COL_SHIFT  # the most-significant 
 ATTRACT_TABLE_NAME_COL0 = 20 + ATTRACT_TABLE_COL_SHIFT
 ATTRACT_RANK_PREFIX = "rank/"  # ordinal rank costumes rank/1..rank/5 (tools/hud_glyphs.py ATTRACT_TABLE_LABELS)
 ATTRACT_ROLE_TABLE_HEADER = 14  # the best-five header (static)
+ATTRACT_ROLE_LOGO_OUTLINE = 15  # slice 21: the logo's outline (title and best five)
+ATTRACT_ROLE_SPARKLE = 16  # slice 21: the title sparkle
+ATTRACT_ROLE_START_HINT = 17  # slice 21: the START SPACE KEY hint (title)
+ATTRACT_ROLE_DEMO_INSERT_COIN = 18  # slice 21: the demo's flashing INSERT COIN
+TITLE_TICK_ID = "cabinet-title-tick"  # slice 21: ticks since the title began, counted by the Stage title hold
 ATTRACT_COSTUME_TABLE_HEADER = "best-five-header"
 ATTRACT_TABLE_HEADER_CHARS = 16  # the port's "BEST FIVE PILOTS"
 ATTRACT_TABLE_HEADER_X = text_cell_x(17.5)  # centred on the screen like the arcade's (9,21) run
@@ -1335,6 +1408,14 @@ ATTRACT_SELECTOR_DIM_GHOST = 60  # unselected option dimmed; 0 ghost = the armed
 HIGH_SCORE_ENTRY_STATE = "high-score-entry"
 ENTRY_RING = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "  # 27 symbols: A-Z (ring 1..26) then space (ring 27)
 ENTRY_RING_SIZE = 27
+# CAB-04 (slice 21 audit): holding the bomb button turns the letter lowercase. The arcade's `check_lowercase`
+# (xevious_main.68k 1784-1792) reads the bomb bit (dswb bit 0, the bit `init_bombing` reads at 2441, active-low)
+# and adds 0x2C to the letter code — on the active cell it draws (1717) and on the letter it stores (1747). The
+# ring index is unchanged (inc/dec still walk A-Z then space), so the lowercase ring is the same 27 places. The
+# space is shifted too: 0x24 + 0x2C = 0x50, the full stop the default best-five names use ("M.N",
+# `ROM_high_score_tbl_normal` 1588-1601), so a space entered with the button held is a full stop. A timed-out
+# entry keeps the stored base letter, so `_high_score_finish` stays uppercase.
+ENTRY_RING_LOWER = "abcdefghijklmnopqrstuvwxyz."
 ENTRY_NAME_LEN = 10  # ten characters (move.b #10,(name_entry_char_cnt) xevious_main.68k:1700; name field ds.b 10)
 # A fixed TOTAL countdown armed once at entry start and decremented one per frame — NOT an idle reset: the
 # reference seeds countdown_timer_1 = 0x80 once (xevious_main.68k:1701) and decrements it unconditionally
@@ -1425,11 +1506,12 @@ RANK_CURSOR_ID = "cabinet-rank-cursor"
 # xevious_main 671-679). The port keeps the CURRENT player in the existing live vars and one `other <x>`
 # shadow per persistent per-player field holding the INACTIVE player's saved value. `swap players` exchanges
 # every pair on each craft-death alternation; `copy players` seeds `other` from the current player at a 2P
-# start (coined_up 454-460). The set is the 14 persistent fields the arcade swaps — score, craft, next bonus,
-# area number, ai level, ground-stop-firing row, and the 8 fire masks — verified complete against the arcade
-# block by the reference-fidelity pass (2026-09-30): the block's `solvalou_number` and `bonus_life_none` have
-# NO distinct port variable (the score-adaptive AI divides score/craft, both swapped; "bonuses off" is the
-# BONUS_DISABLED sentinel inside `next bonus`, swapped), so no per-player field leaks. The derived position/
+# start (coined_up 454-460). The set is the 15 persistent fields the arcade swaps — score, craft, next bonus,
+# area number, ai level, ship number, ground-stop-firing row, and the 8 fire masks — verified complete against
+# the arcade block by the reference-fidelity pass (2026-09-30): the block's `bonus_life_none` has NO distinct
+# port variable ("bonuses off" is the BONUS_DISABLED sentinel inside `next bonus`, swapped), so no per-player
+# field leaks. `solvalou_number` joined as `ship number` in slice 21, when the score re-tune stopped dividing by
+# the craft left and took the arcade's divisor. The derived position/
 # schedule fields (area progress, scroll row, terrain column, schedule cursor/fired) are NOT swapped — they
 # are rebuilt from `area number` by `_enter_area_top` on the incoming player's re-top. Each shadow is durable
 # per-player state the HUD may READ (the 2UP score row reads `other score`) but no sprite writes
@@ -1441,6 +1523,7 @@ PLAYER_CONTEXT_FIELDS = [
     ("next bonus", NEXT_BONUS_ID, "other next bonus", "other-next-bonus"),
     ("area number", AREA_NUMBER_ID, "other area number", "other-area-number"),
     ("ai level", AI_LEVEL_ID, "other ai level", "other-ai-level"),
+    ("ship number", SHIP_NUMBER_ID, "other ship number", "other-ship-number"),
     (
         "ground stop firing row",
         GROUND_STOP_FIRING_ROW_ID,
@@ -1461,59 +1544,6 @@ _PLAYER_CONTEXT_BY_LIVE_ID = {
 }
 OTHER_SCORE_ID = _PLAYER_CONTEXT_BY_LIVE_ID[SCORE_ID]
 OTHER_CRAFT_ID = _PLAYER_CONTEXT_BY_LIVE_ID[LIVES_ID]
-# The flying-type-table offset whose 6-slot run is all Terrazi (0x11) — the game's own Terrazi
-# formation offset (formation_table indices 110-115); the spawner reads positions offset+1..offset+6.
-TERRAZI_FORMATION_OFFSET = 78
-# The flying-type-table offset whose 6-slot run is all Kapi (0x10) — code 16 sits at 0-based positions
-# 69-74 (object-types.json), the same six-wide derivation as the Terrazi offset. Used by the debug
-# spawner to force a Kapi wave.
-KAPI_FORMATION_OFFSET = 69
-# The flying-type-table offset whose 6-slot run is all Torkan (0x0F) — code 15 sits at 0-based positions
-# 25-30 (object-types.json), the same six-wide derivation as the Kapi/Terrazi offsets. The debug key
-# forces THIS all-Torkan run; the natural area-1 waves reach Torkan through the AI-level formation table
-# instead (other offsets), so a built Torkan still appears in normal area-1 play at standard difficulty
-# — not only via the debug key. See docs/mechanics/029 deviation 7 for the schedule trace.
-TORKAN_FORMATION_OFFSET = 25
-# The flying-type-table offsets whose runs select each Zoshi type (object-types.json 0-based starts):
-# rnd (0x0C) at 31-36 and top (0x0D) at 45-50 are full six-wide runs like the other families; bottom
-# (0x0E) has NO six-wide run (its longest is the three-wide 51-53), so its offset points at that run's
-# start. That shorter run is immaterial to the debug spawner, which forces `formation count` = 1 and so
-# reads only the run's first position; the natural area waves reach every Zoshi type through the AI-level
-# formation table (other offsets), independent of these debug offsets.
-ZOSHI_RND_FORMATION_OFFSET = 31
-ZOSHI_TOP_FORMATION_OFFSET = 45
-ZOSHI_BOTTOM_FORMATION_OFFSET = 51
-# The flying-type-table offsets for the two Jara types (object-types.json 0-based run starts): the
-# 0x55 shooter run is codes 13-18 and the 0x56 silent run is codes 19-24 (both full six-wide, like
-# the other families). The PAIR offset 18 straddles the boundary: its two-slot window reads codes[18]
-# = 0x55 then codes[19] = 0x56, so a debug spawn of COUNT 2 there brings in one shooter AND one
-# silent — the adjacent shooter+silent run the arcade wave data emits. Two independent craft-excluding
-# random-Y draws (one per spawn) put them at different rows, so they cross the proximity band at
-# different moments and peel opposite ways: the EMERGENT pair, made watchable on demand (see #74,
-# docs/mechanics/031). The natural area waves reach both types through the AI-level formation table.
-JARA_SHOOTER_FORMATION_OFFSET = 13
-JARA_SILENT_FORMATION_OFFSET = 19
-JARA_PAIR_FORMATION_OFFSET = 18
-# The flying-type-table offsets whose runs select each base Zakato variant (object-types.json 0-based run
-# starts): slow (0x12) at 54-56 and closeY (0x13) at 57-59 are three-wide runs; fast (0x14) at 60-65 is
-# six-wide; cont (0x15) at 110-113 is four-wide. The debug spawner forces `formation count` = 1, so only
-# the run's first position is read and the shorter runs are immaterial. NATURAL reachability differs by
-# variant: the area-1..16 formation waves DO reach fast (0x14, e.g. areas 4/9/14) and cont (0x15, areas
-# 9/14) through the AI-level formation table, so those two appear in normal play; slow (0x12) and closeY
-# (0x13) are NOT scheduled in any built area, so the debug key is the only way to see them until later
-# areas are wired (see docs/mechanics/034 for the schedule trace).
-ZAKATO_SLOW_FORMATION_OFFSET = 54
-ZAKATO_CLOSEY_FORMATION_OFFSET = 57
-ZAKATO_FAST_FORMATION_OFFSET = 60
-ZAKATO_CONT_FORMATION_OFFSET = 110
-# AIR-08 Brag Zakato: the flying-type-table runs whose first code selects each Brag variant
-# (object-types.json 0-based): rnd (0x16) is a four-wide run at 84-87, closeY (0x17) a four-wide run
-# at 88-91. The debug spawner forces `formation count` = 1, so only the run's first position is read.
-# NATURAL reachability is AI-level/formation-table dependent (set_flying_formation's signed offset is
-# an index into flying_enemy_offset_tbl, not a direct type-table offset), so the debug key is the
-# deterministic playtest lever, exactly as for the base slow/closeY variants.
-BRAG_ZAKATO_RND_FORMATION_OFFSET = 84
-BRAG_ZAKATO_CLOSEY_FORMATION_OFFSET = 88
 # The Terrazi family's fire-permission mask Stage var (set live by the area schedule's
 # `fire_mask_terrazi` record; one of FIRE_MASK_FAMILIES). Captured into `slot fire mask` at spawn.
 FIRE_MASK_TERRAZI_ID = "fire-mask-terrazi"
@@ -1597,26 +1627,62 @@ ZAKATO_FAST_FUSE_SPAN = 64  # (rng mod 64) + 1 = 1-64 arcade frames (handle_14 a
 # SLOT_UNITS_PER_CELL. Fire when the lateral offset (player col - self col) is within this band.
 ZAKATO_CLOSEY_LOW = -4
 ZAKATO_CLOSEY_HIGH = 3
+# Teleport entry and drift, shared by the base and Brag Zakatos (init_teleport 3994-4006, zakato_teleport
+# 3961-3967, zakato_explode 3931-3938). The entry row is `(rnd & 0x0F) + 5` (3996-3999), so rows 5-20 —
+# NOT the top row the other flying families use; the column is then drawn by gen_random_Y_store_obj and
+# offset +1 (4000-4001, `col_offset=1` on the shared draw). While the sparkle plays and while the
+# self-destruct burst plays, the handler calls scroll_sprite_X every frame (3741/3770 and 3869/3899), so
+# the Zakato drifts with the terrain, AREA_PROGRESS_STEP per tick. Each phase also moves the object one
+# cell once: the sparkle at timer 8 (+1 row, -1 column, 3964-3967), the burst at timer 0x10 (-1 row,
+# +1 column, 3934-3937). The sparkle's move cancels its size change: its first two cells are 2x2 (attr
+# 0x83, 3987-3988, stored at 3981), drawn 8 px right and down of a 1x1 at the same position
+# (sprite_draw_double_width_and_height, amiga 2529-2544), so the renderer places those frames
+# DOUBLE_TILE_STAGE_OFFSET right and down and the picture holds still through the move. The burst's move
+# is VISIBLE: zakato_explode builds the size bits but never stores them (3946-3949, no write to _ATTR),
+# so the burst stays 1x1 and shifts up-left one cell at 0x10. The port timer counts 2 per tick, matching
+# the arcade TIMER, as the phase-completion test above does.
+ZAKATO_TELEPORT_ROW_MASK = 0x0F
+ZAKATO_TELEPORT_ROW_BASE = 5
+ZAKATO_TELEPORT_NUDGE_TIMER = 8
+ZAKATO_EXPLODE_NUDGE_TIMER = 0x10
+# Slice 21 (presentation.reference-art): the Zakato, Brag Zakato and Garu Zakato bodies pulse through
+# colour_lut_pulsing_2 (xevious_sub.68k 208-232): [0x10,0x11,0x12,0x13,0x14,0x13,0x12,0x11][(countup>>3)&7].
+# countup_timer_1 counts arcade frames, two a tick, so the step is (tick>>2)&7 and the colour
+# 0x10 + (4 - |step - 4|), the closed form the Andor colour uses. Every handler writes the colour AFTER its
+# hit and fire tests (3757, 3798, 3828, 3857, 3887, 3916, 4027), so a Zakato that fires keeps the colour it
+# last drew through its self-destruct, and one that fires on its first live frame keeps init_teleport's 0x24
+# (4002). The port keeps the drawn colour as an index in `slot flag`, which these families use for nothing
+# else: 0-4 the pulsing colours, ZAKATO_TELEPORT_COLOUR_INDEX for 0x24.
+PULSING_COLOUR_STEP_TICKS = 4  # (countup >> 3) at two arcade frames a tick
+PULSING_COLOUR_STEPS = 8  # colour_lut_pulsing_2's length
+PULSING_COLOUR_PEAK = 4  # the triangle's peak (0x14)
+ZAKATO_TELEPORT_COLOUR_INDEX = 5  # init_teleport's 0x24, after the five pulsing colours
+ZAKATO_COLOURS = 6  # the self-destruct colours: the five pulsing ones, then 0x24
 # AIR-10 Spario: two INDEPENDENT projectile-like flyers with distinct motion and distinct death.
 # Giddo Spario (handle_08_Giddo_Spario 5219-5240) is aimed ONCE at the craft at spawn on the fast
 # 64-magnitude tier (angle_dX_dY_sheonite_tbl, 4 px/frame — faster than any other family), then flies
 # straight and NEVER fires; killed, it plays its OWN short burst (giddo_spario_hit 5241-5253), the one
 # documented exception to the shared ~20-frame flying explosion. Brag Spario (handle_09_Brag_Spario
 # 3080-3129) is an accelerating homer: each frame it nudges its velocity by +/-2 raw toward the craft
-# on each axis (0 if aligned) and moves by the accumulated velocity, unbounded; it uses the shared
-# flying explosion. Brag Sparios also arrive four-at-a-time from the Garu Zakato detonation (AIR-08,
+# on each axis (0 if aligned) and moves by the accumulated velocity, unbounded; a shot scores it but never
+# destroys it (slice 21, 3092). Brag Sparios also arrive four-at-a-time from the Garu Zakato detonation (AIR-08,
 # air.special-pairs) — this handler exists first so that consumer can spawn them.
 GIDDO_SPARIO_TYPE = 8  # 0x08, handle_08_Giddo_Spario: aim-once 4 px/f flyby, no fire, own short burst
-BRAG_SPARIO_TYPE = 9  # 0x09, handle_09_Brag_Spario: accelerating homer, shared explosion
+BRAG_SPARIO_TYPE = 9  # 0x09, handle_09_Brag_Spario: accelerating homer, a shot never destroys it
 GIDDO_SPARIO_PTS = 1  # 10 points (handle_08 _PTS byte 0 -> value-table position 1)
 BRAG_SPARIO_PTS = 12  # 500 points (handle_09 _PTS byte 33 -> position 12; the port has no super-xevious)
-# Giddo flight animation: the arcade cycles CODE through 4 frames from its clock ((TIMER>>1)&3, 5229-5233);
-# the port derives the frame from `slot timer` in the renderer. Spawn on frame 0.
+# Giddo flight animation (handle_08_Giddo_Spario 5228-5237): CODE = (countup>>1)&3 and COLOUR =
+# 0x26 + ((countup>>3)&3), both from the GLOBAL frame counter countup_timer_1, not the slot's TIMER. At two
+# arcade frames a tick that is CODE = tick mod 4 and colour step floor(tick/4) mod 4. The renderer derives the
+# frame from `tick`; the colour is kept as an index in `slot flag`, because the hit (giddo_spario_hit
+# 5241-5252) stops rewriting it and its frames draw at the last flight colour. Spawn on frame 0.
 GIDDO_SPARIO_INIT_CODE = 0
 GIDDO_SPARIO_FLIGHT_FRAMES = 4  # flight sprites (arcade CODE 0..3)
+GIDDO_SPARIO_COLOURS = 4  # flight colours 0x26..0x29
+GIDDO_SPARIO_COLOUR_STEP_TICKS = 4  # (countup >> 3) at two arcade frames a tick
 # Giddo's OWN short burst (giddo_spario_hit 5241-5253): the arcade shows 4 burst sprites (CODE 4..7),
 # each for 2 arcade frames ((TIMER>>1), remove at ==4), so 8 arcade frames total — versus the shared
-# 20-frame flying burst. It keeps moving on its velocity while the burst plays, like the shared one.
+# 20-frame flying burst. The slot clock steps 2 a tick, so phase floor(timer/2) draws each sprite once. It keeps moving on its velocity while the burst plays, like the shared one.
 GIDDO_SPARIO_BURST_FRAMES = 4  # burst sprites (arcade CODE 4..7)
 GIDDO_SPARIO_HIT_DURATION_FRAMES = 8  # burst runs 8 arcade frames, then the slot frees
 # Brag homing acceleration: the arcade adds +/-2 raw to each velocity axis per arcade frame toward the
@@ -1625,13 +1691,6 @@ GIDDO_SPARIO_HIT_DURATION_FRAMES = 8  # burst runs 8 arcade frames, then the slo
 # velocity, moved by TICK_VELOCITY_SCALE). Velocity is unbounded, exactly as the arcade (no clamp).
 BRAG_SPARIO_ACCEL = 4  # raw velocity step per tick per axis (arcade +/-2/frame over 2 frames)
 BRAG_SPARIO_INIT_CODE = 0  # single body sprite; the arcade animates via ATTR flip, not CODE (3117-3119)
-# Giddo Spario's flying-type-table run (object-types.json 0-based): 0x08 is a six-wide run starting at
-# offset 39 (also 94/102/114). The debug spawner forces count 1 and reads only the run's first code, so
-# offset 39 gives the operator a solo Giddo on demand; natural area waves reach it through the AI-level
-# formation table. Brag Spario (0x09) is NOT in the type table at all — it is never a formation enemy;
-# it spawns only four-at-a-time from the Garu Zakato detonation (AIR-08, same PR), so it has no debug
-# formation entry and its in-play proof arrives with air.special-pairs.
-GIDDO_SPARIO_FORMATION_OFFSET = 39
 # AIR-08 Brag Zakato (Cracker) + Garu Zakato (Bullseye): the "special pairs" — the last of the Zakato
 # cluster. Two Brag variants teleport in exactly like the base Zakato (init_teleport, ~20-frame sparkle,
 # indestructible during it) but END their life with a terminal 5-bullet AIMED radiating FAN (two
@@ -1724,13 +1783,16 @@ FLYING_HANDLED_TYPES = (
 BACURA_TYPE = 1  # 0x01, handle_01_Bacura: drifts down its own band, never destroyed/scored
 BACURA_DRIFT_DX = 16  # raw scroll-axis velocity (arcade _dX=16 => 4*16 units/tick = 1 px/frame down)
 # WPN-01 (player.bacura-bounce #77) shot rebound. When a player shot is marked SHOT_BOUNCE by
-# `check shot bacura`, its blaster clone reverses and animates in place before deleting, instead of
-# vanishing at once. The arcade's `shot_destroyed` (2400-2417) sets the reflected shot _dX=+24 = 1/4 of
-# the normal 6 px/frame, reversed — so from the port's forward `changeyby 20` the reversed step is
-# 20 * (1/4) reversed = -5 stage-px/frame (NOT a naive halve, NOT a literal 1.5). The animation runs the
-# reference's 8 frames (_TIMER 0..7, deleted at 8; sprite code 0x18+((TIMER>>1)&3), four costume codes).
-BACURA_BOUNCE_DY = -3.75  # reversed shot step: SHOT_STEP (15) * 1/4, reversed (arcade reflected _dX=+24)
-BACURA_BOUNCE_FRAMES = 8  # bounce animation length (arcade shot_destroyed deletes at _TIMER==8)
+# `check shot bacura`, its blaster clone rebounds before deleting, instead of vanishing at once. The arcade's
+# `shot_destroyed` (xevious_main.68k 2400-2417): on the frame the shot sees STATE 3 it sets the reflected
+# _dX=+24 (1/4 of the normal speed, reversed), colour 0x23 and _TIMER=0xff, and returns — so that frame draws
+# the ordinary shot code at colour 0x23 without moving. Each later frame increments _TIMER, deletes at 8, and
+# otherwise draws code 0x118+((TIMER>>1)&3) mirrored on TIMER&1 and moves. At two frames a tick the port draws
+# the hit frame and then TIMER 1, 3, 5, 7: codes 0x118..0x11B, all mirrored, one a tick, each tick moving two
+# frames' worth of the reflected step. Then it deletes.
+BACURA_BOUNCE_DY = -3.75  # reversed shot step per tick: SHOT_STEP (15) * 1/4, reversed (arcade reflected _dX=+24)
+BACURA_BOUNCE_FRAMES = 8  # rebound frames (arcade shot_destroyed deletes at _TIMER==8)
+BACURA_BOUNCE_ARM = -1  # _TIMER = 0xff on the hit frame; the port's clock steps TICK_TIMER_STEP a tick from it
 # AIR-11 live spawn pipeline (main_fn_3__init_bacura 5188-5199, main_fn_5__inc_num_bacura 5201-5217).
 # The schedule sets `bacura inc cnt` (a per-window quota); the pump admits one slab per arcade second
 # into the reserved band, refilling any band slot whose slab has drifted off and culled. All three are
@@ -1788,52 +1850,6 @@ SHEONITE_LOCK_COL_ID = "sheonite-lock-col"
 # start stamps the pair and clears the end-flag; end raises it. On/off flags, not a per-second pump.
 SHEONITE_START_HANDLER = "sheonite_start"
 SHEONITE_END_HANDLER = "sheonite_end"
-# DEBUG (tracked for removal, #119): the families the T key cycles through, one at a time — each a
-# (type, formation offset, spawn count) whose offset points the spawner at a run of that family and
-# whose count is how many to bring in as one group (almost always 1). T brings in the entry at `debug
-# spawn index`, then advances the index (mod len). The type element documents which family the offset
-# selects (the present check that keeps a group solo is family-agnostic). The final Jara entry is the
-# one exception to count 1: it spawns the shooter+silent PAIR (count 2 at the straddling offset 18) so
-# the operator can watch the emergent split — two Jara at different random Y peeling opposite ways.
-DEBUG_SPAWN_FAMILIES = (
-    (TERRAZI_TYPE, TERRAZI_FORMATION_OFFSET, 1),
-    (KAPI_TYPE, KAPI_FORMATION_OFFSET, 1),
-    (TORKAN_TYPE, TORKAN_FORMATION_OFFSET, 1),
-    (ZOSHI_TOP_TYPE, ZOSHI_TOP_FORMATION_OFFSET, 1),
-    (ZOSHI_BOTTOM_TYPE, ZOSHI_BOTTOM_FORMATION_OFFSET, 1),
-    (ZOSHI_RND_TYPE, ZOSHI_RND_FORMATION_OFFSET, 1),
-    (JARA_SHOOTER_TYPE, JARA_SHOOTER_FORMATION_OFFSET, 1),  # shooter solo
-    (JARA_SILENT_TYPE, JARA_SILENT_FORMATION_OFFSET, 1),  # silent solo
-    (JARA_SHOOTER_TYPE, JARA_PAIR_FORMATION_OFFSET, 2),  # emergent pair: one 0x55 + one 0x56
-    (GIDDO_SPARIO_TYPE, GIDDO_SPARIO_FORMATION_OFFSET, 1),  # solo Giddo Spario (fast aim-once flyby)
-    # The four base Zakato variants, one at a time. fast/cont also appear in natural area waves, but the
-    # T key gives the operator a solo of each variant on demand — and it is the ONLY way to see slow/closeY,
-    # which no built area schedules (see the ZAKATO_*_FORMATION_OFFSET note above).
-    (ZAKATO_SLOW_TYPE, ZAKATO_SLOW_FORMATION_OFFSET, 1),
-    (ZAKATO_CLOSEY_TYPE, ZAKATO_CLOSEY_FORMATION_OFFSET, 1),
-    (ZAKATO_FAST_TYPE, ZAKATO_FAST_FORMATION_OFFSET, 1),
-    (ZAKATO_CONT_TYPE, ZAKATO_CONT_FORMATION_OFFSET, 1),
-    # AIR-08: the two Brag Zakato variants spawn through the normal formation path (their type-table run
-    # first code selects them), one at a time.
-    (BRAG_ZAKATO_RND_TYPE, BRAG_ZAKATO_RND_FORMATION_OFFSET, 1),
-    (BRAG_ZAKATO_CLOSEY_TYPE, BRAG_ZAKATO_CLOSEY_FORMATION_OFFSET, 1),
-    # AIR-08: the Garu Zakato is NOT in the flying type table (its only arcade spawn is the area
-    # `add_object` schedule, not yet consumed by the port — a documented follow-up). So it cannot come in
-    # through the formation spawner: its count is 0 (the spawner brings in nothing) and a dedicated
-    # direct-stamp branch in this proc stamps it into the first flying slot instead. Offset is immaterial
-    # at count 0.
-    (GARU_ZAKATO_TYPE, 0, 0),
-    # AIR-11: the Bacura is not a flying-pool type at all — it lives in its own reserved band (17-32) and
-    # is spawned live by the area schedule. Like the Garu it has no formation-table run, so its count is 0
-    # (the formation spawner brings in nothing) and a dedicated direct-stamp branch stamps one slab into
-    # BACURA_SLOTS[0] instead. Offset is immaterial at count 0.
-    (BACURA_TYPE, 0, 0),
-    # AIR-09: the Sheonite is a schedule-spawned PAIR (sheonite_start/end), not a formation type, so its
-    # count is 0 and a dedicated direct-stamp branch stamps BOTH slots (right + left). The debug stamp also
-    # pre-arms the end-flag so the pair completes its lifecycle and self-culls (so holding T does not stall
-    # the cursor on an escort that would otherwise lock beside the craft forever). Keyed on the right type.
-    (RIGHT_SHEONITE_TYPE, 0, 0),
-)
 TOROID_PTS = 3  # 1-based value-table position of 30 points (init_toroid PTS byte 6)
 TOROID_INIT_CODE = 8  # face-on sprite code at spawn (codes 8..15 cycle during the swing)
 
@@ -1901,10 +1917,6 @@ FIRE_MASK_ANDOR_ID = next(i for s, n, i in FIRE_MASK_FAMILIES if s == "andor_gen
 # special-cases it with a bit-exact reload (install_fire_permission_gate), and HANDLED_NON_CONTIGUOUS_FIRE_MASKS
 # below lists it so the generate-time guard passes.
 ANDOR_FIRE_MASK = 47
-# The mask the DEBUG ground key forces into the summoned ports (the live schedule sets the same value in areas
-# 4/9/14), so a hold-G playtest exercises the real non-contiguous cadence instead of the degenerate mask-0
-# fastest-fire a never-set var would give.
-ANDOR_GENESIS_DEBUG_FIRE_MASK = ANDOR_FIRE_MASK
 # The port's fixed initial fire countdown. Every port's handle_XX inits `_TIMER=1` ONCE at spawn (a plain 1, NOT
 # a masked-random draw — verified at the pin, xevious_main.68k:5513/5564/5615/5666); the MASK applies only to the
 # post-fire reload in the gate. So the arm seeds each port `slot fire timer = 1`.
@@ -1916,7 +1928,7 @@ ANDOR_PORT_FIRE_TIMER_INIT = 1
 # code from the andor block's NOT-USED range (arcade dispatch 0x4C..0x4E are `null_fn`, xevious_main.68k:6242-6244).
 ANDOR_BRAGZA_TYPE = 0x4C  # 76: port-synthetic; arcade-NOT-USED, disjoint from every real object type
 assert ANDOR_BRAGZA_TYPE not in ANDOR_PART_TYPES, "Bragza type must not collide with a real Andor part"
-# The schedule end record (C4) and the debug dismiss set this; the master's update proc tears the composite
+# The schedule end record (C4) sets this; the master's update proc tears the composite
 # down when it is set (mirrors andor_genesis_end_flag / remove_andor_genesis, xevious_sub.68k:569-572).
 ANDOR_GENESIS_END_FLAG_ID = "andor-genesis-end-flag"
 # The shared colour-cycle byte (cycle_andor_genesis_colour, xevious_main.68k:5758-5767): every visible part
@@ -1930,11 +1942,10 @@ ANDOR_GENESIS_COLOUR_ID = "andor-genesis-colour"
 # 32 frames), yflip=(timer>>6)&1 (every 64) -> the sequence none->x->y->xy is exactly phase = (timer>>5)&3, and
 # the costume order [none,x,y,xy] gives the render ordinal 1 + phase. (An earlier note here read the bits in the
 # wrong order; the source has xflip at bit2, yflip at bit3.) The master proc (C3) sets it from `tick` each frame;
-# it inits 0 so the base (unflipped) core costume renders before the lifecycle runs. NOTE this animation is a
-# DELIBERATE, DOCUMENTED divergence: the jotd666 NeoGeo renderer only consumes flip bits on 2x2 sprites, so the
-# 1x1 core does not visibly flip in the reference — the port realizes the Namco arcade intent (see the C5
-# mechanics record and memory `andor-core-flip-noop-in-neogeo`). The colour cycle below is NOT a divergence
-# (colour is written on every sprite size in the reference).
+# it inits 0 so the base (unflipped) core costume renders before the lifecycle runs. The flip is faithful: the
+# reference's Neo Geo renderer writes the flip bits into the attribute word of every sprite size (neogeo.68k
+# 927-929, 965), the 1x1 core included (record 046 deviation 1, corrected in slice 21). The colour cycle below is
+# likewise written on every sprite size.
 ANDOR_GENESIS_FLIP_ID = "andor-genesis-flip"
 # --- BOSS-01 C3: lifecycle geometry + motion. The computed geometry (positions/offsets) depends on the slot-unit
 # and render-stage primitives defined further down (SLOT_UNITS_PER_CELL, FRAMES_PER_TICK, RENDER_COL/ROW_STAGE),
@@ -2044,56 +2055,6 @@ DOMOGRAM_SPRITE_CODES = (0x3C, 0x3D, 0x3E, 0x3F, 0x3E, 0x3D)
 # (the anim timer only reaches (_TYPE>>2)<=5 once the same-tick fall-through decrements the freshly-set 24), so
 # they pad to the idle frame (ordinal 1). Derived from the source sprite table so the two never drift.
 DOMOGRAM_FRAME_ORDINALS = [c - 0x3C + 1 for c in DOMOGRAM_SPRITE_CODES] + [1, 1]
-# For the debug ground key: the vector a debug-spawned Domogram holds (no scripted path in the debug tool). Index
-# 8 = (dX 8 scroll-matched depth, dY 8 lateral) — it traverses the field at the terrain rate while drifting
-# laterally, so the operator has a long, bombable pass to watch it fire. See _debug_ground_seed.
-DOMOGRAM_DEBUG_VECTOR_INDEX = 8
-# DEBUG (tracked for removal #119): the families the ground debug key (G) cycles through, one at a time, in
-# roadmap order. Each entry is (object type, seed shape); the shape picks the shared seed builder
-# (_ground_seed_single / _garu / _garu_derota / _boza) so the debug spawn is the scheduled spawn's exact shape.
-# Extended as later ground families are built (Grobda, Domogram in slice 13's second build PR) — no new key.
-DEBUG_GROUND_FAMILIES = (
-    (BARRA_TYPE, "single"),
-    # SEC-01 (ground.sol-tower #90): a single hidden Sol Tower the operator can bomb to reveal (scores),
-    # watch rise through its 7 steps, then bomb again to destroy (scores again) for the persistent crater.
-    # Seeds through the single-slot shape, exactly like the scheduled add_ground_object spawn.
-    (SOL_TOWER_TYPE, "single"),
-    (ZOLBAK_TYPE, "single"),
-    (GARU_BARRA_TYPE, "garu"),
-    (LOGRAM_TYPE, "single"),
-    (DEROTA_TYPE, "single"),
-    (GARU_DEROTA_TYPE, "garu_derota"),
-    (BOZA_LOGRAM_TYPE, "boza"),
-    # GND-06 (ground.grobda #88): a representative spread the operator can cycle to verify the tank family —
-    # a stationary land tank, a crosshair-reactive mover, a bomb-targeted darter (the 10,000 tier), and a
-    # water variant that vanishes on a hit. Every Grobda uses the single-slot seed shape.
-    (0x2C, "single"),  # stationary (land)
-    (0x36, "single"),  # moves forward once in the crosshairs (land)
-    (0x39, "single"),  # darts back when targeted, then stops (land)
-    (0x3C, "single"),  # darts forward when targeted, re-arms — 10,000 pts (land)
-    (0x40, "single"),  # forward, darts back when targeted (water, vanishes on a hit)
-    # GND-07 (ground.domogram #89): a single Domogram the operator can watch cross the field and fire one aimed
-    # shot per animation, then bomb for the land crater. The debug seed uses an empty path + a representative
-    # diagonal vector (the scheduled path decode is exercised by the round-trip golden and the harness).
-    (DOMOGRAM_TYPE, "domogram"),
-    # SEC-02 (secrets.bonus-flag #91): a single hidden Bonus Flag the operator can bomb to reveal (+1,000) and
-    # then collect by flying the craft over it (extra craft or 10,000 by the cabinet DIP). Its own "flag" shape
-    # draws the lateral column from the SHARED random stream (gen_rnd_spriteY), unlike the fixed-column single
-    # shape, so the seeded-placement behaviour is exercised. The full add_object schedule path is a documented
-    # follow-up (like the Garu Zakato) — the debug key is the flag's playtest path this slice.
-    (BONUS_FLAG_TYPE, "flag"),
-    # SEC-03 (secrets.hidden-credit #93): a single hidden Credit the operator can bomb to score the minimum 10
-    # points and watch the ~2 s original two-line credit overlay appear, then time out. It is an invisible
-    # single-slot add_ground_object (arcade _CODE=0), so it seeds through the shared single-slot shape exactly
-    # like the scheduled spawn — only its point value and hidden phase differ, seeded inside _ground_seed_single.
-    (EASTER_EGG_TYPE, "single"),
-    # BOSS-01 (andor.lifecycle #94): the Andor Genesis composite. Keyed on the invisible master type; the "andor"
-    # shape bulk-arms all 15 parts across the band. Unlike every other family the boss holds position (it does not
-    # scroll off), so the ground key's field-empty gate would jam on it forever — the debug handler adds a DISMISS
-    # branch (press G while the boss is present to set the end flag; the master proc then tears it down next tick,
-    # freeing the field for the next family). Reachable through the existing key, no new key, no locked-spec edit.
-    (ANDOR_MASTER_TYPE, "andor"),
-)
 BARRA_PTS = 6  # 1-based value-table position of 100 points (handle_1E_Barra _PTS=15 -> object_value_tbl)
 ZOLBAK_PTS = 8  # 1-based value-table position of 200 points (handle_1F_Zolbak _PTS=21)
 LOGRAM_PTS = 10  # 1-based value-table position of 300 points (handle_logram_init _PTS=27)
@@ -2278,6 +2239,10 @@ SLOT_UNITS_PER_PIXEL = SLOT_UNITS_PER_CELL // 8  # 32; a cell is 8 px. Ground sp
 # sprite_y byte (a lateral PIXEL position) to slot y with the reference's `lsl #5` (x32), sub_2_fn_1.
 TICK_VELOCITY_SCALE = 4  # 1 tick = 2 arcade frames; each applies 2*velocity => 4*velocity/tick
 TICK_TIMER_STEP = 2  # the animation clock advances 2 arcade frames per tick
+# zakato_shoot / brag_zakato_explode arm `_TIMER=0xff` (3762/3921) and zakato_explode increments before it
+# draws (3932), so the firing frame shows timer 0. The port arms one step below 0 for the same reason: the
+# SELF_EXPLODE phase runs on the firing tick and its shared tick advances the clock to 0 before the draw.
+ZAKATO_SELF_DESTRUCT_ARM = -TICK_TIMER_STEP
 TOROID_SWING_ACCEL = 2  # lateral velocity change per tick (1 unit/frame * 2 frames)
 CULL_ROW_MAX = 40  # >= 0x28 rows (past the bottom) -> offscreen
 CULL_ROW_MIN = -2  # <= -2 rows (past the top, the reference's byte-wrap) -> offscreen
@@ -2296,11 +2261,12 @@ BOMB_ACCEL_PER_FRAME = 2  # the bomb's `_dX` gains -2 per arcade frame, then `_X
 # $30E8: +16 units/arcade-frame). Per tick that is AREA_PROGRESS_STEP (32); per frame, half of it.
 SCROLL_UNITS_PER_FRAME = AREA_PROGRESS_STEP // FRAMES_PER_TICK  # 16
 
-# CAB-01 attract hold lengths, in port ticks. The arcade title stage runs 744 frames exactly (main
-# 1217-1296: 64 hold + 16 + 136 + 16 sparkle + 512 flashing logo) before it auto-advances to the demo;
-# the best-five stage runs 512 frames (main 1336-1344). Each is divided by FRAMES_PER_TICK (2). The demo
-# itself has no timer — it exits when the auto-pilot craft dies (main 1298-1328).
-ATTRACT_TITLE_HOLD_TICKS = 744 // FRAMES_PER_TICK  # 372
+# CAB-01 attract hold lengths, in port ticks. The arcade title stage (main 1217-1296) holds 63 frames, shows the
+# sparkle for 15 + 135 + 15, starts the flash on frame 228 and steps the 256-count flash timer on every other frame,
+# so it leaves on frame 738 and the demo starts on frame 740 (slice 21: the earlier "64 + 16 + 136 + 16 + 512 = 744"
+# over-counted each phase by one frame); the best-five stage runs 512 frames (main 1336-1344). Each is divided by
+# FRAMES_PER_TICK (2). The demo itself has no timer — it exits when the auto-pilot craft dies (main 1298-1328).
+ATTRACT_TITLE_HOLD_TICKS = 740 // FRAMES_PER_TICK  # 370
 ATTRACT_SCORES_HOLD_TICKS = 512 // FRAMES_PER_TICK  # 256
 
 # AIR-06 Terrazi (handle_11_Terrazi 3667-3729): the first periodically-firing aerial family. Aimed
@@ -2534,13 +2500,20 @@ assert -RENDER_COL_OFFSET == ARCADE_STAGE_PER_PX * (terrain_render.GROUND_CENTRE
 assert (terrain_render.STAGE_PER_PX, terrain_render.STAGE_TOP, terrain_render.VISIBLE_CENTRE_PX) == (
     ARCADE_STAGE_PER_PX, RENDER_STAGE_TOP, _TERRAIN_VISIBLE_CENTRE_PX
 )
-# PRES-01 visibility gate (docs/mechanics/053, 054). World objects (every slot-driven flying/bullet/ground
-# renderer) are shown only while their slot's scroll row is inside [RENDER_VIEW_FIRST_ROW, RENDER_VIEW_ROWS) —
-# the arcade's visible rows 4..39; row 40 is where check_scroll_offscreen culls (xevious_main.68k 4827-4839).
-# Scratch cannot clip a sprite at a screen edge, so the cut hides the whole sprite (a port necessity). Lateral
-# overhang needs no gate: the opaque bezel panels draw in front of the world band at |x| > 140. Render-only.
+# PRES-01 visibility gate (docs/mechanics/053, 054, 056). The arcade shows rows RENDER_VIEW_FIRST_ROW..
+# RENDER_VIEW_ROWS - 1 (4..39; row 40 is where check_scroll_offscreen culls, xevious_main.68k 4827-4839), and its
+# screen edge clips a sprite that hangs over it. Slice 21: a world object (every slot-driven flying/bullet/ground
+# renderer) is drawn while any of it can reach those rows — its slot row within RENDER_VIEW_MARGIN_ROWS of the
+# window, the farthest a world sprite reaches from its position (a 2x2 drawn 8 px down of it, plus its 16-px
+# half) — and the stage edge clips it. Scratch keeps a sprite's box on the stage only as it moves
+# (scratch-render getFencedPositionOfDrawable), so each world clone moves at OFF_EDGE_MOVE_SIZE, which the
+# player clamps to a box 1.5 stages across, and then takes its render size: the box never meets the fence.
+# Lateral overhang needs no gate: the opaque bezel panels draw in front of the world band at |x| > 140.
+# Render-only.
 RENDER_VIEW_FIRST_ROW = 4
 RENDER_VIEW_ROWS = 40
+RENDER_VIEW_MARGIN_ROWS = 3
+OFF_EDGE_MOVE_SIZE = 100000
 # The craft's positional limits, derived from the arcade clamp (update_solvalou_sprite_XY xevious_main.68k
 # 2119-2135: X 144..304, Y 16..224) through the render map, and its spawn (main_fn_1__handle_solvalou
 # 1999-2003: X 296, Y 120). Y 16..224 puts the sprite flush against both side edges; X 304 puts its bottom edge
@@ -2558,16 +2531,15 @@ CRAFT_DIAGONAL_LATERAL_STEP = 2.5  # 2 px/tick * 1.25
 # The player shot moves 6 px/frame up (move_shot 2419-2424) = 12 px/tick = 15 stage units/tick.
 SHOT_STEP = 15
 # Sprite sizes. A 16-px (bitmap resolution 1) costume at ARCADE_STAGE_PER_PX is drawn at 125%. The baseline
-# sprites (craft, shot — bitmap resolution 2 art) were sized for the old 2.25 stage-units-per-pixel look; each
+# sprites (the craft — bitmap resolution 2 art) were sized for the old 2.25 stage-units-per-pixel look; each
 # keeps its proportions and is rescaled by 1.25 / 2.25. The craft explosion, crosshair, bomb target and bomb
-# left this table in CAB-05: each now draws only art rendered from the pin (resolution 1), so it takes
-# SPRITE_RENDER_SIZE like every other arcade-rendered sprite.
+# left this table in CAB-05, and the shot in slice 21: each now draws only art rendered from the pin
+# (resolution 1), so it takes SPRITE_RENDER_SIZE like every other arcade-rendered sprite.
 SPRITE_RENDER_SIZE = 100 * ARCADE_STAGE_PER_PX
 assert SHEONITE_RENDER_SIZE == SPRITE_RENDER_SIZE, "Sheonite (defined earlier) must use the shared sprite scale"
 BASELINE_RESCALE = ARCADE_STAGE_PER_PX / 2.25
 BASELINE_SPRITE_SIZES = {
     "solvalou": round(150 * BASELINE_RESCALE, 2),
-    "blaster": round(200 * BASELINE_RESCALE, 2),
 }
 # CAB-05 bomb, crosshair, bomb-target and enemy-bullet art, rendered from the pin's second graphics bank
 # (tools/effects_sprite_render.py; `_ATTR` 0x80 selects it). The crosshair, bomb target and bomb append it
@@ -2576,6 +2548,14 @@ BASELINE_SPRITE_SIZES = {
 # and 1E at frame 16, holding there (`_TIMER1` stops at 2), coloured 0x25 + ((TIMER >> 2) & 3) — a new colour
 # every 4 frames. bomb/fall/<code>/c25..c28 is colour-minor, so the ordinal is base + 4 * code + colour.
 BOMB_ART_BASE_ORDINAL = 6  # after the 5 preserved bomb_01..05
+# The player shot (main_fn_30_shot_fn 2374-2388): code 0x116 + ((countup >> 2) & 1), colour
+# 0x23 + ((countup >> 1) & 1), mirrored on countup & 1. At two frames a tick the port draws only even countups,
+# so the shot is never drawn mirrored: zapper-shot/fly/<code>/c23..c24 is colour-minor, and the ordinal is
+# base + 2 * (floor(tick / 2) mod 2) + (tick mod 2). The rebound (shot_destroyed, see BACURA_BOUNCE_*) follows
+# as zapper-shot/rebound/01..04, mirrored. All of it is appended after the preserved Fire_1..8.
+SHOT_ART_BASE_ORDINAL = 9  # after the 8 preserved Fire_1..8
+SHOT_ART_COLOURS = 2
+SHOT_REBOUND_ART_BASE_ORDINAL = SHOT_ART_BASE_ORDINAL + 2 * SHOT_ART_COLOURS  # 13
 BOMB_CODE_STEP_FRAMES = 8
 BOMB_CODE_STEPS = 3
 BOMB_COLOUR_STEP_FRAMES = 4
@@ -2627,8 +2607,7 @@ ANDOR_DESTROYED_COLOUR_FINAL = 6     # after the flash timer, the shared colour 
 # rounding of the arcade's 3, documented in the C5 mechanics record).
 ANDOR_DESTROYED_FLASH_TICKS = 1
 ANDOR_LATERAL_Y = 0x0e80  # 3712; the master's fixed `_Y` (sub_2_fn_20__andor_genesis_start, xevious_sub.68k:553)
-# — a boss constant hardcoded by the arm, NOT a schedule column. 3712/32 = 116 px, ~ the debug central column
-# (DEBUG_GROUND_SPRITE_Y 112). Both the scheduled arm and the debug summon use it (the boss lateral is intrinsic).
+# — a boss constant hardcoded by the arm, NOT a schedule column (3712/32 = 116 px; the boss lateral is intrinsic).
 # The Scratch `color` graphic effect this drives (boss_arm) scales the arcade palette index (2..6) up into a
 # visible hue sweep — a single Scratch color effect cannot reproduce the arcade's palette swaps, so this is a
 # port interpretation (recorded in the C5 mechanics record; tunable at playtest).
@@ -2765,33 +2744,42 @@ JARA_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px spr
 
 # AIR-07 Zakato renderer constants. One persistent clone per flying slot, keyed on the slot's phase in
 # `slot state`, which the update machine sequences (SLOT_TELEPORT -> SLOT_ACTIVE -> SLOT_SELF_EXPLODE, or
-# SLOT_ACTIVE -> SLOT_HIT). Costume ordinals: 1 = the single active body (arcade code 0x11); 2.. = the
-# shared air explosion (five phases x four flip costumes). The shot kill IS that explosion
-# (`flying_enemy_hit`, CAB-05). The Zakato's own teleport/self-destruct sprites (bank-1 codes 4,5,6,7,8,0xC —
-# zakato_teleport_sprite_tbl / zakato_exploding_sprite_tbl) remain a DEFERRED cosmetic: the teleport-in
-# sparkle plays the air explosion's unflipped phases REVERSED (the arcade's sparkle runs its own set
-# backwards, 3986-3992) and the self-destruct plays them FORWARD, unflipped (zakato_explode never stores
-# its flip bits, 3949-3952).
+# SLOT_ACTIVE -> SLOT_HIT). Slice 21 draws the arcade's own frames, rendered from the pin
+# (tools/reference_art_render.py). Costume ordinals:
+#   1        the Zakato body 0x111 (the same picture at every pulsing colour);
+#   2..5     the Brag Zakato body 0x112 at pulsing colours 0x10..0x13 (its 0x14 is the Zakato picture, ordinal 1);
+#   6..25    the shared air explosion (five phases x four flip costumes), the shot kill (`flying_enemy_hit`);
+#   26..35   the teleport sparkle (zakato_teleport_sprite_tbl 3986-3992, table order) x flips none/x;
+#   36..65   the self-destruct 0x104-0x108 (zakato_exploding_sprite_tbl 3953-3959), five phases x the six
+#            ZAKATO_COLOURS.
+# The teleport's flip bits are TIMER & 3 (3978-3981): the slot clock steps 2 a tick, so only the even
+# values, none and x, are drawn. The self-destruct draws 1x1 and unflipped (zakato_explode never stores its
+# size and flip bits, 3946-3949).
 ZAKATO_TARGET = "zakato"
 ZAKATO_CLONE_SLOT_ID = "zakato-clone-slot"  # sprite-local: which flying slot this clone renders
 ZAKATO_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
-ZAKATO_BODY_ORDINAL = 1  # costume 1: the active body (arcade code 0x11)
-ZAKATO_BURST_ORDINAL_BASE = ZAKATO_BODY_ORDINAL + 1  # 2: first air-explosion costume
+ZAKATO_BODY_ORDINAL = 1  # costume 1: the Zakato body (arcade code 0x111)
+ZAKATO_BODY_COSTUME = "zakato-body/pulse/c10"
+BRAG_ZAKATO_BODY_ORDINAL_BASE = ZAKATO_BODY_ORDINAL + 1  # 2: the Brag Zakato body at 0x10
+BRAG_ZAKATO_BODY_COLOURS = 4  # 0x10..0x13; at 0x14 it draws the Zakato body
+ZAKATO_BURST_ORDINAL_BASE = BRAG_ZAKATO_BODY_ORDINAL_BASE + BRAG_ZAKATO_BODY_COLOURS  # 6: first air-explosion costume
+ZAKATO_TELEPORT_FLIPS = 2  # none, x
+ZAKATO_TELEPORT_ORDINAL_BASE = ZAKATO_BURST_ORDINAL_BASE + TOROID_EXPLOSION_PHASES * AIR_EXPLOSION_FLIP_COSTUMES  # 26
+ZAKATO_SELF_DESTRUCT_ORDINAL_BASE = ZAKATO_TELEPORT_ORDINAL_BASE + ZAKATO_ANIM_PHASES * ZAKATO_TELEPORT_FLIPS  # 36
 
-# AIR-10 Spario renderer constants (shared shape for Giddo and Brag). One persistent clone per flying slot,
-# drawn when its slot holds the family's type, hidden otherwise; the clone writes no state. IMPORTANT: the
-# CrazyCarl aerial-enemies rip carries NO Spario sprites (it labels Toroid/Torkan/Zoshi/Jara/Kapi/Terrazi/
-# Zakato/Brag-Zakato/Sheonite/Bacura/Shooting-Star only), so a distinct Spario costume cannot be sourced or
-# operator-pixel-verified. Both families therefore stand in the Zakato body frame (a small dark blob — and
-# the Sparios are the payload a Zakato releases, so the stand-in reads sensibly) as a DEFERRED cosmetic with
-# its reason recorded. The Giddo's 4-frame flight loop (arcade CODE 0..3, 5229-5233) and short 4-code
-# burst (codes 4..7, which the air explosion's unflipped phases stand in for), and the Brag's ATTR flip
-# mirror (3116-3119), are all deferred with it; the mechanically-meaningful distinctions (aim-once flyby vs
-# accelerating homer, and the Giddo's SHORT 8-frame burst duration) live in the handlers. Costume layout on
-# each target: ordinal 1 = the Zakato body stand-in, ordinals 2.. = the shared air explosion.
-SPARIO_BODY_ORDINAL = 1  # costume 1: the Zakato body stand-in
-SPARIO_BURST_ORDINAL_BASE = SPARIO_BODY_ORDINAL + 1  # 2: first air-explosion costume
+# AIR-10 Spario renderer constants (shared shape for Giddo, Brag and the Garu Zakato). One persistent clone
+# per flying slot, drawn when its slot holds the family's type, hidden otherwise; the clone writes no state.
+# Slice 21 draws the arcade's own frames, rendered from the pin (tools/reference_art_render.py); the
+# Spriters Resource rip carries no Spario. Costume layouts:
+#   Giddo  1..16 the flight 0x100-0x103 (handle_08_Giddo_Spario 5228-5237), code-major over colours
+#          0x26..0x29; 17..32 the hit 0x104-0x107 (giddo_spario_hit 5241-5252), the same way. No air explosion.
+#   Brag   1..4 the 0x115 body flipped none/x/y/xy by countup & 0x0C (handle_09_Brag_Spario 3116-3119).
+#   Garu   1..5 the 0x113 body at the five pulsing colours (4027); 6.. the shared air explosion (its shot kill).
 SPARIO_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
+GIDDO_SPARIO_HIT_ORDINAL_BASE = 1 + GIDDO_SPARIO_FLIGHT_FRAMES * GIDDO_SPARIO_COLOURS  # 17
+BRAG_SPARIO_FLIP_PERIOD_TICKS = 2  # countup & 0x0C: the flip bits step every 4 arcade frames, 2 ticks
+GARU_ZAKATO_BODY_COLOURS = PULSING_COLOUR_PEAK + 1  # 0x10..0x14
+GARU_ZAKATO_BURST_ORDINAL_BASE = 1 + GARU_ZAKATO_BODY_COLOURS  # 6: first air-explosion costume
 
 GIDDO_SPARIO_TARGET = "giddo-spario"
 GIDDO_SPARIO_CLONE_SLOT_ID = "giddo-spario-clone-slot"  # sprite-local: which flying slot this clone renders
@@ -2799,7 +2787,7 @@ GIDDO_SPARIO_CLONE_SLOT_ID = "giddo-spario-clone-slot"  # sprite-local: which fl
 BRAG_SPARIO_TARGET = "brag-spario"
 BRAG_SPARIO_CLONE_SLOT_ID = "brag-spario-clone-slot"  # sprite-local: which flying slot this clone renders
 
-# AIR-08: the Garu Zakato renderer reuses the shared Spario factory (ACTIVE body stand-in + HIT burst,
+# AIR-08: the Garu Zakato renderer reuses the shared Spario factory (ACTIVE pulsing body + HIT burst,
 # no teleport phase) — it has its OWN clone pool over the flying slots. The Brag Zakato needs NO new
 # target: it teleports and self-destructs exactly like the base Zakato, so it folds into the Zakato
 # renderer (its `is_zakato` gate is extended to the two Brag types).
@@ -2811,6 +2799,32 @@ GARU_ZAKATO_CLONE_SLOT_ID = "garu-zakato-clone-slot"  # sprite-local: which flyi
 GARU_DET_X_ID = "garu-det-x"  # the detonating Garu's scroll-axis position, copied into its spawns
 GARU_DET_Y_ID = "garu-det-y"  # the detonating Garu's lateral position, copied into its spawns
 GARU_DET_SLOT_ID = "garu-det-slot"  # the detonating Garu's own flying slot (to compute adjacency + free it)
+# AIR-08: the Garu Zakato's fixed object slot. Its only arcade spawn is the add_object schedule into obj 0x3B, and
+# init_garu_zakato_explosion (xevious_main.68k:5084-5103) reads the Garu at obj_tbl+_OBJSIZE*0x3B and clobbers the 4
+# objects after it (0x3C-0x3F) — so the port's slot-relative detonation lands its Sparios in exactly those slots.
+GARU_ZAKATO_SLOT = FLYING_SLOTS[0] + 1  # 0x3B -> Scratch 60
+
+# AREA-02 (area.add-object-dispatch #166) add_object dispatch. The arcade sub CPU writes the record's _TYPE into its
+# object slot (sub_2_fb_0__type_only xevious_sub.68k:649-659); the main CPU's object pass picks it up that same frame
+# ONLY if the slot is idle (add_obj_handler, xevious_main.68k:4801-4815 — an idle slot's handler IS the pickup
+# check), and the type's init runs on the next frame. A busy slot keeps running its own handler, which clears _TYPE
+# when it frees, so a record that lands on a busy slot is LOST — never queued. The port models this as a one-tick
+# pending register: the schedule branch records the (type, slot) only if the slot is empty at schedule time (else
+# drops it), and `place pending object` — after the walk and bomb, before `spawn flying enemies` (the arcade's
+# object pass runs before main_fn_4's formation refill) — runs that type's existing init, so its first update is
+# the next tick. One register suffices: no two add_object records share an area's trigger row (guarded at build).
+PENDING_OBJECT_TYPE_ID = "pending-object-type"  # 0 = nothing pending
+PENDING_OBJECT_SLOT_ID = "pending-object-slot"  # 1-based Scratch slot = raw arcade object slot + 1
+PLACE_PENDING_OBJECT_PROCCODE = "place pending object"
+# The five types the area schedules place by add_object, each with the raw arcade object slots its records use
+# (the build guard rejects any record outside this table, so an unbuilt type or slot is never silently placed).
+ADD_OBJECT_SLOTS = {
+    BONUS_FLAG_TYPE: {0x00},  # areas 1/3/5/7 (handle_54 gen_rnd_spriteY, craft-excluding draw)
+    TORKAN_TYPE: {0x3A},  # area 3 (handle_0F gen_random_Y_store_obj)
+    KAPI_TYPE: {0x3A},  # area 7 (handle_10 gen_random_Y_store_obj)
+    TERRAZI_TYPE: {0x3A, 0x3B},  # 0x3B in area 7, 0x3A in area 11 (handle_11 gen_rnd_spriteY, craft-excluding)
+    GARU_ZAKATO_TYPE: {GARU_ZAKATO_SLOT - 1},  # 0x3B, areas 9/10/14 (handle_18 gen_random_Y_store_obj)
+}
 
 # AIR-11 (air.bacura #81) renderer constants. Unlike the flying families, the Bacura draws one persistent
 # clone per BACURA-BAND slot (17-32), each a pure per-tick function of its slot: a SINGLE static costume
@@ -3048,12 +3062,16 @@ def _schedule_arg(record: dict) -> int:
 
 
 def _ground_scalars(record: dict) -> tuple[int, int, int]:
-    # GND: the three runtime-readable scalars a ground-placement record needs, pre-decoded from the opaque
-    # JSON payload (Scratch cannot parse JSON at runtime) — object_type (the ground dispatch discriminator),
-    # slot (0-15), sprite_y (0-255). BOTH ground placement handlers carry them at the same JSON locations:
-    # add_ground_object (the static + Grobda families) and GND-07 add_domogram_with_path (the Domogram, which
-    # additionally carries a scripted path decoded by _load_domogram_paths). Every other handler needs none ->
-    # (0, 0, 0); those fillers are inert because the ground columns are read only under those two handlers.
+    # GND: the three runtime-readable scalars a placement record needs, pre-decoded from the opaque JSON payload
+    # (Scratch cannot parse JSON at runtime) — object_type (the dispatch discriminator), slot, sprite_y (0-255).
+    # BOTH ground placement handlers carry them at the same JSON locations: add_ground_object (the static +
+    # Grobda families) and GND-07 add_domogram_with_path (the Domogram, which additionally carries a scripted
+    # path decoded by _load_domogram_paths); for those the slot is the 0-15 ground-band offset. AREA-02 (#166)
+    # add_object reuses the type + slot columns with the RAW arcade object slot (0, 0x3A or 0x3B) and no sprite_y
+    # (-> 0). Every other handler needs none -> (0, 0, 0); those fillers are inert because the columns are read
+    # only under these three handlers.
+    if record["handler"] == ADD_OBJECT_HANDLER:
+        return record["object_type"], record["params"]["slot"], 0
     if record["handler"] not in (ADD_GROUND_OBJECT_HANDLER, ADD_DOMOGRAM_HANDLER):
         return 0, 0, 0
     params = record.get("params", {})
@@ -3259,12 +3277,14 @@ MESSAGES = {
     # The retired arrow-key target sprite's bounds broadcasts (target-bounds-*) are gone too.)
     # AUDIO: sprite-side cues relay to the Stage, which owns every game sound (CAB-05). The shot×Bacura bounce
     # runs on a blaster clone and broadcasts `sfx bacura` (BACURA_HIT_SND, src deactivate_shot
-    # xevious_main.68k:2559); a fired shot broadcasts `sfx shot` (SHOT_SND, main_fn_30_shot_fn 2366); the craft's
-    # death broadcasts `sfx death` (SOLVALOU_EXPLOSION_SND, update_solvalou 2030). All other arcade SFX play from
-    # Stage-thread procs directly.
+    # xevious_main.68k:2559); a fired shot broadcasts `sfx shot` (SHOT_SND, main_fn_30_shot_fn 2366); the walk's
+    # hit broadcasts `sfx death` (SOLVALOU_EXPLOSION_SND, update_solvalou 2030) so the cue runs in its own Stage
+    # thread. All other arcade SFX play from Stage-thread procs directly.
     "sfx bacura": "broadcastMsgId-sfx-bacura",
     "sfx shot": "broadcastMsgId-sfx-shot",
     "sfx death": "broadcastMsgId-sfx-death",
+    # #158: the walk has advanced the explosion window one tick; the death renderer draws `dying tick`'s frame.
+    "death draw": "broadcastMsgId-death-draw",
     # AREA-01 (slice 20): the Stage has just computed the terrain strips' state (`update terrain`) — at the
     # end of each walk tick and of each re-top; each strip draws itself from it, in the same frame.
     "terrain draw": "broadcastMsgId-terrain-draw",
@@ -4457,8 +4477,45 @@ def _shadow_hit(blocks: Blocks, d_lat: Any, d_dep: Any, window: tuple) -> str:
     return blocks.op_and(hit_lat, hit_dep)
 
 
+def _if_else(blocks: Blocks, condition_id: str, then: list[str], otherwise: list[str]) -> str:
+    """`if <condition> then … else …` — the control_if_else wiring the builders otherwise inline."""
+    block_id = blocks.add("control_if_else")
+    blocks.blocks[block_id]["inputs"]["CONDITION"] = [2, condition_id]
+    blocks.blocks[condition_id]["parent"] = block_id
+    blocks.substack(block_id, then)
+    blocks.substack(block_id, otherwise, name="SUBSTACK2")
+    return block_id
+
+
+def _entry_case(blocks: Blocks, build: Any) -> str:
+    """CAB-04: `if <b pressed> then build(lowercase ring) else build(ENTRY_RING)` — `build(ring)` returns the
+    statement that uses the active letter of `ring` (fresh blocks per branch: a reporter has one parent)."""
+    held = blocks.key_pressed("", "b")  # parent placeholder; _if_else re-parents it
+    return _if_else(blocks, held, [build(ENTRY_RING_LOWER)], [build(ENTRY_RING)])
+
+
+def _craft_alive_reporter(blocks: Blocks) -> str:
+    """#158: boolean — the craft is not in its explosion window (`dying` = 0). The arcade runs the craft hit
+    check only on the live-craft path (`check_solvalou_hit` is skipped while `solvalou_exploding`,
+    xevious_main.68k 2005-2016), so nothing can raise `player hit` again until the next life."""
+    return blocks.op_eq(variable("dying", DYING_ID), number(0))
+
+
+def _craft_drawn_reporter(blocks: Blocks) -> str:
+    """#158 / SEC-02: boolean — the craft's sprite is still on screen: alive, or in the explosion half of the
+    window (`dying tick` < EXPLOSION_TICKS; `dying tick` is held at 0 outside the window). The flag collection
+    `check_flag_collected` (3178-3188) reads only the sprite shadows and never tests `solvalou_exploding`, so the
+    exploding craft can still fly over the flag; once `finish_solvalou_exploding` clears the craft's `_STATE`
+    (2081) the Amiga layer parks its shadow off-screen (amiga.68k 1659-1668), so the pause cannot collect it.
+    (The Neo Geo layer leaves the shadow stale instead, neogeo.68k 896-910; the port follows the Amiga.)"""
+    return blocks.op_lt(variable("dying tick", DYING_TICK_ID), number(EXPLOSION_TICKS))
+
+
 def _craft_overlap_reporter(
-    blocks: Blocks, window: tuple = HIT_WINDOW_BULLET_FLYING, depth_craft_minus_obj: bool = False
+    blocks: Blocks,
+    window: tuple = HIT_WINDOW_BULLET_FLYING,
+    depth_craft_minus_obj: bool = False,
+    gate: str = "alive",
 ) -> str:
     """PLY-02: boolean — does the current slot (`slot index`) overlap the craft within `window` (default
     HIT_WINDOW_BULLET_FLYING, the shared flying/bullet box, `check_bullet_or_flying_hit_solvalou` 2207-2219)?
@@ -4469,7 +4526,10 @@ def _craft_overlap_reporter(
     Both routines compute byte 0 as `craft - obj` (so the lateral delta is obj - craft in px) and byte 1 as
     `obj - craft`. SEC-02 `check_flag_collected` (3178-3188) computes byte 1 the other way round,
     `solvalou spriteX - flag spriteX`, so the Bonus Flag passes `depth_craft_minus_obj=True`. Its box is
-    symmetric-but-one ([-5, 4]), so the sign decides which edge carries the extra unit."""
+    symmetric-but-one ([-5, 4]), so the sign decides which edge carries the extra unit.
+
+    #158: `gate` folds the craft's state into the test so no caller can forget it — "alive" (every kill
+    check: no hit during the explosion window) or "drawn" (the flag: the exploding craft still collects)."""
     d_lat = lambda: blocks.op_sub(
         _lateral_shadow(blocks, _cur_item(blocks, "slot y", SLOT_Y_ID)),
         _lateral_shadow(blocks, variable("player slot y", PLAYER_SLOT_Y_ID)),
@@ -4480,7 +4540,8 @@ def _craft_overlap_reporter(
         d_dep = lambda: blocks.op_sub(craft_dep(), obj_dep())
     else:
         d_dep = lambda: blocks.op_sub(obj_dep(), craft_dep())
-    return _shadow_hit(blocks, d_lat, d_dep, window)
+    gates = {"alive": _craft_alive_reporter, "drawn": _craft_drawn_reporter}
+    return blocks.op_and(gates[gate](blocks), _shadow_hit(blocks, d_lat, d_dep, window))
 
 
 def _bacura_fair_craft_reporter(blocks: Blocks) -> str:
@@ -4523,7 +4584,8 @@ def _bacura_fair_craft_reporter(blocks: Blocks) -> str:
         blocks.op_not(blocks.op_lt(d_dep(), dep_low())),
         blocks.op_not(blocks.op_gt(d_dep(), dep_high())),
     )
-    return blocks.op_and(hit_lat, hit_dep)
+    # #158: no craft hit during the explosion window (see `_craft_alive_reporter`).
+    return blocks.op_and(_craft_alive_reporter(blocks), blocks.op_and(hit_lat, hit_dep))
 
 
 def install_compute_aim_index(blocks: Blocks) -> None:
@@ -4634,7 +4696,27 @@ def install_read_player_cell(blocks: Blocks) -> None:
             number(SLOT_UNITS_PER_CELL),
         ),
     )
-    blocks.chain(definition, [set_col, set_row, set_slot_x, set_slot_y])
+    # #158: in the pause after the explosion the craft object is inactive, and the next shadow update zeroes its
+    # _X/_Y (`finish_solvalou_exploding` clears _STATE, 2081; amiga.68k 1659-1668, neogeo.68k 896-904), so for
+    # those 16 ticks every aim, homer and spawn draw that reads the craft's position reads 0, not the place it
+    # died. The craft sprite stays where it died (hidden), so the position is reported, not read.
+    at_zero = [
+        blocks.set_var("player col", PLAYER_COL_ID, number(0)),
+        blocks.set_var("player row", PLAYER_ROW_ID, number(0)),
+        blocks.set_var("player slot x", PLAYER_SLOT_X_ID, number(0)),
+        blocks.set_var("player slot y", PLAYER_SLOT_Y_ID, number(0)),
+    ]
+    blocks.chain(
+        definition,
+        [
+            _if_else(
+                blocks,
+                blocks.op_not(_craft_drawn_reporter(blocks)),
+                at_zero,
+                [set_col, set_row, set_slot_x, set_slot_y],
+            )
+        ],
+    )
 
 
 def _draw_spawn_column(blocks: Blocks, exclude_craft: bool = True, col_offset: int = 0) -> tuple[list, str]:
@@ -4941,9 +5023,13 @@ def install_advance_bomb(blocks: Blocks) -> None:
     pressed_and_idle = blocks.add("operator_and")
     b_pressed = blocks.key_pressed(pressed_and_idle, "b")
     idle = blocks.var_equals(pressed_and_idle, "bomb in flight", BOMB_INFLIGHT_ID, 0)
+    # #158: no new bomb while the craft explodes (`main_fn_31__handle_bombing` returns at 2436-2437); a bomb
+    # already in flight keeps falling through the else arm and can still score (2472-2511).
+    idle_and_alive = blocks.op_and(idle, _craft_alive_reporter(blocks))
+    blocks.blocks[idle_and_alive]["parent"] = pressed_and_idle
     blocks.blocks[pressed_and_idle]["inputs"] = {
         "OPERAND1": [2, b_pressed],
-        "OPERAND2": [2, idle],
+        "OPERAND2": [2, idle_and_alive],
     }
     blocks.blocks[arm_gate]["inputs"]["CONDITION"] = [2, pressed_and_idle]
     arm_body = [
@@ -5239,7 +5325,7 @@ def install_update_bonus_flag(blocks: Blocks) -> None:
     # `_craft_overlap_reporter`), against HIT_WINDOW_BOMB_GROUND (10,20,5,10) — the flag's own proximity box.
     collected_if = blocks.add("control_if_else")
     overlap = _craft_overlap_reporter(
-        blocks, HIT_WINDOW_BOMB_GROUND, depth_craft_minus_obj=True
+        blocks, HIT_WINDOW_BOMB_GROUND, depth_craft_minus_obj=True, gate="drawn"
     )
     blocks.blocks[collected_if]["inputs"]["CONDITION"] = [2, overlap]
     blocks.blocks[overlap]["parent"] = collected_if
@@ -7034,18 +7120,92 @@ def install_update_jara(blocks: Blocks) -> None:
     blocks.chain(definition, [top])
 
 
+def _zakato_teleport_row(blocks: Blocks) -> list:
+    # init_teleport's entry row (3996-3999): one draw from the shared stream, `(rnd & 0x0F) + 5`, written to
+    # the slot's scroll axis BEFORE the column draw, in the arcade's draw order. If the column draw were to
+    # exhaust (the bounded-draw deviation) the slot stays empty, so the row written here is never shown.
+    return [
+        blocks.call_proc(RNG_PROCCODE, warp=True),
+        _set_cur_item(
+            blocks,
+            "slot x",
+            SLOT_X_ID,
+            blocks.op_mul(
+                blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(ZAKATO_TELEPORT_ROW_MASK + 1)), number(ZAKATO_TELEPORT_ROW_BASE)),
+                number(SLOT_UNITS_PER_CELL),
+            ),
+        ),
+    ]
+
+
+def _zakato_scroll(blocks: Blocks) -> str:
+    # scroll_sprite_X (4849): the teleporting or self-destructing Zakato drifts with the terrain.
+    return _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), number(AREA_PROGRESS_STEP)))
+
+
+def _zakato_nudge(blocks: Blocks, at_timer: int, row_step: int) -> str:
+    # The phase's one-cell move: `row_step` cells along the scroll axis and the opposite along the lateral
+    # axis, on the tick the phase timer reaches `at_timer`.
+    return blocks.if_reporter(
+        blocks.op_eq(_cur_item(blocks, "slot timer", SLOT_TIMER_ID), number(at_timer)),
+        [
+            _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), number(row_step * SLOT_UNITS_PER_CELL))),
+            _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), number(-row_step * SLOT_UNITS_PER_CELL))),
+        ],
+    )
+
+
+def _pulsing_colour_index(blocks: Blocks) -> str:
+    # colour_lut_pulsing_2 (xevious_sub.68k 208-232) as an index 0..4 into 0x10..0x14: the triangle
+    # 4 - |((tick>>2)&7) - 4| (see PULSING_COLOUR_STEP_TICKS). The sub CPU freezes it while scroll_disabled
+    # (209-210), which in play is set only once the player's death window has ended (2087).
+    step = blocks.op_mod(
+        blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(PULSING_COLOUR_STEP_TICKS))),
+        number(PULSING_COLOUR_STEPS),
+    )
+    return blocks.op_sub(number(PULSING_COLOUR_PEAK), blocks.op_abs(blocks.op_sub(step, number(PULSING_COLOUR_PEAK))))
+
+
+def _set_pulsing_colour(blocks: Blocks) -> str:
+    # Each Zakato-family handler's `move.b (pulsing_colour_2),(_COLOUR,a5)`, kept as an index in `slot flag`.
+    return _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, _pulsing_colour_index(blocks))
+
+
+def _set_giddo_colour(blocks: Blocks) -> str:
+    # handle_08_Giddo_Spario's colour (5233-5237): 0x26 + ((countup>>3)&3), kept as an index 0..3 in `slot flag`.
+    return _set_cur_item(
+        blocks,
+        "slot flag",
+        SLOT_FLAG_ID,
+        blocks.op_mod(
+            blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(GIDDO_SPARIO_COLOUR_STEP_TICKS))),
+            number(GIDDO_SPARIO_COLOURS),
+        ),
+    )
+
+
+def _zakato_self_explode(blocks: Blocks) -> list:
+    # zakato_explode_and_remove (3766-3771): drift with the terrain while the burst plays out on the shared
+    # clock, moving one cell up-left once at timer 0x10 (3934-3937; visible, the burst stays 1x1). The shared tick frees the slot at 20, after which the
+    # nudge's timer test no longer matches.
+    return [
+        _zakato_scroll(blocks),
+        blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True),
+        _zakato_nudge(blocks, ZAKATO_EXPLODE_NUDGE_TIMER, -1),
+    ]
+
+
 def install_init_zakato(blocks: Blocks) -> None:
     # AIR-07: initialize the flying slot at `slot index` as a Zakato of type `walk type` (handle_12-15
     # 3733-3859; init_teleport 3994). All four base variants share this initializer; they differ only in
     # the points stamped here and in the movement / shot trigger the update commits once the teleport-in
     # completes. The Zakato TELEPORTS in: it is stamped SLOT_TELEPORT — indestructible, since the shared
     # `check air hit` gate skips any non-ACTIVE slot (the arcade's `_STATE=3` at init_teleport 3995) — and
-    # holds in place while the ~20-frame sparkle plays (rendered from `slot timer`, the reversed burst).
+    # holds in place while the ~20-frame sparkle plays (rendered from `slot timer`: 0x10C, 0x108, 0x107, 0x106, 0x105 at
+    # colour 0x24, zakato_teleport 3962-4002).
     # When the sparkle ends the update flips it to SLOT_ACTIVE and stamps its aimed/straight velocity and
-    # shot fuse. Top-row entry via the shared spawn-column draw; the arcade's random teleport X
-    # (init_teleport 3996-3999) is a deferred cosmetic deviation, the same no-enemy-scroll top entry every
-    # flying family uses. No fire mask is captured — a Zakato fires exactly one bullet, structurally, not
-    # under the periodic gate.
+    # shot fuse. It appears mid-field, on a random row 5-20 (init_teleport 3996-3999), not at the top row.
+    # No fire mask is captured — a Zakato fires exactly one bullet, structurally, not under the periodic gate.
     definition = _install_warp_proc(blocks, INIT_ZAKATO_PROCCODE)
     # init_teleport draws the entry column CRAFT-INDEPENDENTLY: gen_random_Y_store_obj (5147-5154) does the
     # in-range clamp with NO craft-proximity reject, so a base Zakato CAN teleport in over/adjacent to the
@@ -7073,17 +7233,18 @@ def install_init_zakato(blocks: Blocks) -> None:
             # SLOT_TELEPORT: invulnerable and not yet moving — the sparkle plays in place, then the update
             # transitions to SLOT_ACTIVE. Not SLOT_ACTIVE, so `check air hit` cannot score it mid-teleport.
             _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_TELEPORT)),
-            _set_cur_item(blocks, "slot x", SLOT_X_ID, number(TOROID_SPAWN_ROW * SLOT_UNITS_PER_CELL)),
             _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
             _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            # init_teleport's colour 0x24 (4002), kept until the first live frame writes the pulsing colour.
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(ZAKATO_TELEPORT_COLOUR_INDEX)),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(ZAKATO_MAIN_CODE)),
             *pts_stamps,
             # AUDIO: TELEPORT_SND on the teleport-in (src init_teleport xevious_main.68k:4004).
             blocks.play_sound("zakato"),
         ],
     )
-    blocks.chain(definition, [*reset, draw_loop, stamp])
+    blocks.chain(definition, [*_zakato_teleport_row(blocks), *reset, draw_loop, stamp])
 
 
 def install_update_zakato(blocks: Blocks) -> None:
@@ -7093,13 +7254,14 @@ def install_update_zakato(blocks: Blocks) -> None:
     # the phase EXPLICITLY in `slot state`:
     #   SLOT_TELEPORT      teleporting in: indestructible (the shared `check air hit` gate ignores any
     #                      non-ACTIVE slot, so it is unkillable here — the arcade's `_STATE=3` at
-    #                      init_teleport 3995), holding in place while the ~20-frame reversed sparkle plays.
+    #                      init_teleport 3995), drifting with the terrain while the ~20-frame teleport
+    #                      sparkle plays (scroll_sprite_X, 3741).
     #   SLOT_ACTIVE        hittable and moving: it fires EXACTLY ONE aimed bullet — on a random countdown
     #                      (slow/fast) or when the craft is level in the lateral axis (closeY/cont) — then
     #                      flips itself to SLOT_SELF_EXPLODE; killed by a shot first, it scores its value.
-    #   SLOT_SELF_EXPLODE  fired and vanishing: benign (again ignored by the hit gate), holding still while
-    #                      its own 20-frame burst plays, then freed awarding NOTHING (zakato_explode_and_
-    #                      remove 3766 -> remove_zakato 3926, no score).
+    #   SLOT_SELF_EXPLODE  fired and vanishing: benign (again ignored by the hit gate), drifting with the
+    #                      terrain while its own 20-frame burst plays, then freed awarding NOTHING
+    #                      (zakato_explode_and_remove 3766 -> remove_zakato 3926, no score).
     #   SLOT_HIT           shot down while active: the SHARED flying explosion (`explode toroid tick`), its
     #                      value already scored by the detector — exactly like every other flying family.
     # The self-destruct reuses `explode toroid tick` (same 20-frame free clock); it differs from a shot
@@ -7115,7 +7277,7 @@ def install_update_zakato(blocks: Blocks) -> None:
     is_fused = lambda: blocks.op_or(blocks.op_eq(wt(), number(ZAKATO_SLOW_TYPE)), blocks.op_eq(wt(), number(ZAKATO_FAST_TYPE)))
     is_proximity = lambda: blocks.op_or(blocks.op_eq(wt(), number(ZAKATO_CLOSEY_TYPE)), blocks.op_eq(wt(), number(ZAKATO_CONT_TYPE)))
 
-    # --- TELEPORT phase: hold in place, advance the sparkle clock; on completion commit to ACTIVE. ---
+    # --- TELEPORT phase: drift with the terrain, advance the sparkle clock; on completion commit to ACTIVE. ---
     # Straight variants (slow/closeY) descend on the raw scroll-axis velocity dX=16, dY=0 (handle_12/13
     # 3736-3737); aimed variants (fast/cont) aim at the craft's CURRENT cell on the 32-magnitude generic
     # tier at the completion instant (zakato_14/15_main's calc_dX_dY_for_vector_to_solvalou 3822/3848).
@@ -7170,6 +7332,8 @@ def install_update_zakato(blocks: Blocks) -> None:
         blocks.op_eq(state(), number(SLOT_TELEPORT)),
         [
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(timer(), number(TICK_TIMER_STEP))),
+            _zakato_scroll(blocks),
+            _zakato_nudge(blocks, ZAKATO_TELEPORT_NUDGE_TIMER, 1),
             blocks.if_reporter(blocks.op_not(blocks.op_lt(timer(), number(ZAKATO_PHASE_FRAMES))), commit_active),
         ],
     )
@@ -7195,17 +7359,18 @@ def install_update_zakato(blocks: Blocks) -> None:
     fired_prox = blocks.op_and(is_proximity(), in_band)
     fire_now = blocks.op_or(fired_fused, fired_prox)
     # Self-destruct: fire the one bullet, flip to SELF_EXPLODE, zero the velocity (the arcade stops calling
-    # move_object_dX_dY and only scroll-drifts — which this no-enemy-scroll port renders as holding still),
-    # and reset the burst clock.
+    # move_object_dX_dY and only scroll-drifts, which the SELF_EXPLODE phase below applies), and reset the
+    # burst clock (armed so the firing tick draws timer 0).
     on_fire = [
         *_fire_aimed_bullet(blocks),
         _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_SELF_EXPLODE)),
         _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
         _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
-        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(ZAKATO_SELF_DESTRUCT_ARM)),
     ]
-    # Move by 4*velocity per tick, advance the body animation clock, then cull off any edge (the same
-    # explicit four-edge cull as the other flying families).
+    # Not firing: write the pulsing colour (after the fire test, 3757), move by 4*velocity per tick,
+    # advance the body animation clock, then cull off any edge (the same explicit four-edge cull as the
+    # other flying families).
     move = [
         _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
         _set_cur_item(blocks, "slot y", SLOT_Y_ID, blocks.op_add(_cur_item(blocks, "slot y", SLOT_Y_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dy", SLOT_DY_ID)))),
@@ -7221,16 +7386,16 @@ def install_update_zakato(blocks: Blocks) -> None:
     blocks.blocks[fire_now]["parent"] = fire_choice
     blocks.blocks[fire_choice]["inputs"]["CONDITION"] = [2, fire_now]
     blocks.substack(fire_choice, on_fire)
-    blocks.substack(fire_choice, [*move, cull], name="SUBSTACK2")
+    blocks.substack(fire_choice, [_set_pulsing_colour(blocks), *move, cull], name="SUBSTACK2")
     active = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_ACTIVE)),
         [craft_hit, dec_fuse, fire_choice],
     )
 
-    # --- SELF_EXPLODE phase: play out the burst clock and free (no score). ---
+    # --- SELF_EXPLODE phase: drift, play out the burst clock and free (no score). ---
     self_explode = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_SELF_EXPLODE)),
-        [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)],
+        _zakato_self_explode(blocks),
     )
 
     # Top: a shot kill (SLOT_HIT) plays the SHARED flying explosion; otherwise offer to the shot detector
@@ -7502,7 +7667,7 @@ def install_init_giddo_spario(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot dx", SLOT_DX_ID, blocks.list_item("aim dx 64", AIM_DX_64_ID, variable("aim index", AIM_INDEX_ID))),
             _set_cur_item(blocks, "slot dy", SLOT_DY_ID, blocks.list_item("aim dy 64", AIM_DY_64_ID, variable("aim index", AIM_INDEX_ID))),
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
-            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(0)),
+            _set_giddo_colour(blocks),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(GIDDO_SPARIO_INIT_CODE)),
             _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(GIDDO_SPARIO_PTS)),
         ],
@@ -7548,9 +7713,10 @@ def install_update_giddo_spario(blocks: Blocks) -> None:
     craft_hit = blocks.if_reporter(
         _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
     )
+    # The flight colour is written after the hit test (5228-5237), so a hit tick keeps the last one.
     normal = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_ACTIVE)),
-        [craft_hit, *move, cull],
+        [craft_hit, _set_giddo_colour(blocks), *move, cull],
     )
     top = blocks.add("control_if_else")
     is_hit = blocks.op_eq(state(), number(SLOT_HIT))
@@ -7588,7 +7754,15 @@ def install_update_brag_spario(blocks: Blocks) -> None:
     # sign of (player col - slot col), with NO change on an axis already aligned to the craft's cell (the
     # arcade's MSB compare: jcs -2 / jeq 0 / else +2, 3095-3109). Velocity is unbounded, exactly as the
     # arcade (no clamp). Then it moves by the accumulated velocity, advances its flip-animation clock, and
-    # culls off any edge. Shares the flying hit window and the shared ~20-frame burst on death.
+    # culls off any edge.
+    # A shot never destroys it (slice 21): the handler has no hit branch and writes _STATE=2 every frame (3092),
+    # while the shot test only hits an enemy whose _STATE is 2 (2566). A hit sets _STATE=3, consumes the shot
+    # and scores 500 with the flying-hit sound (2525-2538); the next frame's handler puts it back to 2 and it
+    # keeps flying. It leaves only off-screen. Both collision tests read the sprite positions the sub CPU
+    # snapshots at the start of the frame (main 274, sub 292-294), before the handler moves anything, and the
+    # craft test (main_fn_1) runs before the handler (main_fn_2) and skips a non-2 enemy (2207-2209). So each
+    # tick here: the craft test only while ACTIVE, then a HIT slot back to ACTIVE, then the shared shot test
+    # at the drawn position (its HIT lasts until the next tick), then the move, which runs on a hit tick too.
     definition = _install_warp_proc(blocks, UPDATE_BRAG_SPARIO_PROCCODE)
     state = lambda: _cur_item(blocks, "slot state", SLOT_STATE_ID)
     row_offset = lambda: blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))
@@ -7623,23 +7797,27 @@ def install_update_brag_spario(blocks: Blocks) -> None:
     offscreen = blocks.op_or(blocks.op_or(off_bottom, off_top), blocks.op_or(off_right, off_left))
     cull = blocks.if_reporter(offscreen, [blocks.call_proc(CULL_SLOT_PROCCODE, warp=True)])
     craft_hit = blocks.if_reporter(
-        _craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))]
-    )
-    normal = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_ACTIVE)),
-        [craft_hit, accel_dx_plus, accel_dx_minus, accel_dy_plus, accel_dy_minus, *move, cull],
+        [blocks.if_reporter(_craft_overlap_reporter(blocks), [blocks.set_var("player hit", PLAYER_HIT_ID, number(1))])],
     )
-    top = blocks.add("control_if_else")
-    is_hit = blocks.op_eq(state(), number(SLOT_HIT))
-    blocks.blocks[top]["inputs"]["CONDITION"] = [2, is_hit]
-    blocks.blocks[is_hit]["parent"] = top
-    blocks.substack(top, [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)])
-    blocks.substack(
-        top,
-        [blocks.call_proc(CHECK_AIR_HIT_PROCCODE, warp=True), normal],
-        name="SUBSTACK2",
+    recover = blocks.if_reporter(
+        blocks.op_eq(state(), number(SLOT_HIT)),
+        [_set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE))],
     )
-    blocks.chain(definition, [top])
+    blocks.chain(
+        definition,
+        [
+            craft_hit,
+            recover,
+            blocks.call_proc(CHECK_AIR_HIT_PROCCODE, warp=True),
+            accel_dx_plus,
+            accel_dx_minus,
+            accel_dy_plus,
+            accel_dy_minus,
+            *move,
+            cull,
+        ],
+    )
 
 
 def _stamp_sheonite(blocks: Blocks, slot_number: int, type_number: int, flank_sign: int) -> list[str]:
@@ -7814,8 +7992,7 @@ def install_init_brag_zakato(blocks: Blocks) -> None:
     # update then aims it, drives its terminal fan trigger (random fuse for rnd / level-in-Y for closeY)
     # and its self-destruct. Top-row entry via the shared spawn column, exactly as install_init_zakato:
     # CRAFT-INDEPENDENT draw (gen_random_Y_store_obj, no craft reject) plus the +1-cell teleport offset
-    # (init_teleport 4000). The arcade's random teleport X (init_teleport 3996-3999) is the same deferred
-    # no-enemy-scroll cosmetic every ported flying family shares.
+    # (init_teleport 4000), on the same random row 5-20 (init_teleport 3996-3999).
     definition = _install_warp_proc(blocks, INIT_BRAG_ZAKATO_PROCCODE)
     reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=False, col_offset=1)  # mirrors install_init_zakato
     wt = lambda: variable("walk type", WALK_TYPE_ID)
@@ -7834,10 +8011,11 @@ def install_init_brag_zakato(blocks: Blocks) -> None:
         [
             _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, wt()),
             _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_TELEPORT)),
-            _set_cur_item(blocks, "slot x", SLOT_X_ID, number(TOROID_SPAWN_ROW * SLOT_UNITS_PER_CELL)),
             _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
             _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            # init_teleport's colour 0x24 (4002), as the base Zakato.
+            _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(ZAKATO_TELEPORT_COLOUR_INDEX)),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(BRAG_ZAKATO_MAIN_CODE)),
             *pts_stamps,
             # AUDIO: TELEPORT_SND on the teleport-in (src init_teleport xevious_main.68k:4004),
@@ -7845,7 +8023,7 @@ def install_init_brag_zakato(blocks: Blocks) -> None:
             blocks.play_sound("zakato"),
         ],
     )
-    blocks.chain(definition, [*reset, draw_loop, stamp])
+    blocks.chain(definition, [*_zakato_teleport_row(blocks), *reset, draw_loop, stamp])
 
 
 def install_update_brag_zakato(blocks: Blocks) -> None:
@@ -7867,7 +8045,7 @@ def install_update_brag_zakato(blocks: Blocks) -> None:
     is_fused = lambda: blocks.op_eq(wt(), number(BRAG_ZAKATO_RND_TYPE))
     is_proximity = lambda: blocks.op_eq(wt(), number(BRAG_ZAKATO_CLOSEY_TYPE))
 
-    # --- TELEPORT phase: hold in place, advance the sparkle clock; on completion aim + commit to ACTIVE. ---
+    # --- TELEPORT phase: drift with the terrain, advance the sparkle clock; on completion aim + commit. ---
     set_aimed = [
         blocks.set_var_expr("aim dx diff", AIM_DX_DIFF_ID, blocks.op_sub(variable("player row", PLAYER_ROW_ID), _cur_row(blocks))),
         blocks.set_var_expr("aim dy diff", AIM_DY_DIFF_ID, blocks.op_sub(variable("player col", PLAYER_COL_ID), _cur_col(blocks))),
@@ -7895,6 +8073,8 @@ def install_update_brag_zakato(blocks: Blocks) -> None:
         blocks.op_eq(state(), number(SLOT_TELEPORT)),
         [
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, blocks.op_add(timer(), number(TICK_TIMER_STEP))),
+            _zakato_scroll(blocks),
+            _zakato_nudge(blocks, ZAKATO_TELEPORT_NUDGE_TIMER, 1),
             blocks.if_reporter(blocks.op_not(blocks.op_lt(timer(), number(ZAKATO_PHASE_FRAMES))), commit_active),
         ],
     )
@@ -7915,13 +8095,14 @@ def install_update_brag_zakato(blocks: Blocks) -> None:
     fired_prox = blocks.op_and(is_proximity(), in_band)
     fire_now = blocks.op_or(fired_fused, fired_prox)
     # Self-destruct: fire the 5-bullet aimed fan, flip to SELF_EXPLODE, zero the velocity, reset the burst
-    # clock. brag_zakato_shoot reads `slot index` (still this Brag) for the firing cell, so it runs first.
+    # clock (armed so the firing tick draws timer 0). brag_zakato_shoot reads `slot index` (still this
+    # Brag) for the firing cell, so it runs first.
     on_fire = [
         blocks.call_proc(BRAG_ZAKATO_SHOOT_PROCCODE, warp=True),
         _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_SELF_EXPLODE)),
         _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(0)),
         _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
-        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+        _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(ZAKATO_SELF_DESTRUCT_ARM)),
     ]
     move = [
         _set_cur_item(blocks, "slot x", SLOT_X_ID, blocks.op_add(_cur_item(blocks, "slot x", SLOT_X_ID), blocks.op_mul(number(TICK_VELOCITY_SCALE), _cur_item(blocks, "slot dx", SLOT_DX_ID)))),
@@ -7938,16 +8119,17 @@ def install_update_brag_zakato(blocks: Blocks) -> None:
     blocks.blocks[fire_now]["parent"] = fire_choice
     blocks.blocks[fire_choice]["inputs"]["CONDITION"] = [2, fire_now]
     blocks.substack(fire_choice, on_fire)
-    blocks.substack(fire_choice, [*move, cull], name="SUBSTACK2")
+    # Not firing: the pulsing colour (after the fire test, 3887/3916), then move + cull.
+    blocks.substack(fire_choice, [_set_pulsing_colour(blocks), *move, cull], name="SUBSTACK2")
     active = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_ACTIVE)),
         [craft_hit, dec_fuse, fire_choice],
     )
 
-    # --- SELF_EXPLODE phase: play out the shared burst clock and free (no score). ---
+    # --- SELF_EXPLODE phase: drift, play out the shared burst clock and free (no score). ---
     self_explode = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_SELF_EXPLODE)),
-        [blocks.call_proc(EXPLODE_TICK_PROCCODE, warp=True)],
+        _zakato_self_explode(blocks),
     )
 
     top = blocks.add("control_if_else")
@@ -8018,6 +8200,9 @@ def install_init_garu_zakato(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(0)),
             _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
             _set_cur_item(blocks, "slot code", SLOT_CODE_ID, number(GARU_ZAKATO_MAIN_CODE)),
+            # handle_18 sets no colour at init (4010-4020), so its first frame draws whatever the slot last
+            # held; the port draws the pulsing colour from the start.
+            _set_pulsing_colour(blocks),
             _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(GARU_ZAKATO_PTS)),
             blocks.call_proc(RNG_PROCCODE, warp=True),
             _set_cur_item(blocks, "slot fire timer", SLOT_FIRE_TIMER_ID, blocks.op_add(blocks.op_mod(variable("rng out", RNG_OUT_ID), number(GARU_ZAKATO_FUSE_SPAN)), number(GARU_ZAKATO_FUSE_OFFSET))),
@@ -8057,7 +8242,8 @@ def install_update_garu_zakato(blocks: Blocks) -> None:
     blocks.blocks[fuse_choice]["inputs"]["CONDITION"] = [2, fuse_done]
     blocks.blocks[fuse_done]["parent"] = fuse_choice
     blocks.substack(fuse_choice, [blocks.call_proc(GARU_ZAKATO_DETONATE_PROCCODE, warp=True)])
-    blocks.substack(fuse_choice, [*move, cull], name="SUBSTACK2")
+    # Not detonating: the pulsing colour (after the fuse test, 4027), then move + cull.
+    blocks.substack(fuse_choice, [_set_pulsing_colour(blocks), *move, cull], name="SUBSTACK2")
     active = blocks.if_reporter(
         blocks.op_eq(state(), number(SLOT_ACTIVE)),
         [craft_hit, dec_fuse, fuse_choice],
@@ -8079,13 +8265,13 @@ def install_garu_zakato_detonate(blocks: Blocks) -> None:
     # AIR-08: the Garu detonation (garu_zakato_explode 4031 -> init_garu_zakato_explosion 5075). Called
     # with `slot index` = the detonating Garu. First emit a 16-bullet 360-degree ring (even angles
     # 0,2,..,30) from the Garu's cell via the shared radiating emitter; then spawn 4 Brag Sparios into the
-    # 4 flying slots ADJACENT to the Garu (the arcade clobbers obj 0x3C-0x3F, the 4 objects after the Garu
-    # at 0x3B) at the Garu's cell with the cardinal velocities from brag_spario_dX/dY_tbl; then FREE the
+    # 4 flying slots ADJACENT to the Garu (obj 0x3C-0x3F, the 4 objects after the Garu at 0x3B; a slot
+    # already holding an enemy is only repositioned, see below) at the Garu's cell with the cardinal
+    # velocities from brag_spario_dX/dY_tbl; then FREE the
     # Garu slot (the arcade clr TYPE/STATE — no self-burst, no score). The final restore of `slot index`
     # to the Garu's own slot both frees it AND restores the advance-slots loop cursor. CONTRACT: the Garu
-    # occupies the FIRST flying slot (its only spawner, the debug key, stamps it there), so its 4
-    # successors lie in the flying band; the natural add_object spawn (deferred follow-up) must preserve
-    # that placement. DEVIATION: the 4 Sparios update once on the tick they spawn (the walk reaches their
+    # occupies GARU_ZAKATO_SLOT (0x3B — where the add_object schedule places it), so
+    # its 4 successors are the arcade's 0x3C-0x3F, the last 4 flying slots. DEVIATION: the 4 Sparios update once on the tick they spawn (the walk reaches their
     # higher slot indices later this same pass) — a one-tick head start, recorded in the mechanics note.
     definition = _install_warp_proc(blocks, GARU_ZAKATO_DETONATE_PROCCODE)
     gslot = lambda: variable("garu det slot", GARU_DET_SLOT_ID)
@@ -8108,7 +8294,11 @@ def install_garu_zakato_detonate(blocks: Blocks) -> None:
     )
     set_ring_angle = blocks.set_var("radiating angle", RADIATING_ANGLE_ID, number(0))
     # Spawn the 4 Brag Sparios into the adjacent slots (gslot+1 .. gslot+4): repoint `slot index`, copy
-    # the Garu's cell, set the cardinal velocity + type, then stamp state/code/points via the shared init.
+    # the Garu's cell and set the cardinal velocity in EVERY one of them, then, only where the slot is free,
+    # set the type and stamp state/code/points via the shared init. The arcade writes _X/_Y/_dX/_dY and
+    # _TYPE=9 into 0x3C-0x3F unconditionally (5084-5103), but the type is picked up only by an idle slot's
+    # add_obj_handler (4801-4815); a live enemy's handler never reads _TYPE and its free clears it, so a busy
+    # slot keeps its enemy, moved onto the Garu with the Spario's velocity, and gets no Spario.
     spawn_body: list[str] = []
     for k in range(GARU_SPARIO_COUNT):
         spawn_body += [
@@ -8117,8 +8307,13 @@ def install_garu_zakato_detonate(blocks: Blocks) -> None:
             _set_cur_item(blocks, "slot y", SLOT_Y_ID, gy()),
             _set_cur_item(blocks, "slot dx", SLOT_DX_ID, number(BRAG_SPARIO_SPAWN_DX[k])),
             _set_cur_item(blocks, "slot dy", SLOT_DY_ID, number(BRAG_SPARIO_SPAWN_DY[k])),
-            _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(BRAG_SPARIO_TYPE)),
-            blocks.call_proc(INIT_BRAG_SPARIO_PROCCODE, warp=True),
+            blocks.if_reporter(
+                blocks.op_eq(_cur_item(blocks, "slot type", SLOT_TYPE_ID), number(0)),
+                [
+                    _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(BRAG_SPARIO_TYPE)),
+                    blocks.call_proc(INIT_BRAG_SPARIO_PROCCODE, warp=True),
+                ],
+            ),
         ]
     # Free the Garu slot AND restore the loop cursor to it.
     free = [
@@ -8234,9 +8429,8 @@ def install_update_andor_master(blocks: Blocks) -> None:
     #     whole composite (free every part slot type+state, mirroring remove_andor_genesis) and consume the flag.
     # The phase is derived from position + flag — no explicit phase var — so the ground band-isolation invariant
     # holds. (Source checks the SCHEDULE end flag only once HOLD is reached; here a flag set mid-descent reverses
-    # immediately. That edge never occurs in play — the schedule fires the end flag long after the hold, and the
-    # debug summon's dismiss fires only on a FRESH G press once the boss is already up (well after it has reached
-    # the hold row), never on the summoning press — so the derived-phase form is faithful in every reachable case.)
+    # immediately. That edge never occurs in play — the schedule fires the end flag long after the hold — so the
+    # derived-phase form is faithful in every reachable case.)
     # The CORE-BOMB destruction path is different and NOT an approximation: handle_4B's FIRST instruction, before the
     # descend/hold branch, tests the core (obj 0x0E) for `_STATE==3` every tick (xevious_main.68k:5387-5388), so
     # bombing the core mid-descent legitimately ends the boss. The port's core-destruction check (C4) likewise runs
@@ -8277,7 +8471,7 @@ def install_update_andor_master(blocks: Blocks) -> None:
         [],  # at HOLD: fixed screen position, no scroll
     )
     # TEAR DOWN (remove_andor_genesis, 5440-5443 + the parts' own removal): free every part slot type+state the
-    # belt-and-suspenders way `cull slot` and the debug band-clear do, then consume the end flag AND the destroyed
+    # belt-and-suspenders way `cull slot` does, then consume the end flag AND the destroyed
     # clock. TYPE-AWARE (F1): a slot that now holds the fly-up Bragza (the converted core, ANDOR_BRAGZA_TYPE) is
     # NOT cleared — the arcade's remove_andor_genesis frees only the master, the armor self-clears, the ports have
     # exploded, and the converted core is the independent Bragza, which must keep flying. A builder (fresh blocks
@@ -8674,8 +8868,7 @@ def install_spawn_flying(blocks: Blocks) -> None:
     # AIR-08: both Brag Zakato variants (rnd 0x16 / closeY 0x17) run the SAME shared teleport-in init
     # (they differ only in the update's fan trigger). One OR branch, as the dispatch ORs them. The Garu
     # Zakato has NO formation entry — it is absent from the flying type table (its only arcade spawn is
-    # the area add_object schedule, not yet consumed by the port) — so it has no spawn-flying branch; the
-    # debug key stamps it directly for playtesting (a documented deferred follow-up for natural spawn).
+    # the area add_object schedule, placed by `place pending object`) — so it has no spawn-flying branch.
     spawn_brag_zakato = blocks.if_reporter(
         blocks.op_or(
             blocks.op_eq(variable("walk type", WALK_TYPE_ID), number(BRAG_ZAKATO_RND_TYPE)),
@@ -8689,335 +8882,74 @@ def install_spawn_flying(blocks: Blocks) -> None:
     blocks.chain(definition, [set_i, loop])
 
 
-def install_debug_spawn_wave(blocks: Blocks) -> None:
-    # ENGINE-TODO(#119): remove this temporary debug spawn key (and its locked-spec control-mapping
-    # amendment) once every aerial family is built and playtested, so reachability no longer needs it.
-    # DEBUG / TEMPORARY (tracked for removal): while the debug key (T) is held, CYCLE through the
-    # buildable enemy families ONE AT A TIME so the operator can watch each enemy's full lifecycle
-    # (approach, fire, its family's manoeuvre, exit) instead of a confusing six-at-once wave. Each tick:
-    # point the formation at the CURRENT family's offset (`debug spawn index` selects the DEBUG_SPAWN_
-    # FAMILIES entry); if any flying enemy is already on the field, set the spawn count to 0 (let that
-    # one live out its life alone); otherwise clear the flying slots, set the count to 1 so the shared
-    # spawner (which runs right after this in the walk) brings in exactly one fresh enemy from the top,
-    # and ADVANCE the index (mod len) so the next fresh spawn is the next family — holding T walks
-    # Terrazi -> Kapi -> (wrap). It self-gates on the key, so normal play is untouched when the key is
-    # not held. Reachability recurs for every future aerial family (each just appends one DEBUG_SPAWN_
-    # FAMILIES entry, no new key), so this stays a dev tool until they are all built and playtested, then
-    # it is removed (it amends the locked control mapping — see core-game-systems.md and issue #119).
-    definition = _install_warp_proc(blocks, DEBUG_SPAWN_PROCCODE)
-    gate = blocks.add("control_if")
-    pressed = blocks.key_pressed(gate, DEBUG_SPAWN_KEY)
-    blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
+def _check_add_object_records() -> None:
+    # AREA-02 (#166) build guard over the committed schedules: every add_object record names a type + raw slot the
+    # placement step handles (ADD_OBJECT_SLOTS), and no two add_object records in one area share a trigger row —
+    # the pending register holds ONE record per tick, so a same-row pair would silently lose the first.
+    areas = _load_spec_data("area-schedules.json")["areas"]
+    for area in areas:
+        rows: set[int] = set()
+        for record in area["records"]:
+            if record["handler"] != ADD_OBJECT_HANDLER:
+                continue
+            object_type, slot = record["object_type"], record["params"]["slot"]
+            if slot not in ADD_OBJECT_SLOTS.get(object_type, set()):
+                raise SystemExit(
+                    f"area {area['area']} add_object type {object_type:#x} slot {slot:#x} is not placeable"
+                )
+            if record["scroll_row"] in rows:
+                raise SystemExit(
+                    f"area {area['area']} has two add_object records at row {record['scroll_row']}"
+                )
+            rows.add(record["scroll_row"])
 
-    # Point the formation at the current family's offset (an if-chain over DEBUG_SPAWN_FAMILIES keyed by
-    # `debug spawn index`). Set every tick, before the spawner runs; the fresh-spawn branch below then
-    # advances the index for next time.
-    set_offset = [
+
+def install_place_pending_object(blocks: Blocks) -> None:
+    # AREA-02 (area.add-object-dispatch #166): consume the one-tick add_object pending register (see
+    # ADD_OBJECT_SLOTS for the arcade pickup this models). Runs after the walk and bomb, before the formation
+    # refill, so a placed single owns its slot before `spawn flying enemies` looks for empty ones (the arcade object
+    # pass runs before main_fn_4). Re-checks the slot is still empty — nothing between the schedule and here
+    # fills 0x00/0x3A/0x3B in real play, but a placement must never clobber a live object. Each type runs its
+    # EXISTING init (the same proc the formation spawner calls), so the first update is the next
+    # tick, as the arcade's init runs the frame after pickup. The register is cleared every time.
+    _check_add_object_records()
+    definition = _install_warp_proc(blocks, PLACE_PENDING_OBJECT_PROCCODE)
+    pending = lambda: variable("pending object type", PENDING_OBJECT_TYPE_ID)
+    flying_inits = [
         blocks.if_reporter(
-            blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(index)),
-            [blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(offset))],
+            blocks.op_eq(pending(), number(object_type)),
+            [blocks.call_proc(proccode, warp=True)],
         )
-        for index, (_family_type, offset, _count) in enumerate(DEBUG_SPAWN_FAMILIES)
+        for object_type, proccode in (
+            (TORKAN_TYPE, INIT_TORKAN_PROCCODE),
+            (KAPI_TYPE, INIT_KAPI_PROCCODE),
+            (TERRAZI_TYPE, INIT_TERRAZI_PROCCODE),
+            (GARU_ZAKATO_TYPE, INIT_GARU_ZAKATO_PROCCODE),
+        )
     ]
-    # The current family's group size, set only on a fresh spawn (below): 1 for every solo family, 2
-    # for the Jara pair entry (offset 18, whose two-slot window brings in one shooter + one silent).
-    set_count = [
+    place = [
+        blocks.set_var("slot index", SLOT_INDEX_ID, variable("pending object slot", PENDING_OBJECT_SLOT_ID)),
         blocks.if_reporter(
-            blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(index)),
-            [blocks.set_var("formation count", FORMATION_COUNT_ID, number(count))],
-        )
-        for index, (_family_type, _offset, count) in enumerate(DEBUG_SPAWN_FAMILIES)
-    ]
-
-    # Any flying enemy already on the field?  (OR over the six flying slots — family-agnostic, so the
-    # spawned enemy, whatever family, lives out its life before the next one arrives.)
-    present = None
-    for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1):
-        occupied = blocks.op_not(
-            blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)), number(0))
-        )
-        present = occupied if present is None else blocks.op_or(present, occupied)
-    # AIR-11: also wait on the Bacura band (17-32). The Bacura lives in its OWN band, not the flying pool,
-    # so without this the cursor would flash past the Bacura entry while a slab is still drifting (the same
-    # family of trap as the PR-A homer stall). A live Bacura is invulnerable and self-culls off the bottom,
-    # so this is a BOUNDED wait, not a permanent stall. The `clear` step below deliberately does NOT wipe
-    # the band — the slab is left to drift off on its own (which also lets the operator exercise the #77
-    # shot-bounce on it in isolation before it leaves).
-    for slot in range(BACURA_SLOTS[0], BACURA_SLOTS[1] + 1):
-        occupied = blocks.op_not(
-            blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)), number(0))
-        )
-        present = occupied if present is None else blocks.op_or(present, occupied)
-
-    branch = blocks.add("control_if_else")
-    blocks.blocks[branch]["inputs"]["CONDITION"] = [2, present]
-    blocks.blocks[present]["parent"] = branch
-    # An enemy is alive: spawn nothing more this tick (keep it a solo).
-    blocks.substack(branch, [blocks.set_var("formation count", FORMATION_COUNT_ID, number(0))])
-    # Field empty: clear the flying slots and bring in this family's group (count 1, or 2 for the Jara
-    # pair) from the top, then advance the family index. Free each slot the same way `cull slot` does —
-    # BOTH `slot type` and `slot state` to 0 — so no slot is left type-empty but state-stale (a
-    # half-freed slot the walk could misread). This wipes any live flying enemy on the field with no
-    # explosion or score, which is the intended cost of the one-at-a-time isolation (the operator sees a
-    # clean single enemy or pair); the playtest checklist notes it so it does not read as a bug.
-    clear = [
-        block
-        for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1)
-        for block in (
-            blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0)),
-            blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
-        )
-    ]
-    advance_index = blocks.set_var_expr(
-        "debug spawn index",
-        DEBUG_SPAWN_INDEX_ID,
-        blocks.op_mod(
-            blocks.op_add(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(1)),
-            number(len(DEBUG_SPAWN_FAMILIES)),
+            blocks.op_eq(_cur_item(blocks, "slot type", SLOT_TYPE_ID), number(0)),
+            [
+                # The flying inits stamp `walk type` as the slot's type (the Garu stamps its own constant).
+                blocks.set_var("walk type", WALK_TYPE_ID, pending()),
+                blocks.if_reporter(
+                    blocks.op_eq(pending(), number(BONUS_FLAG_TYPE)), _ground_seed_flag(blocks)
+                ),
+                *flying_inits,
+            ],
         ),
-    )
-    # AIR-08: the Garu Zakato is not in the flying type table, so the formation spawner (which runs right
-    # after this) cannot bring it in — its DEBUG_SPAWN_FAMILIES count is 0. Stamp it directly into the
-    # first flying slot instead (INIT_GARU_ZAKATO draws its own random lateral column), so holding T shows
-    # a solo Garu that flies straight and detonates. Guarded on its family index; runs on the fresh spawn
-    # only, before the index advances. This is the same standing reachability tool the base slow/closeY
-    # Zakato lean on (debug-key-only until later areas are wired); the natural add_object spawn (areas
-    # 9/10/14) is a documented follow-up.
-    garu_debug_index = next(
-        index for index, (family_type, _offset, _count) in enumerate(DEBUG_SPAWN_FAMILIES) if family_type == GARU_ZAKATO_TYPE
-    )
-    garu_stamp = blocks.if_reporter(
-        blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(garu_debug_index)),
-        [
-            blocks.set_var("slot index", SLOT_INDEX_ID, number(FLYING_SLOTS[0])),
-            blocks.call_proc(INIT_GARU_ZAKATO_PROCCODE, warp=True),
-        ],
-    )
-    # AIR-11: the Bacura is likewise not in the flying type table (it has its own band, spawned live by the
-    # area schedule), so its DEBUG_SPAWN_FAMILIES count is 0 and the formation spawner brings it in nothing.
-    # Stamp one slab directly into the FIRST BACURA-band slot instead (INIT_BACURA draws its own random
-    # lateral column and enters at the top), so holding T shows a solo slab that drifts down and can't be
-    # destroyed. Guarded on its family index; runs on the fresh spawn only, before the index advances.
-    bacura_debug_index = next(
-        index for index, (family_type, _offset, _count) in enumerate(DEBUG_SPAWN_FAMILIES) if family_type == BACURA_TYPE
-    )
-    bacura_stamp = blocks.if_reporter(
-        blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(bacura_debug_index)),
-        [
-            blocks.set_var("slot index", SLOT_INDEX_ID, number(BACURA_SLOTS[0])),
-            blocks.call_proc(INIT_BACURA_PROCCODE, warp=True),
-        ],
-    )
-    # AIR-09: the Sheonite is a schedule-spawned PAIR, not a formation type, so its count is 0 and the
-    # formation spawner brings it in nothing. Stamp BOTH halves directly (right into 0x3f, left into 0x3e)
-    # — the same slots the natural sheonite_start uses — so holding T shows the escort pair on demand. The
-    # debug stamp ALSO pre-arms the end-flag (=1) so the pair completes its whole lifecycle and self-culls
-    # (dock -> right retreats off the top, left vanishes); without it the pair would lock beside the craft
-    # forever and stall the T cursor (the PR-A homer-stall trap). The `clear` step above has already wiped
-    # the flying slots this fresh-spawn tick, so the two stamps land in freshly-empty slots. Guarded on the
-    # right family index; runs on the fresh spawn only, before the index advances.
-    sheonite_debug_index = next(
-        index for index, (family_type, _offset, _count) in enumerate(DEBUG_SPAWN_FAMILIES) if family_type == RIGHT_SHEONITE_TYPE
-    )
-    sheonite_stamp = blocks.if_reporter(
-        blocks.op_eq(variable("debug spawn index", DEBUG_SPAWN_INDEX_ID), number(sheonite_debug_index)),
-        [
-            *_stamp_sheonite(blocks, SHEONITE_RIGHT_SLOT, RIGHT_SHEONITE_TYPE, -1),
-            *_stamp_sheonite(blocks, SHEONITE_LEFT_SLOT, LEFT_SHEONITE_TYPE, +1),
-            blocks.set_var("sheonite end flag", SHEONITE_END_FLAG_ID, number(1)),
-        ],
-    )
-    blocks.substack(
-        branch,
-        [*clear, *set_count, garu_stamp, bacura_stamp, sheonite_stamp, advance_index],
-        name="SUBSTACK2",
-    )
-    blocks.substack(gate, [*set_offset, branch])
-    blocks.chain(definition, [gate])
-
-
-def install_debug_ground_spawn(blocks: Blocks) -> None:
-    # ENGINE-TODO(#119): remove this temporary debug ground key (and its locked-spec control-mapping amendment)
-    # once every ground family is built and playtested, so reachability no longer needs it.
-    # DEBUG / TEMPORARY (tracked for removal): the ground analog of the T key. Ground objects only enter by
-    # scrolling up from the area schedule — a narrow, one-shot, non-repeatable window — so a specific ground
-    # family (a five-slot Boza composite especially) is impractical to reach for a bomb test. While the debug
-    # ground key (G) is held, CYCLE through the built ground families ONE AT A TIME: each tick, if any ground
-    # slot is occupied, stamp nothing (let the current family scroll down / crater / cull); otherwise clear the
-    # ground band, stamp the CURRENT family (`debug ground index` selects the DEBUG_GROUND_FAMILIES entry) at the
-    # band base in a central lateral column via the SHARED seed builders, and ADVANCE the index (mod len) so the
-    # next fresh spawn is the next family — holding G walks Barra -> ... -> Boza -> (wrap). It self-gates on the
-    # key, so normal play is untouched when G is not held. Called in the walk AFTER the ground walk (so the
-    # field-empty gate reads the fully-settled post-cull band) and outside the ADVANCE_AREA -> ADVANCE_SLOTS
-    # pair the area clock requires stay adjacent; a fresh stamp scrolls on the NEXT walk (an immaterial one-tick
-    # delay for a top-of-field spawn) and then travels toward the craft to be bombed. It defers to any scheduled
-    # ground object (only fills a genuinely empty field). Ground objects always scroll down and cull off the
-    # field (a crater too), so the "let it live" wait is BOUNDED — the cursor never stalls. Reachability recurs for every
-    # future ground family (each just appends one DEBUG_GROUND_FAMILIES entry, no new key), so this stays a dev
-    # tool until they are all built and playtested, then it is removed (it amends the locked control mapping —
-    # see core-game-systems.md and issue #119).
-    definition = _install_warp_proc(blocks, DEBUG_GROUND_SPAWN_PROCCODE)
-    gate = blocks.add("control_if_else")
-    pressed = blocks.key_pressed(gate, DEBUG_GROUND_KEY)
-    blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
-
-    # Any ground object already on the field? (OR over the whole ground band — family-agnostic, so whatever
-    # family is spawned lives out its scroll/crater before the next arrives. A bombed family keeps a non-zero
-    # `slot type` while its crater scrolls, so it too holds the cursor until it culls — a bounded wait.)
-    present = None
-    for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1):
-        occupied = blocks.op_not(
-            blocks.op_eq(blocks.list_item("slot type", SLOT_TYPE_ID, number(slot)), number(0))
-        )
-        present = occupied if present is None else blocks.op_or(present, occupied)
-    field_empty = blocks.op_not(present)
-
-    # Field empty: free the whole ground band the same way `cull slot` does — BOTH `slot type` and `slot state`
-    # to 0 — so no slot is left type-empty but state-stale (a half-freed slot the walk could misread). The
-    # field-empty gate means nothing live is wiped; this is belt-and-suspenders against a stale state byte,
-    # matching the T-key tool.
-    clear = [
-        block
-        for slot in range(GROUND_SLOTS[0], GROUND_SLOTS[1] + 1)
-        for block in (
-            blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0)),
-            blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
-        )
+        blocks.set_var("pending object type", PENDING_OBJECT_TYPE_ID, number(0)),
     ]
-    # One stamp branch per family, guarded on the current index; exactly one runs on a fresh spawn. Each uses the
-    # SAME seed builders as the schedule ingest (via _debug_ground_seed), so the debug spawn is faithful.
-    stamps = [
-        blocks.if_reporter(
-            blocks.op_eq(variable("debug ground index", DEBUG_GROUND_INDEX_ID), number(index)),
-            _debug_ground_seed(blocks, family_type, shape),
-        )
-        for index, (family_type, shape) in enumerate(DEBUG_GROUND_FAMILIES)
-    ]
-    advance_index = blocks.set_var_expr(
-        "debug ground index",
-        DEBUG_GROUND_INDEX_ID,
-        blocks.op_mod(
-            blocks.op_add(variable("debug ground index", DEBUG_GROUND_INDEX_ID), number(1)),
-            number(len(DEBUG_GROUND_FAMILIES)),
-        ),
-    )
-    spawn = blocks.if_reporter(field_empty, [*clear, *stamps, advance_index])
-    # ISOLATION (parity with the T key): while G is held, suppress the normal enemy stream so ONLY the debug
-    # ground family is on screen — otherwise the operator cannot focus on the family under test. Three sources
-    # feed the field, so all three are stopped while G is held: (a) the flying formation spawner — zero
-    # `formation count` (SPAWN_FLYING runs right after this in the walk and brings in nothing) and clear the
-    # flying band so any in-flight wave vanishes; (b) the Bacura pump — its walk call is gated on G-not-held
-    # (see the tick loop), and the band is cleared here so any drifting slab goes; (c) the area schedule's own
-    # add_ground_object stamps — gated on G-not-held in `_consume_schedule`, so the debug family is the sole
-    # ground object. The clears drop live enemies with no explosion or score, the intended cost of the
-    # one-at-a-time isolation (the checklist notes it so it does not read as a bug). All of this is scoped to
-    # the key-held gate, so normal play is untouched when G is not held.
-    suppress_air = [
-        blocks.set_var("formation count", FORMATION_COUNT_ID, number(0)),
-        *[
-            block
-            for slot in range(FLYING_SLOTS[0], FLYING_SLOTS[1] + 1)
-            for block in (
-                blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0)),
-                blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
-            )
-        ],
-        *[
-            block
-            for slot in range(BACURA_SLOTS[0], BACURA_SLOTS[1] + 1)
-            for block in (
-                blocks.list_replace("slot type", SLOT_TYPE_ID, number(slot), number(0)),
-                blocks.list_replace("slot state", SLOT_STATE_ID, number(slot), number(0)),
-            )
-        ],
-    ]
-    # BOSS-01 (andor.lifecycle #94): the Andor boss holds position and never scrolls off, so — unlike every other
-    # debug family, whose scroll-off the field-empty gate simply waits out — it would jam the cursor forever. Give
-    # it an explicit DISMISS, but one that does NOT fire on the same press that armed it (that self-dismiss left the
-    # boss torn down off-screen before it could descend — it never appeared). Two conditions:
-    #   (a) a FRESH G press (rising edge) — `debug ground key held` was 0 last tick — so simply HOLDING G lets the
-    #       composite descend and hold instead of being dismissed every tick; and
-    #   (b) the boss was ALREADY up at the START of this tick — its master slot is read HERE, before `spawn` runs,
-    #       so the press that arms the boss (master slot still 0 at this point) reads not-present and does not dismiss.
-    # It therefore runs BEFORE `spawn` in the pressed branch. A second G press (after a release) tears the composite
-    # down so the master proc frees the field and the cursor can advance to the next family.
-    master_slot = GROUND_SLOTS[0] + len(ANDOR_GENESIS_DATA)
-    rising = blocks.op_eq(
-        variable("debug ground key held", DEBUG_GROUND_KEY_HELD_ID), number(0)
-    )
-    boss_present = blocks.op_eq(
-        blocks.list_item("slot type", SLOT_TYPE_ID, number(master_slot)),
-        number(ANDOR_MASTER_TYPE),
-    )
-    dismiss = blocks.if_reporter(
-        blocks.op_and(rising, boss_present),
-        [blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(1))],
-    )
-    # Pressed branch: dismiss FIRST (it must read the pre-spawn master slot), then record that G is held so the next
-    # held tick is not a rising edge, then suppress the normal stream and run the field-empty spawn/cycle.
-    blocks.substack(
-        gate,
-        [
-            dismiss,
-            blocks.set_var("debug ground key held", DEBUG_GROUND_KEY_HELD_ID, number(1)),
-            *suppress_air,
-            spawn,
-        ],
-    )
-    # Released branch: clear the held sample so the next press registers as a fresh rising edge (a deliberate dismiss).
-    blocks.substack(
-        gate,
-        [blocks.set_var("debug ground key held", DEBUG_GROUND_KEY_HELD_ID, number(0))],
-        name="SUBSTACK2",
-    )
-    blocks.chain(definition, [gate])
-
-
-def install_debug_pause(blocks: Blocks) -> None:
-    # ENGINE-TODO(#119): remove this temporary debug pause key (and its locked-spec control-mapping amendment)
-    # once the ground families are built and playtested, alongside the T and G debug keys.
-    # DEBUG / TEMPORARY (tracked for removal): a freeze/resume TOGGLE on the pause key (P) so the operator can
-    # stop the screen and take a screenshot of a ground-enemy issue without playing on. It is a TAP toggle, not
-    # hold-to-pause, so both hands are free for an OS screenshot: each tick this proc samples P and flips
-    # `debug paused` on the RISING edge only (P down now, up last tick), tracked via `debug pause key held`.
-    # `debug paused` gates the walk-loop body (the body runs only while it is 0), and this toggle proc is called
-    # in the walk OUTSIDE that gate so a second tap can always resume. Both new vars default to 0, and the
-    # harness never presses P, so `debug paused` stays 0 there and the build stays deterministic. It amends the
-    # locked control mapping — see core-game-systems.md and issue #119.
-    definition = _install_warp_proc(blocks, DEBUG_PAUSE_PROCCODE)
-    gate = blocks.add("control_if_else")
-    pressed = blocks.key_pressed(gate, DEBUG_PAUSE_KEY)
-    blocks.blocks[gate]["inputs"]["CONDITION"] = [2, pressed]
-
-    # P held down this tick: on the RISING edge only (held == 0 last tick) flip paused (1 - paused), then
-    # remember P is down so holding it does not re-toggle every tick.
-    rising = blocks.if_reporter(
-        blocks.op_eq(variable("debug pause key held", PAUSE_KEY_HELD_ID), number(0)),
-        [
-            blocks.set_var_expr(
-                "debug paused",
-                PAUSED_ID,
-                blocks.op_sub(number(1), variable("debug paused", PAUSED_ID)),
-            )
-        ],
-    )
-    blocks.substack(
-        gate,
-        [rising, blocks.set_var("debug pause key held", PAUSE_KEY_HELD_ID, number(1))],
-    )
-    # P up: clear the held sample so the next press is a fresh rising edge.
-    blocks.substack(
-        gate,
-        [blocks.set_var("debug pause key held", PAUSE_KEY_HELD_ID, number(0))],
-        name="SUBSTACK2",
-    )
+    gate = blocks.if_reporter(blocks.op_gt(pending(), number(0)), place)
     blocks.chain(definition, [gate])
 
 
 def install_coin_poll(blocks: Blocks) -> None:
     # CAB-02: the coin poll — a warp custom block called every tick by the Stage's always-on coin loop (a
     # green-flag `forever`, unlike the walk which only runs while `playing`; coins must register in every
-    # state — title, attract-scores, and the demo). Mirrors the P-key debug toggle's rising-edge pattern:
+    # state — title, attract-scores, and the demo). A rising-edge sample:
     # each tick sample C; on the RISING edge only (`coin key held` == 0 last tick) add one credit, then
     # remember C is down so holding it does not add a credit every tick. Faithful to
     # `sub_fn_4__handle_credits_and_start` (`src/xevious_sub.68k` 171-206): the credit is added only while
@@ -9169,38 +9101,38 @@ def _row_of(blocks: Blocks, name: str, var_id: str) -> str:
 
 
 def _area_checkpoint(blocks: Blocks) -> list[str]:
-    # ARCH-5 (slice 18) / AREA-01 (slice 20): the near-end checkpoint, projected (see
-    # AREA_CHECKPOINT_PROJECTION). `checkpoint progress` = the frozen death-tick progress + the 44 ticks the
-    # arcade keeps scrolling; if that passes completion, the area advances and the projection carries
-    # (-AREA_COUNTER_WRAP), exactly as the walk's completion does; then a projected row in [0x0E, 0x43]
-    # advances the area (again). One source, used by the new-life area re-top (`area_reset`) AND the
-    # two-player alternation handoff (`death complete`), so the two sites can never drift. Returns statements.
-    project = blocks.set_var_expr(
-        "checkpoint progress",
-        CHECKPOINT_PROGRESS_ID,
-        blocks.op_add(variable("area progress", AREA_PROGRESS_ID), number(AREA_CHECKPOINT_PROJECTION)),
-    )
-    completes = blocks.if_reporter(
-        blocks.greater(
-            None, "checkpoint progress", CHECKPOINT_PROGRESS_ID, AREA_COMPLETE_PROGRESS - 1
-        ),
-        [
-            _advance_area_number(blocks),
-            blocks.change_var("checkpoint progress", CHECKPOINT_PROGRESS_ID, -AREA_COUNTER_WRAP),
-        ],
-    )
+    # ARCH-5 (slice 18) / AREA-01 (slice 20) / #158 (slice 21): the near-end checkpoint. The walk keeps
+    # scrolling through the explosion window, so by the time a new life re-tops, `area progress` is where the
+    # arcade reads it (`main_gameplay_loop` 507-521) — any completion inside the window has already been carried
+    # by the walk itself. A row in [0x0E, 0x43] advances the area. One source, used by the new-life area re-top
+    # (`area_reset`) AND the two-player alternation handoff (`death complete`), so the two sites can never
+    # drift. Returns statements.
     near_end = blocks.op_and(
         blocks.op_gt(
-            _row_of(blocks, "checkpoint progress", CHECKPOINT_PROGRESS_ID),
+            _row_of(blocks, "area progress", AREA_PROGRESS_ID),
             number(AREA_CHECKPOINT_LOW_EXCL),
         ),
         blocks.op_gt(
             number(AREA_CHECKPOINT_HIGH_EXCL),
-            _row_of(blocks, "checkpoint progress", CHECKPOINT_PROGRESS_ID),
+            _row_of(blocks, "area progress", AREA_PROGRESS_ID),
         ),
     )
-    band = blocks.if_reporter(near_end, [_advance_area_number(blocks)])
-    return [project, completes, band]
+    return [blocks.if_reporter(near_end, [_advance_area_number(blocks)])]
+
+
+def _ai_death_drop(blocks: Blocks) -> list[str]:
+    # DIF-01 (slice 21 review fix): the per-death AI drop (xevious_main.68k 522-533): `ai level` less
+    # AI_DEATH_DROP, floored at 0 (`sub.b` then `clr.b` on the borrow). The arcade runs it once per real-game
+    # death, the last included, on the scroll-disabled path a demo never reaches (the demo ends as scroll is
+    # disabled, 1326-1334) — so the port runs it from `death complete`, which only a real game sends. It lowers the
+    # level of the player who died: in two-player the swap (`next_player` 674) comes after it. Returns statements.
+    return [
+        blocks.change_var("ai level", AI_LEVEL_ID, -AI_DEATH_DROP),
+        blocks.if_reporter(
+            blocks.op_lt(variable("ai level", AI_LEVEL_ID), number(0)),
+            [blocks.set_var("ai level", AI_LEVEL_ID, number(0))],
+        ),
+    ]
 
 
 def _set_scroll_row(blocks: Blocks) -> str:
@@ -9262,7 +9194,7 @@ def _enter_area_top(blocks: Blocks) -> list[str]:
         blocks.set_var("bacura inc cnt", BACURA_INC_CNT_ID, number(0)),
         blocks.set_var("one second cntr", ONE_SECOND_CNTR_ID, number(0)),
         # AIR-09: clear the Sheonite end-flag at each area entry so a raised flag never bleeds across an
-        # area boundary or a respawn (the natural sheonite_start also clears it, but a debug pre-arm or a
+        # area boundary or a respawn (the natural sheonite_start also clears it, but a
         # partial run must not carry a stuck "time to leave" into the next area).
         blocks.set_var("sheonite end flag", SHEONITE_END_FLAG_ID, number(0)),
         # AREA-01 (slice 20): the strips' state for the re-topped clock, and the strips draw it.
@@ -9280,10 +9212,15 @@ def _select_formation(blocks: Blocks, index_value: Any) -> list[str]:
     # `item N of list` returns "" (not 0) for N outside 1..len, silently poisoning arithmetic, so
     # the assignment is GUARDED on BOTH bounds: an out-of-domain index leaves the prior formation
     # unchanged (no faithful ROM-adjacent value exists to fabricate). The build-time fixture in
-    # tests/test_spec_docs.py proves the real committed schedules never leave the domain under this
-    # slice's full dynamics (raises, set-formation, AND DIF-02's un-folded score adjust at its
-    # worst-case cap), so the guard is a defensive dead branch; a future schedule/DIP change that
-    # broke that margin would redden that fixture, not fail silently here.
+    # tests/test_spec_docs.py proves the real committed schedules never leave the domain under the
+    # full dynamics (raises, set-formation, AND DIF-02's un-folded score adjust at its cap), so in
+    # play the guard is a dead branch; a future schedule/DIP change that broke that margin would
+    # redden that fixture, not fail silently here. The one way past it is DIF-02's uncapped escape
+    # (a quotient of 0x8000 or more, from 8,000,000 points on ship number 1, or a ship number wrapped to 0
+    # after 255 craft): the byte-wrapped level can then fold to 0x80-0xBF, where the arcade reads on past the
+    # normal table into the 64 entries stored after it (the super table's lead-in and first entries,
+    # xevious_sub.68k 451-459). The extracted table (formations.json) stops at 127, so there the guard
+    # keeping the prior formation is a port necessity (record 056 item 4).
     if isinstance(index_value, str):
         set_index = blocks.set_var_expr("formation index", FORMATION_INDEX_ID, index_value)
     else:
@@ -9316,14 +9253,11 @@ def _select_formation(blocks: Blocks, index_value: Any) -> list[str]:
 
 
 # GND ground-object seed builders — the block sequences that stamp a ground family into its band slot(s).
-# Shared by the schedule ingest (`_consume_schedule`, driven by the area-schedule cursor) and the debug
-# ground key (`install_debug_ground_spawn`, driven by fixed debug constants), so both paths seed a family
-# identically. Each takes zero-arg callables that return a FRESH reporter per call — a reporter attaches to
+# Used by the schedule ingest (`_consume_schedule`, driven by the area-schedule cursor). Each takes zero-arg
+# callables that return a FRESH reporter per call — a reporter attaches to
 # only one parent, so reusing one would silently steal it (the same rule the cursor accessors follow):
 # `slot`/`slot_next`/`slot_at(i)` give the ground-band target slot(s), `type_val` the object type, and
-# `sprite_y` the lateral sprite row. The schedule ingest passes its cursor accessors; the debug key passes
-# `lambda`s over debug constants. Emitted block order matches the former inline lists, so the schedule
-# path's generated blocks are unchanged by this extraction.
+# `sprite_y` the lateral sprite row. The schedule ingest passes its cursor accessors.
 def _ground_seed_single(blocks: Blocks, *, slot, type_val, sprite_y) -> list[str]:
     # GND (area.ground-dispatch #69): a single-slot ground object (Barra 0x1E, Zolbak 0x1F, Logram 0x26,
     # Derota 0x1B). Mirrors sub_2_fn_1__ground_object ($073F: it sets only _TYPE and _Y, leaving _X = 0 at
@@ -9733,15 +9667,14 @@ def _ground_seed_andor(blocks: Blocks, *, base: int, port_fire_mask) -> list[str
     #     bomb sweep skips them for free; still aligned/drawn (dispatch + render key off `slot type`).
     #   * core         -> ACTIVE + `slot pts` = ANDOR_CORE_PTS (4,000 on a direct bomb).
     #   * gun ports    -> ACTIVE + `slot pts` = ANDOR_PORT_PTS (1,000 on a direct bomb) + `slot fire mask`
-    #     (from the caller's factory: the live stage var, or the debug forced 47) + `slot fire timer` = the
+    #     (from the caller's factory: the live schedule-set stage var) + `slot fire timer` = the
     #     arcade's fixed init 1 (the mask drives the post-fire reload, not this seed).
     #   * master       -> ACTIVE, `slot pts` DELIBERATELY LEFT UN-SEEDED so it carries the previous tenant's
     #     value: the arcade never inits obj-15's `_PTS`, so a bomb on the co-located core awards the core's 4,000
     #     AND the master's stale leftover (the documented shell-slot bug — see C3, which tracks the master onto
     #     the core each tick so the bomb lands on it).
-    # `port_fire_mask()` returns a FRESH reporter per call (one per port). Shared by the debug key and the live
-    # schedule opcode, so the debug arm is the scheduled arm's exact shape (the lateral is a boss constant, not a
-    # schedule column); only the fire-mask SOURCE differs (debug forces 47, live reads the schedule-set var).
+    # `port_fire_mask()` returns a FRESH reporter per call (one per port). The lateral is a boss constant, not a
+    # schedule column.
     seed: list[str] = [
         blocks.set_var("andor master x", ANDOR_MASTER_X_ID, number(ANDOR_START_X)),
         blocks.set_var("andor master y", ANDOR_MASTER_Y_ID, number(ANDOR_LATERAL_Y)),
@@ -9796,100 +9729,34 @@ def _ground_seed_andor(blocks: Blocks, *, base: int, port_fire_mask) -> list[str
     return seed
 
 
-def _debug_ground_seed(blocks: Blocks, family_type: int, shape: str) -> list[str]:
-    # DEBUG (tracked for removal #119): build ONE ground family's spawn from fixed debug constants — the band
-    # base slot and a central lateral column (DEBUG_GROUND_SPRITE_Y) — through the SAME shared seed builders the
-    # area schedule uses, so a debug-stamped family is the scheduled family's exact shape (only the slot and
-    # column are fixed, not the behaviour). `shape` picks the builder. Each factory returns a FRESH reporter per
-    # call (a reporter attaches to one parent only — reuse silently steals it), exactly as the cursor accessors do.
-    base = GROUND_SLOTS[0]
-    type_val = lambda: number(family_type)
-    sprite_y = lambda: number(DEBUG_GROUND_SPRITE_Y)
-    if shape == "single":
-        return _ground_seed_single(
-            blocks, slot=lambda: number(base), type_val=type_val, sprite_y=sprite_y
-        )
-    if shape == "garu":
-        return _ground_seed_garu(
-            blocks,
-            slot=lambda: number(base),
-            slot_next=lambda: number(base + 1),
-            type_val=type_val,
-            sprite_y=sprite_y,
-        )
-    if shape == "garu_derota":
-        return _ground_seed_garu_derota(
-            blocks,
-            slot=lambda: number(base),
-            slot_next=lambda: number(base + 1),
-            type_val=type_val,
-            sprite_y=sprite_y,
-        )
-    if shape == "boza":
-        return _ground_seed_boza(
-            blocks, slot_at=lambda i: number(base + i), type_val=type_val, sprite_y=sprite_y
-        )
-    if shape == "domogram":
-        # GND-07 (#89): the debug spawn cannot carry a scripted path (the path columns live only in the schedule),
-        # so seed with an EMPTY path (count 0 -> the follower holds its vector forever) and directly seed a
-        # representative diagonal vector (DOMOGRAM_DEBUG_VECTOR_INDEX: scroll-matched depth + lateral drift), so
-        # the operator sees a Domogram cross the field and fire without needing the full schedule path decode.
-        return _ground_seed_domogram(
-            blocks,
-            slot=lambda: number(base),
-            sprite_y=sprite_y,
-            path_start=lambda: number(0),
-            path_count=lambda: number(0),
-        ) + [
-            blocks.list_replace(
-                "slot dx", SLOT_DX_ID, number(base),
-                number(DOMOGRAM_VECTOR_DX[DOMOGRAM_DEBUG_VECTOR_INDEX]),
-            ),
-            blocks.list_replace(
-                "slot dy", SLOT_DY_ID, number(base),
-                number(DOMOGRAM_VECTOR_DY[DOMOGRAM_DEBUG_VECTOR_INDEX]),
-            ),
-        ]
-    if shape == "flag":
-        # SEC-02 (secrets.bonus-flag #91): the Bonus Flag spawns through the arcade `add_object` path, not
-        # `add_ground_object`, so it has NO fixed lateral column. handle_54_Bonus_Flag ($1F5C) inits it via
-        # gen_rnd_spriteY — a craft-excluding random lateral, exactly _draw_spawn_column(exclude_craft=True) —
-        # then CODE=0 (invisible) and points to the reveal on the next tick. The port models it as a single
-        # ground slot that scrolls hidden until a bomb reveals+scores it (shared ground detector) and is then
-        # collected by fly-over (`update bonus flag`). Seed it here through the SAME bounded random-lateral draw
-        # the flying spawners use (writing `slot y` at `slot index`), then — ONLY if the draw accepted a column
-        # (`spawn found`, so a rejected/exhausted draw leaves the band empty to retry next tick) — stamp the
-        # slot ACTIVE + HIDDEN phase, x=0 (top of field, scrolled DOWN by `advance ground`), the 1,000-pt value
-        # the shared detector scores at reveal, timer zeroed. `slot index` is set here because _draw_spawn_column
-        # and the stamp both address the current slot; the walk has already finished when the debug spawn runs.
-        reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=True)
-        return [
-            blocks.set_var("slot index", SLOT_INDEX_ID, number(base)),
-            *reset,
-            draw_loop,
-            blocks.if_reporter(
-                blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
-                [
-                    _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(family_type)),
-                    _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
-                    _set_cur_item(blocks, "slot x", SLOT_X_ID, number(0)),
-                    _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(FLAG_HIDDEN_PHASE)),
-                    _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(BONUS_FLAG_PTS)),
-                    _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
-                ],
-            ),
-        ]
-    if shape == "andor":
-        # BOSS-01 (andor.lifecycle #94): the whole 15-part composite arms at once into the ground band, so unlike
-        # the other shapes it ignores the fixed single-slot column and stamps slots base+1..base+15 directly.
-        # BOSS-02 (#95): under a fresh hold-G no `fire_mask_andor_genesis` schedule record has run, so the stage
-        # var would be 0 and give a degenerate fastest-fire. Force the ports to the real arcade mask 47 here so
-        # the operator's live playtest exercises the true (non-contiguous) fire cadence; live area schedules set
-        # 47 or 15 per area from the var, and the static harness pins the numeric correctness regardless.
-        return _ground_seed_andor(
-            blocks, base=base, port_fire_mask=lambda: number(ANDOR_GENESIS_DEBUG_FIRE_MASK)
-        )
-    raise ValueError(f"unknown debug ground seed shape: {shape!r}")
+def _ground_seed_flag(blocks: Blocks) -> list[str]:
+    # SEC-02 (secrets.bonus-flag #91): the Bonus Flag spawns through the arcade `add_object` path, not
+    # `add_ground_object`, so it has NO fixed lateral column. handle_54_Bonus_Flag ($1F5C) inits it via
+    # gen_rnd_spriteY — a craft-excluding random lateral, exactly _draw_spawn_column(exclude_craft=True) —
+    # then CODE=0 (invisible) and points to the reveal on the next tick. The port models it as a single
+    # ground slot that scrolls hidden until a bomb reveals+scores it (shared ground detector) and is then
+    # collected by fly-over (`update bonus flag`). Seed the slot at `slot index` (the caller sets it — the walk has
+    # finished when either caller runs) through the SAME bounded random-lateral draw the flying spawners use, then
+    # — ONLY if the draw accepted a column (`spawn found`) — stamp the slot ACTIVE + HIDDEN phase, x=0 (top of
+    # field, scrolled DOWN by `advance ground`), the 1,000-pt value the shared detector scores at reveal, timer
+    # zeroed. Called by the add_object placement (AREA-02 #166, the flag's only natural spawn);
+    # an exhausted draw (SPAWN_DRAW_ATTEMPTS, the recorded bounded-draw port necessity) stamps nothing.
+    reset, draw_loop = _draw_spawn_column(blocks, exclude_craft=True)
+    return [
+        *reset,
+        draw_loop,
+        blocks.if_reporter(
+            blocks.op_eq(variable("spawn found", SPAWN_FOUND_ID), number(1)),
+            [
+                _set_cur_item(blocks, "slot type", SLOT_TYPE_ID, number(BONUS_FLAG_TYPE)),
+                _set_cur_item(blocks, "slot state", SLOT_STATE_ID, number(SLOT_ACTIVE)),
+                _set_cur_item(blocks, "slot x", SLOT_X_ID, number(0)),
+                _set_cur_item(blocks, "slot flag", SLOT_FLAG_ID, number(FLAG_HIDDEN_PHASE)),
+                _set_cur_item(blocks, "slot pts", SLOT_PTS_ID, number(BONUS_FLAG_PTS)),
+                _set_cur_item(blocks, "slot timer", SLOT_TIMER_ID, number(0)),
+            ],
+        ),
+    ]
 
 
 def _consume_schedule(blocks: Blocks) -> list[str]:
@@ -9944,19 +9811,6 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         # its destructible node at N+1 (handle_20_Garu_Barra stamps a5 and a5+_OBJSIZE).
         return blocks.op_add(number(GROUND_SLOTS[0] + 1), ground_slot_at_cursor())
 
-    def andor_boss_present() -> str:
-        # DEBUG-summon guard (fresh reporter per call — single-parent rule). True while the Andor
-        # Genesis is on the field: its invisible master occupies Scratch slot GROUND_SLOTS[0] +
-        # len(ANDOR_GENESIS_DATA) for the boss's WHOLE lifecycle (armed by the seed, cleared only by the
-        # master's teardown). Used to keep schedule ground stamps off the boss band across a debug summon
-        # even after G is released — see the add_ground/add_domogram gates below.
-        return blocks.op_eq(
-            blocks.list_item(
-                "slot type", SLOT_TYPE_ID, number(GROUND_SLOTS[0] + len(ANDOR_GENESIS_DATA))
-            ),
-            number(ANDOR_MASTER_TYPE),
-        )
-
     end = blocks.list_item(
         "area schedule end", AREA_SCHEDULE_END_ID, variable("area number", AREA_NUMBER_ID)
     )
@@ -9973,18 +9827,23 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     blocks.blocks[loop]["inputs"]["CONDITION"] = [2, stop]
 
     # DIF-01 raise: add the cabinet increment to the AI level, fold back once at >= 0x80, then
-    # re-select the formation using the new AI level as the table index (no record offset).
+    # re-select the formation using the new AI level as the table index (no record offset). The add is a
+    # byte add (`add.b`, sub 324), so it wraps at 256 before the fold test (slice 21: a re-tune can leave the
+    # level anywhere in the byte).
     raise_body = [
         blocks.set_var_expr(
             "ai level",
             AI_LEVEL_ID,
-            blocks.op_add(
-                variable("ai level", AI_LEVEL_ID),
-                blocks.list_item(
-                    "difficulty increment",
-                    DIFFICULTY_INCREMENT_ID,
-                    number(DIFFICULTY_DIP_INDEX + 1),
+            blocks.op_mod(
+                blocks.op_add(
+                    variable("ai level", AI_LEVEL_ID),
+                    blocks.list_item(
+                        "difficulty increment",
+                        DIFFICULTY_INCREMENT_ID,
+                        number(DIFFICULTY_DIP_INDEX + 1),
+                    ),
                 ),
+                number(AI_LEVEL_WRAP),
             ),
         ),
         blocks.if_reporter(
@@ -9996,41 +9855,70 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     raise_branch = blocks.if_reporter(
         blocks.op_eq(handler_at_cursor(), text(RAISE_HANDLER)), raise_body
     )
-    # DIF-02 score re-tune: add floor(floor(score / 1000) / craft), capped at 16, to the AI level —
-    # so a player scoring heavily with craft in reserve meets sharper pressure. Guarded on craft > 0
-    # (no divide-by-zero). Unlike the raise, the reference does NOT fold this add back.
+    # DIF-02 score re-tune (sub_2_fn_23__adjust_AI_level_based_on_score, sub 344-353): divide the score's
+    # thousands by the ship number and add the quotient, capped at 16, to the AI level — so a player scoring
+    # heavily per craft spent meets sharper pressure. Faithful to the arcade arithmetic:
+    # - the dividend is the BCD thousands word read as binary (`move.w (curr_player_score_msb),d1`): the four
+    #   decimal digits of floor(score / 1000) become hex digits, so 20,000 points divide as 0x20 = 32;
+    # - avg_score_per_solvalou (360-372) gives floor(dividend / ship number), and 0xFFFF for a ship number of 0;
+    # - the cap is a SIGNED word compare (`cmp.w #16; jle`), so a quotient of 0x8000 or more passes uncapped;
+    # - the add is a byte add (`add.b`), so the level wraps at 256, and the re-tune does NOT fold.
+    def thousands_digit(place: int) -> str:
+        return blocks.op_mod(
+            blocks.op_floor(blocks.op_div(variable("score", SCORE_ID), number(1000 * place))),
+            number(10),
+        )
+
+    bcd_thousands = blocks.op_add(
+        blocks.op_add(thousands_digit(1), blocks.op_mul(thousands_digit(10), number(0x10))),
+        blocks.op_add(
+            blocks.op_mul(thousands_digit(100), number(0x100)),
+            blocks.op_mul(thousands_digit(1000), number(0x1000)),
+        ),
+    )
+    divide = blocks.add("control_if_else")
+    zero_divisor = blocks.op_eq(variable("ship number", SHIP_NUMBER_ID), number(0))
+    blocks.blocks[divide]["inputs"]["CONDITION"] = [2, zero_divisor]
+    blocks.blocks[zero_divisor]["parent"] = divide
+    blocks.substack(divide, [blocks.set_var("ai adjust", AI_ADJUST_ID, number(AI_ADJUST_ZERO_DIVISOR))])
+    blocks.substack(
+        divide,
+        [
+            blocks.set_var_expr(
+                "ai adjust",
+                AI_ADJUST_ID,
+                blocks.op_floor(
+                    blocks.op_div(
+                        variable("ai adjust", AI_ADJUST_ID), variable("ship number", SHIP_NUMBER_ID)
+                    )
+                ),
+            )
+        ],
+        name="SUBSTACK2",
+    )
     adjust_branch = blocks.if_reporter(
         blocks.op_eq(handler_at_cursor(), text(ADJUST_HANDLER)),
         [
+            blocks.set_var_expr("ai adjust", AI_ADJUST_ID, bcd_thousands),
+            divide,
             blocks.if_reporter(
-                blocks.op_gt(variable("craft", LIVES_ID), number(0)),
-                [
-                    blocks.set_var_expr(
-                        "ai adjust",
-                        AI_ADJUST_ID,
-                        blocks.op_floor(
-                            blocks.op_div(
-                                blocks.op_floor(
-                                    blocks.op_div(variable("score", SCORE_ID), number(1000))
-                                ),
-                                variable("craft", LIVES_ID),
-                            )
-                        ),
+                blocks.op_and(
+                    blocks.op_gt(variable("ai adjust", AI_ADJUST_ID), number(AI_ADJUST_CAP)),
+                    blocks.op_lt(variable("ai adjust", AI_ADJUST_ID), number(AI_ADJUST_SIGNED_ESCAPE)),
+                ),
+                [blocks.set_var("ai adjust", AI_ADJUST_ID, number(AI_ADJUST_CAP))],
+            ),
+            blocks.set_var_expr(
+                "ai level",
+                AI_LEVEL_ID,
+                blocks.op_mod(
+                    blocks.op_add(
+                        variable("ai level", AI_LEVEL_ID),
+                        variable("ai adjust", AI_ADJUST_ID),
                     ),
-                    blocks.if_reporter(
-                        blocks.op_gt(variable("ai adjust", AI_ADJUST_ID), number(16)),
-                        [blocks.set_var("ai adjust", AI_ADJUST_ID, number(16))],
-                    ),
-                    blocks.set_var_expr(
-                        "ai level",
-                        AI_LEVEL_ID,
-                        blocks.op_add(
-                            variable("ai level", AI_LEVEL_ID),
-                            variable("ai adjust", AI_ADJUST_ID),
-                        ),
-                    ),
-                ],
-            )
+                    number(AI_LEVEL_WRAP),
+                ),
+            ),
         ],
     )
     # FORM-01 set-formation: the record's signed offset IS the table index (no AI level added).
@@ -10061,9 +9949,8 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         [blocks.set_var_expr("ground stop firing row", GROUND_STOP_FIRING_ROW_ID, arg_at_cursor())],
     )
     # GND (area.ground-dispatch #69) + GND-01..05: stamp a ground family into its band slot(s) via the
-    # shared seed builders (_ground_seed_single / _garu / _garu_derota / _boza). The schedule ingest drives
-    # them with the cursor accessors; the debug ground key (install_debug_ground_spawn) drives the same
-    # builders with fixed debug constants. Only families built to date stamp; every other add_ground_object
+    # shared seed builders (_ground_seed_single / _garu / _garu_derota / _boza), driven by the cursor
+    # accessors. Only families built to date stamp; every other add_ground_object
     # record advances the cursor WITHOUT stamping a slot, so no unbuilt family renders a live-but-inert object.
     spawn_ground = _ground_seed_single(
         blocks,
@@ -10149,26 +10036,8 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         path_start=ground_path_start_at_cursor,
         path_count=ground_path_count_at_cursor,
     )
-    # DEBUG / TEMPORARY (tracked for removal, #119): while the G ground-debug key is held, do NOT stamp the
-    # schedule's own add_ground_object records — the debug key owns the ground band so the operator sees one
-    # built family at a time, isolated from normal play. The cursor still advances at the loop's end regardless,
-    # so no schedule record is skipped or replayed; only the stamp is withheld while G is held. When G is not
-    # held this is exactly the original condition, so normal play is untouched.
-    # BOSS-01/02/03 (#94/#95/#96): the stamp is ALSO withheld while a debug-summoned Andor Genesis is present.
-    # The G-held gate alone protected the boss band only while G was down, but the boss DEPARTS after G is
-    # released (its debug dismiss fires on a fresh G press, then the master retreats over the following ticks
-    # with G up); the resuming schedule ground stamps would then land in the boss's own slots and tear the
-    # retreating composite apart plate by plate. Keying the suppression on the master's presence keeps the band
-    # protected across the whole summon (descend/hold/retreat/teardown). Real play is untouched: in areas
-    # 4/9/14 every add_ground_object record fires ABOVE andor_genesis_start and has scrolled off before the boss
-    # arms, so no schedule ground stamp is ever live while the master is present — this is a no-op there.
     add_ground_branch = blocks.if_reporter(
-        blocks.op_and(
-            blocks.op_eq(handler_at_cursor(), text(ADD_GROUND_OBJECT_HANDLER)),
-            blocks.op_not(
-                blocks.op_or(blocks.key_pressed(loop, DEBUG_GROUND_KEY), andor_boss_present())
-            ),
-        ),
+        blocks.op_eq(handler_at_cursor(), text(ADD_GROUND_OBJECT_HANDLER)),
         [
             blocks.if_reporter(is_single_slot_ground, spawn_ground),
             blocks.if_reporter(
@@ -10182,24 +10051,15 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             ),
         ],
     )
-    # GND-07 (ground.domogram #89): the Domogram's own placement handler. Like add_ground_object it is withheld
-    # while the G ground-debug key owns the band (the cursor still advances at the loop end, so no record is
-    # skipped or replayed). The ground-type guard mirrors every other ground family: a real Domogram record
-    # always carries type 0x2E, so this never changes normal play, but it keeps the Domogram spawn keyed off
-    # `area-schedule-ground-type` exactly like the static/Grobda/Garu/Boza branches — so a test (or a debug
-    # aid) that zeroes that column to isolate a scenario suppresses the Domogram uniformly with the rest.
-    # The Domogram stamp is withheld under the same two conditions as add_ground_object above: while G owns the
-    # band, and while a debug-summoned Andor master is present (so a retreating boss is not cannibalised by a
-    # resuming Domogram record after G is released). No-op in real play for the same reason.
+    # GND-07 (ground.domogram #89): the Domogram's own placement handler. The ground-type guard mirrors every
+    # other ground family: a real Domogram record always carries type 0x2E, so this never changes normal play,
+    # but it keeps the Domogram spawn keyed off `area-schedule-ground-type` exactly like the
+    # static/Grobda/Garu/Boza branches — so a test that zeroes that column to isolate a scenario suppresses the
+    # Domogram uniformly with the rest.
     add_domogram_branch = blocks.if_reporter(
         blocks.op_and(
-            blocks.op_and(
-                blocks.op_eq(handler_at_cursor(), text(ADD_DOMOGRAM_HANDLER)),
-                blocks.op_eq(ground_type_at_cursor(), number(DOMOGRAM_TYPE)),
-            ),
-            blocks.op_not(
-                blocks.op_or(blocks.key_pressed(loop, DEBUG_GROUND_KEY), andor_boss_present())
-            ),
+            blocks.op_eq(handler_at_cursor(), text(ADD_DOMOGRAM_HANDLER)),
+            blocks.op_eq(ground_type_at_cursor(), number(DOMOGRAM_TYPE)),
         ),
         spawn_domogram,
     )
@@ -10238,22 +10098,14 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         blocks.op_eq(handler_at_cursor(), text(SHEONITE_END_HANDLER)),
         [blocks.set_var("sheonite end flag", SHEONITE_END_FLAG_ID, number(1))],
     )
-    # BOSS-01 (andor.lifecycle #94): andor_genesis_start (op 76) arms the 15-part composite via the SAME
-    # bulk-arm the debug summon uses (_ground_seed_andor: master anchor at the arcade start, 15 slots stamped,
-    # end flag cleared), and andor_genesis_end (op 77) raises the end flag so the master retreats and tears the
-    # composite down. These records already live in the loaded area schedules (areas 4/9/14 — area 14 has two
-    # start/end pairs); wiring the branches makes real areas spawn and depart the boss. Like add_ground_object
-    # and add_domogram, the arm is withheld while the G ground-debug key owns the band (the cursor still advances
-    # at the loop end, so no record is skipped or replayed) — so a debug-summoned boss is never fought over by a
-    # live schedule record. The end flag write is likewise withheld while G is held, so a live end record cannot
-    # tear down the operator's debug boss mid-inspection; the two stay in sync. BOSS-02/03 (#95/#96): the arm now
-    # also seeds the combat state (armor immunity, core/port score indices, the ports' fire mask + timer) via the
-    # shared `_ground_seed_andor`; the only debug-vs-live difference is the fire-mask SOURCE (see that builder).
+    # BOSS-01 (andor.lifecycle #94): andor_genesis_start (op 76) arms the 15-part composite via the bulk-arm
+    # `_ground_seed_andor` (master anchor at the arcade start, 15 slots stamped, end flag cleared), and
+    # andor_genesis_end (op 77) raises the end flag so the master retreats and tears the composite down. These
+    # records live in the loaded area schedules (areas 4/9/14 — area 14 has two start/end pairs). BOSS-02/03
+    # (#95/#96): the arm also seeds the combat state (armor immunity, core/port score indices, the ports' fire
+    # mask from the schedule-set var + timer).
     andor_start_branch = blocks.if_reporter(
-        blocks.op_and(
-            blocks.op_eq(handler_at_cursor(), text(ANDOR_GENESIS_START_HANDLER)),
-            blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
-        ),
+        blocks.op_eq(handler_at_cursor(), text(ANDOR_GENESIS_START_HANDLER)),
         _ground_seed_andor(
             blocks,
             base=GROUND_SLOTS[0],
@@ -10261,20 +10113,35 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
         ),
     )
     andor_end_branch = blocks.if_reporter(
-        blocks.op_and(
-            blocks.op_eq(handler_at_cursor(), text(ANDOR_GENESIS_END_HANDLER)),
-            blocks.op_not(blocks.key_pressed(loop, DEBUG_GROUND_KEY)),
-        ),
+        blocks.op_eq(handler_at_cursor(), text(ANDOR_GENESIS_END_HANDLER)),
         [blocks.set_var("andor genesis end flag", ANDOR_GENESIS_END_FLAG_ID, number(1))],
     )
-    # ENGINE-TODO: the remaining spawn handler dispatch (add_object for the non-boss scheduled spawns) lands with
-    # the later enemy slices. The DIF/FORM handlers (raise, adjust, set/reset formation, the 8 fire masks,
-    # ground-stop), add_ground_object (the built static + Grobda ground families), add_domogram_with_path
-    # (GND-07), the Sheonite escort pair and the Andor Genesis lifecycle (start/end) are wired above. All eight
-    # fire masks — fire_mask_andor_genesis (op 78) among them — are stored into their Stage vars by `mask_branches`
-    # and now genuinely consumed: the Andor arm captures op 78's var into each gun port's `slot fire mask`, driving
-    # the boss fire-permission gate (slice 16). Any handler still without a branch advances the cursor and counts
-    # the fire only.
+    # AREA-02 (area.add-object-dispatch #166): add_object writes its type into one raw arcade object slot (Scratch
+    # slot = raw + 1). The arcade object pass picks the type up only if that slot is idle, and a busy slot's own
+    # handler clears _TYPE when it frees, so the record is LOST on a busy slot (see ADD_OBJECT_SLOTS). Here only the
+    # idle test runs: an empty slot records the one-tick pending register, which `place pending object` consumes
+    # after the walk; a busy slot drops the record. The cursor advances either way, so no record is replayed.
+    def add_object_target_slot() -> str:
+        return blocks.op_add(number(1), ground_slot_at_cursor())
+
+    add_object_branch = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(handler_at_cursor(), text(ADD_OBJECT_HANDLER)),
+            blocks.op_eq(
+                blocks.list_item("slot type", SLOT_TYPE_ID, add_object_target_slot()), number(0)
+            ),
+        ),
+        [
+            blocks.set_var_expr("pending object type", PENDING_OBJECT_TYPE_ID, ground_type_at_cursor()),
+            blocks.set_var_expr("pending object slot", PENDING_OBJECT_SLOT_ID, add_object_target_slot()),
+        ],
+    )
+    # Every schedule handler is now wired: the DIF/FORM handlers (raise, adjust, set/reset formation, the 8 fire
+    # masks, ground-stop), add_ground_object (the static + Grobda ground families), add_domogram_with_path (GND-07),
+    # the Bacura count pair, the Sheonite escort pair, the Andor Genesis lifecycle (start/end) and add_object. All
+    # eight fire masks — fire_mask_andor_genesis (op 78) among them — are stored into their Stage vars by
+    # `mask_branches` and consumed: the Andor arm captures op 78's var into each gun port's `slot fire mask`, driving
+    # the boss fire-permission gate (slice 16).
     blocks.substack(
         loop,
         [
@@ -10292,6 +10159,7 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
             sheonite_end_branch,
             andor_start_branch,
             andor_end_branch,
+            add_object_branch,
             blocks.change_var("schedule fired", SCHEDULE_FIRED_ID, 1),
             blocks.change_var("schedule cursor", SCHEDULE_CURSOR_ID, 1),
         ],
@@ -10299,23 +10167,48 @@ def _consume_schedule(blocks: Blocks) -> list[str]:
     return [loop]
 
 
+def _check_completion_row_records(
+    rows: list[int] = SCHEDULE_ROWS,
+    starts: list[int] = AREA_SCHEDULE_START,
+    ends: list[int] = AREA_SCHEDULE_END,
+) -> None:
+    # The arcade consumes ONE schedule record per frame (`sub_fn_2__handle_objects` xevious_sub.68k 574-602
+    # executes the record at the pointer and returns), and on the frame the row reaches 0x0E the area
+    # advances right after it (`sub_fn_3__handle_next_area` 696-730, the next entry of the same function
+    # table, 109-119). So at most one record on row 0x0E can ever fire. The port's consume takes every
+    # record on the row in one tick, which matches only while no area holds two on the completion row:
+    # on the committed data only area 13's final formation reset sits there. Spans are 1-based and
+    # inclusive; each `end` is the area's sentinel (row 0x0D), so it is left out.
+    for area_index, (start, end) in enumerate(zip(starts, ends), start=1):
+        on_row = [i for i in range(start, end) if rows[i - 1] == AREA_COMPLETE_ROW]
+        if len(on_row) > 1:
+            raise SystemExit(
+                f"area {area_index} has {len(on_row)} schedule records on the completion row 0x0E; the arcade "
+                "fires only the first before the area advances, and the port's consume would fire them all"
+            )
+
+
 def install_advance_area(blocks: Blocks) -> None:
     # AREA-01/AREA-02 area clock + scheduler: one atomic (warp) pass per tick, called from the walk
-    # thread BEFORE `advance slots` — matching the reference frame order (handle_next_area ->
-    # handle_objects -> object updates) and fixing the PHASE order the enemy slices inherit while
-    # both dispatch bodies are still empty. (Spawning a Logram now draws ONE RNG value here for its
-    # masked-random initial fire delay, mirroring handle_logram_init — the arcade draws at init too; it
-    # runs before the walk phase's own draws, so a Logram-spawn tick shifts that tick's stream by one.)
-    # Advances the monotonic position and derives the row once; then a single `if/else` either completes
-    # the area OR consumes the schedule for this row — never both on one tick. Completion (row 0x0E with
-    # progress > 0, the arcade's two-phase wait) advances 16 -> 7, CARRIES the clock (progress drops by the
-    # counter wrap, so the row stays 0x0E and the scroll continues), and points the terrain column and the
-    # schedule at the new area. It does not re-top the clock or clear the wave registers: the arcade's
-    # `sub_fn_3__handle_next_area` (xevious_sub.68k 696-730) does neither.
+    # thread BEFORE `advance slots`, fixing the PHASE order the enemy slices inherit. (Spawning a Logram
+    # draws ONE RNG value here for its masked-random initial fire delay, mirroring handle_logram_init — the
+    # arcade draws at init too; it runs before the walk phase's own draws, so a Logram-spawn tick shifts
+    # that tick's stream by one.) Advances the monotonic position and derives the row once; then consumes
+    # the schedule for this row, THEN tests completion — the arcade's own order: the sub CPU runs its
+    # function table in index order each frame (table `sub_fn_jump_tbl_ROM` xevious_sub.68k 109-119, loop
+    # `xevious_sub_cpu` 80-106), `sub_fn_2__handle_objects` (574-602) before `sub_fn_3__handle_next_area`
+    # (696-730). So on the tick the row reaches 0x0E
+    # a record on that row still fires for the OUTGOING area before it advances (area 13's final formation
+    # reset, the only one on the committed data; slice 21 soak finding, record 056). Completion (row 0x0E
+    # with progress > 0, the arcade's two-phase wait) advances 16 -> 7, CARRIES the clock (progress drops by
+    # the counter wrap, so the row stays 0x0E and the scroll continues), and points the terrain column and
+    # the schedule at the new area. It does not re-top the clock or clear the wave registers:
+    # `sub_fn_3__handle_next_area` does neither.
+    _check_completion_row_records()
     definition = _install_warp_proc(blocks, ADVANCE_AREA_PROCCODE)
     step = blocks.change_var("area progress", AREA_PROGRESS_ID, AREA_PROGRESS_STEP)
     set_row = _set_scroll_row(blocks)
-    completion = blocks.add("control_if_else")
+    completion = blocks.add("control_if")
     complete = blocks.op_and(
         blocks.var_equals(None, "scroll row", SCROLL_ROW_ID, AREA_COMPLETE_ROW),
         blocks.greater(None, "area progress", AREA_PROGRESS_ID, 0),
@@ -10334,8 +10227,7 @@ def install_advance_area(blocks: Blocks) -> None:
             *_enter_next_area(blocks),
         ],
     )
-    blocks.substack(completion, _consume_schedule(blocks), name="SUBSTACK2")
-    blocks.chain(definition, [step, set_row, completion])
+    blocks.chain(definition, [step, set_row, *_consume_schedule(blocks), completion])
 
 
 def _terrain_strip(blocks: Blocks, parity: int) -> list[str]:
@@ -10495,6 +10387,29 @@ def _initial_terrain_strip_vars() -> dict[str, list[Any]]:
     return values
 
 
+def _forest_terrain(blocks: Blocks) -> list[str]:
+    """PLY-02.forest-wait: show the forest filler alone, as `fill_bg_with_forest` (xevious_main.68k 648-669) does
+    after a death (510). The strips are set straight to the re-top's terrain state (all forest on screen) and drawn;
+    the area clock is left alone — the arcade fills the plane without moving the scroll counter, and the two-player
+    handoff's checkpoint still reads the death row afterwards."""
+    sets = []
+    for var_id, (name, value) in _initial_terrain_strip_vars().items():
+        sets.append(blocks.set_var(name, var_id, text(value) if isinstance(value, str) else number(value)))
+    return [*sets, blocks.send("terrain draw")]
+
+
+def _black_background(blocks: Blocks) -> list[str]:
+    """CAB-01 (slice 21): clear the background to black, as `clear_bg_to_black` (xevious_main.68k 633-646) does
+    before the flashing logo is drawn — on the title (attract_mode_title_screen 1217-1222), at a coin-up (383-387)
+    and on the logo-and-best-five page (flash_logo_and_high_score_table 1465-1468). Both strips are hidden, so the
+    Stage's black backdrop shows; the logo's background layer is opaque black around its letters, which the
+    arcade's black screen hides. The next re-top or forest fill draws the strips again."""
+    sets = [
+        blocks.set_var(*TERRAIN_STRIP_VARS[parity]["shown"], number(0)) for parity in ("even", "odd")
+    ]
+    return [*sets, blocks.send("terrain draw")]
+
+
 def install_update_terrain(blocks: Blocks) -> None:
     # AREA-01 (slice 20): see UPDATE_TERRAIN_PROCCODE. Runs in the walk after the clock and the ground objects
     # move, and at the end of every re-top, so the strips always read the state of the current clock.
@@ -10549,9 +10464,9 @@ def _install_warp_proc(blocks: Blocks, proccode: str) -> str:
 
 def install_swap_players(blocks: Blocks) -> None:
     # CAB-03 (cabinet.two-player, slice 18): exchange the current and inactive players' saved state — the
-    # port's `swap_curr_other_player` (xevious_main 671-679). For each of the 14 persistent per-player fields
+    # port's `swap_curr_other_player` (xevious_main 671-679). For each of the 15 persistent per-player fields
     # (PLAYER_CONTEXT_FIELDS), swap the live var with its `other <x>` shadow through the single `swap tmp`
-    # scratch register (custom blocks have no locals). It touches ONLY those 14 pairs — never `rng state`
+    # scratch register (custom blocks have no locals). It touches ONLY those 15 pairs — never `rng state`
     # (shared/global), never any director/machinery var — so a 2P game stays deterministic from one shared
     # RNG stream. Called by the alternation path on each craft death (C3); defined here with no trigger yet.
     definition = _install_warp_proc(blocks, SWAP_PLAYERS_PROCCODE)
@@ -10570,7 +10485,7 @@ def install_swap_players(blocks: Blocks) -> None:
 def install_copy_players(blocks: Blocks) -> None:
     # CAB-03 (cabinet.two-player, slice 18): seed the inactive player's saved state from the current player —
     # the port's `coined_up` P2 seed (xevious_main 454-460), where a 2P start copies the freshly-built P1
-    # block into the other-player block so P2 begins identical-fresh. Copies the same 14 persistent fields
+    # block into the other-player block so P2 begins identical-fresh. Copies the same 15 persistent fields
     # current -> other; never touches `rng state` or any shared/director var. Called on a 2P start (C2);
     # defined here with no trigger yet.
     definition = _install_warp_proc(blocks, COPY_PLAYERS_PROCCODE)
@@ -10679,8 +10594,7 @@ def install_score(blocks: Blocks) -> None:
     # double-count or bypass the cap. Add the pending award to the score, pin it at the
     # 9,999,990 BCD ceiling (set_score_to_9999990), lift the running high score, then run the
     # bonus-life check after every award (check_for_extra_solvalou). `award value` is the
-    # resolved point value, set by the collision detector a later slice wires (machinery seam,
-    # parallel to `hit slot`); the debug S fixture sets it this slice.
+    # resolved point value, set by the collision detectors (machinery seam, parallel to `hit slot`).
     definition = _install_warp_proc(blocks, SCORE_PROCCODE)
     # NOTE: `set score = op_add(score, award value)` does NOT evaluate in the Scratch VM
     # (a `set var = operator(...)` value-input the runtime leaves unread); `change ... by` does.
@@ -10741,13 +10655,33 @@ def install_check_bonus_life(blocks: Blocks) -> None:
     )
     at_or_past = blocks.add("operator_not", inputs={"OPERAND": [2, below]})
     blocks.blocks[below]["parent"] = at_or_past
-    advance = blocks.set_var_expr(
-        "next bonus",
-        NEXT_BONUS_ID,
-        blocks.op_add(
-            variable("next bonus", NEXT_BONUS_ID),
-            blocks.list_item("repeat bonus 123", REPEAT_BONUS_123_ID, number(DIP_BONUS_ITEM)),
-        ),
+    # Advance (check_for_extra_solvalou 149-155, update_next_bonus_life_Ks 181-183): a threshold below the
+    # increment is replaced BY the increment, otherwise the increment is added — so 20,000 then 60,000, then
+    # every 60,000 (120,000, 180,000 ...), not 20,000 then 80,000. (slice 21, #103) The add is the arcade's
+    # four-digit BCD add of the thousands word (abcd pair, 163-171) whose carry out is dropped, so the
+    # threshold wraps (9,960,000 + 60,000 -> 20,000) and every award grants a craft until the threshold
+    # climbs back past the score. At the cap it never can, which is the cap quirk below.
+    def increment() -> str:
+        return blocks.list_item("repeat bonus 123", REPEAT_BONUS_123_ID, number(DIP_BONUS_ITEM))
+
+    advance = blocks.add("control_if_else")
+    catch_up = blocks.op_lt(variable("next bonus", NEXT_BONUS_ID), increment())
+    blocks.blocks[advance]["inputs"]["CONDITION"] = [2, catch_up]
+    blocks.blocks[catch_up]["parent"] = advance
+    blocks.substack(advance, [blocks.set_var_expr("next bonus", NEXT_BONUS_ID, increment())])
+    blocks.substack(
+        advance,
+        [
+            blocks.set_var_expr(
+                "next bonus",
+                NEXT_BONUS_ID,
+                blocks.op_mod(
+                    blocks.op_add(variable("next bonus", NEXT_BONUS_ID), increment()),
+                    number(BONUS_THRESHOLD_WRAP),
+                ),
+            )
+        ],
+        name="SUBSTACK2",
     )
     normal_if = blocks.if_reporter(at_or_past, grant() + [advance])
 
@@ -10783,6 +10717,22 @@ def install_resolve_hit(blocks: Blocks) -> None:
             blocks.call_proc(SCORE_PROCCODE, warp=True),
         ],
     )
+
+
+def _real_game_hold(blocks: Blocks, frames: int) -> str:
+    """`hold_frames` for a real game's paced holds off the play screen: one `wait 0` per frame, and one count
+    into `hud flash frames`, so the 1UP label flashes through the hold as the arcade's does (flash_1up_2up runs
+    every frame while `is_real_game`, xevious_sub.68k 737-775). Only for holds outside `playing` (see
+    `hold_frames`)."""
+    block_id = blocks.add("control_repeat", inputs={"TIMES": number(frames)})
+    blocks.substack(
+        block_id,
+        [
+            blocks.add("control_wait", inputs={"DURATION": number(0)}),
+            blocks.change_var("hud flash frames", HUD_FLASH_FRAMES_ID, 1),
+        ],
+    )
+    return block_id
 
 
 def stage_blocks() -> dict[str, dict[str, Any]]:
@@ -10851,9 +10801,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     install_cull_slot(blocks)
     install_advance_slots(blocks)
     install_spawn_flying(blocks)
-    install_debug_spawn_wave(blocks)  # DEBUG / temporary (tracked for removal)
-    install_debug_ground_spawn(blocks)  # DEBUG / temporary (tracked for removal, #119)
-    install_debug_pause(blocks)  # DEBUG / temporary (tracked for removal, #119)
+    install_place_pending_object(blocks)
     install_advance_area(blocks)
     install_update_terrain(blocks)
     install_score(blocks)
@@ -11084,17 +11032,21 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # committed character (append_char advances the pointer and ends at the tenth, :1745-1769). `name buffer` is
     # a plain string, so the append is a join and the compositor reads it a letter at a time. `change entry cell
     # by 1` is used (NOT `set entry cell = add(...)`): a `set var = operator(...)` value-input is left unread by
-    # the runtime, `change ... by` evaluates.
+    # the runtime, `change ... by` evaluates. CAB-04: the letter is lowercase while the bomb button is held
+    # (`append_char` stores the check_lowercase result, xevious_main.68k 1747).
     entry_space = blocks.key("space")
     entry_commit = [
-        blocks.set_var_expr(
-            "name buffer",
-            ENTRY_NAME_BUFFER_ID,
-            blocks.op_join(
-                variable("name buffer", ENTRY_NAME_BUFFER_ID),
-                blocks.op_letter_of(
-                    blocks.op_add(variable("entry char", ENTRY_CHAR_ID), number(1)),
-                    text(ENTRY_RING),
+        _entry_case(
+            blocks,
+            lambda ring: blocks.set_var_expr(
+                "name buffer",
+                ENTRY_NAME_BUFFER_ID,
+                blocks.op_join(
+                    variable("name buffer", ENTRY_NAME_BUFFER_ID),
+                    blocks.op_letter_of(
+                        blocks.op_add(variable("entry char", ENTRY_CHAR_ID), number(1)),
+                        text(ring),
+                    ),
                 ),
             ),
         ),
@@ -11203,7 +11155,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             blocks.set_var(
                 "banner player", BANNER_PLAYER_ID, variable("curr player", CURR_PLAYER_ID)
             ),
-            blocks.hold_frames(BANNER_HOLD_TICKS),
+            _real_game_hold(blocks, BANNER_HOLD_TICKS),
             blocks.set_var("banner player", BANNER_PLAYER_ID, number(BANNER_PLAYER_NONE)),
         ],
     )
@@ -11236,7 +11188,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # last player of a two-player game (the other already out, so the alternate condition above is false). On
     # the no-craft branch the ECO-04 best-five check + initials routing run HERE, at the death decision, BEFORE
     # any GAME OVER hold — faithful to the arcade's order, which calls check_for_high_score once the game ends
-    # (after the 64-frame forest wait, 534-536, which the port does not have) and reaches the game_over hold only
+    # (after the 64-frame forest wait, 534-536, which the port holds in solv_death's player-dead entry just before
+    # this handler, FOREST_WAIT_TICKS) and reaches the game_over hold only
     # after name entry (xevious_main.68k:546, :1757-1769). `death outcome`
     # RECORDS the decision (kept on both branches, not removed, so the transition-cleanup opcode sequence and
     # the reset-scope matrix stay byte-identical) — it is no longer the input.
@@ -11262,7 +11215,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # 535-536, before the next life's theme at 498). The transition consumes the keep; any later stop-all (the
     # respawning -> playing edge) is held off only while the cue is still playing (DEATH_CUE_PLAYING_ID).
     keep = blocks.set_var("keep sounds", KEEP_SOUNDS_ID, number(1))
-    blocks.chain(death, [blocks.if_state("player-dead", [keep, alt])])
+    blocks.chain(death, [blocks.if_state("player-dead", [keep, *_ai_death_drop(blocks), alt])])
 
     game_over = blocks.receive("game over complete")
     # ECO-04 (slice 19): the GAME OVER hold is now TERMINAL. The best-five check and the initials routing run
@@ -11302,10 +11255,22 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     attract_snapshot = blocks.set_var(
         "attract epoch", ATTRACT_EPOCH_ID, variable("state epoch", EPOCH_ID)
     )
+    # Slice 21: the title hold counts its own frames into `title tick`, which the logo-outline and sparkle clones
+    # read, so the sparkle and the flash stay locked to the hold that ends the title (main 1217-1290 run them off
+    # the same frame count) however often the clones' own loops get scheduled.
+    title_count = blocks.add("control_repeat", inputs={"TIMES": number(ATTRACT_TITLE_HOLD_TICKS)})
+    blocks.substack(
+        title_count,
+        [
+            blocks.add("control_wait", inputs={"DURATION": number(0)}),
+            blocks.change_var("title tick", TITLE_TICK_ID, 1),
+        ],
+    )
     title_hold = blocks.if_state(
         "title",
         [
-            blocks.hold_frames(ATTRACT_TITLE_HOLD_TICKS),
+            blocks.set_var("title tick", TITLE_TICK_ID, number(0)),
+            title_count,
             blocks.if_reporter(
                 _attract_demo_launch(blocks, "title"),
                 [
@@ -11330,7 +11295,10 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             ),
         ],
     )
-    blocks.chain(attract_enter, [attract_snapshot, title_hold, scores_hold])
+    # CAB-01: the title and the logo-and-best-five page draw on black (`_black_background`); the demo and the
+    # initials entry keep the forest (fill_bg_with_forest, 1316 and 1471-1473).
+    black = blocks.if_either_state("title", ATTRACT_SCORES_STATE, _black_background(blocks))
+    blocks.chain(attract_enter, [attract_snapshot, black, title_hold, scores_hold])
 
     # CAB-04 (slice 19): the fixed TOTAL entry countdown — its own `director enter` receiver (the attract-hold
     # pattern). On entering high-score-entry it counts `entry timer` (armed by the entry-scope reset) down one
@@ -11359,6 +11327,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.change_var("entry timer", ENTRY_TIMER_ID, -1),
             blocks.add("control_wait", inputs={"DURATION": number(0)}),
+            # Slice 21 (#31): one frame of initials entry for the 1UP flash (see `_real_game_hold`).
+            blocks.change_var("hud flash frames", HUD_FLASH_FRAMES_ID, 1),
         ],
         name="SUBSTACK2",
     )
@@ -11368,8 +11338,14 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     enter = blocks.receive("director enter")
     start_sound = blocks.play_sound_until_done("start")
     loop = blocks.add("control_repeat_until")
-    stop_condition = blocks.not_state(loop, "playing")
+    # #158: the flight tune also ends at the craft's hit (the walk's stop-all cuts the play in flight, and the
+    # loop must not restart it while `dying`); the next life's `director enter` starts the music again.
+    stop_condition = blocks.op_or(
+        blocks.not_state(loop, "playing"),
+        blocks.op_eq(variable("dying", DYING_ID), number(1)),
+    )
     blocks.blocks[loop]["inputs"]["CONDITION"] = [2, stop_condition]
+    blocks.blocks[stop_condition]["parent"] = loop
     blocks.substack(loop, [blocks.play_sound_until_done("bgm")])
     # CAB-05: on every entry to a real life's play, the main theme (MAIN_THEME_SND, main_gameplay_loop
     # xevious_main.68k:498), then the looping flight tune (SOLVALOU_SND, main_fn_1__handle_solvalou 2009) until play
@@ -11422,14 +11398,23 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # from the decremented `craft`. Broadcasting it first raced the stop — the life clones it spawned were
     # created after `director stop` went out, survived it, and then ran the HUD's own director-enter spawn
     # too, stacking two or three copies of every HUD glyph (the HUD looked bold through player-dead).
+    # #158: the death cue now starts at the hit, 44 ticks before this transition, so the transition into
+    # player-dead must skip its stop-all too (the arcade never stops the cue, 2030). The cue's own latch usually
+    # covers it; the keep makes it hold whatever the pacing, exactly as the death-complete handler's does.
     blocks.substack(
         real_or_demo,
         [
+            blocks.set_var("keep sounds", KEEP_SOUNDS_ID, number(1)),
             blocks.change_var("craft", LIVES_ID, -1),
             blocks.call_transition("player-dead", "none"),
         ],
         name="SUBSTACK2",
     )
+    # #158: the hit opens the explosion window instead of leaving `playing` (update_solvalou 2024-2033): the
+    # flight tune stops (Scratch can only stop every sound; the death cue's latch is not up yet), the explosion
+    # cue plays in a real game only (a demo death is silent, 2028-2029), and the death renderer draws frame 0.
+    # The walk keeps running every object, the scroll and the spawners through the window; the craft's own
+    # inputs, its hit test, new shots and new bombs are gated on `dying` where they live.
     death_check = blocks.if_reporter(
         blocks.op_and(
             blocks.op_eq(variable("player hit", PLAYER_HIT_ID), number(1)),
@@ -11437,38 +11422,69 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         ),
         [
             blocks.set_var("player hit", PLAYER_HIT_ID, number(0)),
-            real_or_demo,
+            blocks.set_var("dying", DYING_ID, number(1)),
+            blocks.set_var("dying tick", DYING_TICK_ID, number(0)),
+            blocks.stop_all_sounds_unless_kept(),
+            blocks.if_reporter(
+                blocks.op_eq(variable("attract", ATTRACT_ID), number(0)),
+                [blocks.send("sfx death")],
+            ),
+            blocks.send("death draw"),
         ],
     )
-    # DEBUG (temporary, tracked for removal #119): while G is held, the Bacura pump is suppressed too, so no
-    # slabs drift in during ground isolation (parity with the T key). The G proc already zeros `formation count`
-    # and clears the flying/bacura bands each tick; gating the pump call stops it re-admitting. When G is not
-    # held this is exactly the original unconditional call.
-    pump_bacura = blocks.if_reporter(
-        blocks.op_not(blocks.key_pressed(walk_loop, DEBUG_GROUND_KEY)),
+    # #158: one walk tick further into the window. The explosion draws for EXPLOSION_TICKS ticks, the pause runs
+    # the rest, and at DYING_WINDOW_TICKS (88 frames: `finish_solvalou_exploding` sets scroll_disabled, 2087) the
+    # old death route runs — a demo ends, a real game spends the craft and enters player-dead. `dying` itself is
+    # cleared by that transition's reset (stage_reset), so no renderer sees a live craft before the state moves.
+    # Placed BEFORE death_check, so the hit tick itself is tick 0.
+    dying_step = blocks.if_reporter(
+        blocks.op_eq(variable("dying", DYING_ID), number(1)),
         [
-            # AIR-11: the Bacura live-spawn pump runs in the spawn phase, after ADVANCE_AREA has loaded
-            # this tick's set/reset_bacura_count records and after the walk — so a freshly-stamped slab
-            # first drifts on the NEXT tick, matching the arcade's handle_01_Bacura (init, then yield)
-            # and the flying spawner above (spawn late, drive next tick).
-            blocks.call_proc(PUMP_BACURA_PROCCODE, warp=True),
+            blocks.change_var("dying tick", DYING_TICK_ID, 1),
+            blocks.send("death draw"),
+            blocks.if_reporter(
+                blocks.op_gt(variable("dying tick", DYING_TICK_ID), number(DYING_WINDOW_TICKS - 1)),
+                [
+                    # DIF-02 (slice 21): the next craft's number, counted as the pause ends (`addq.b #1,
+                    # (solvalou_number)`, 2086), a byte that wraps. A demo counts too, as the arcade's does,
+                    # but every demo and game start resets it to 1, so a demo's count is never read (record 056
+                    # deviation 8: the arcade's demo keeps the last game's count and score).
+                    blocks.set_var_expr(
+                        "ship number",
+                        SHIP_NUMBER_ID,
+                        blocks.op_mod(
+                            blocks.op_add(variable("ship number", SHIP_NUMBER_ID), number(1)),
+                            number(SHIP_NUMBER_WRAP),
+                        ),
+                    ),
+                    real_or_demo,
+                ],
+            ),
         ],
     )
-    # The whole tick — read, area clock, walk, bomb, spawns, death — runs only while NOT paused. The
-    # ADVANCE_AREA -> ADVANCE_SLOTS pair stays adjacent inside this body, so the area-clock adjacency contract
-    # holds; the pause gate merely wraps the body.
+    # The whole tick — read, area clock, walk, bomb, spawns, death. The ADVANCE_AREA -> ADVANCE_SLOTS pair stays
+    # adjacent inside this body, so the area-clock adjacency contract holds.
     # CAB-01: the auto-pilot runs FIRST, and only during a demo (attract==1), so its shared-stream draws sit
     # at a fixed head-of-walk position (reproducible) and it has set the virtual inputs before READ_PLAYER and
     # the object walk read the craft this tick. A real game (attract==0) skips it entirely.
+    # #158: the pilot also rests through the explosion window — the arcade's demo input draws live inside
+    # handle_solvalou_inputs / handle_shooting / handle_bombing, none of which run while the craft explodes
+    # (2012, 2315, 2436), so the shared stream sees no pilot draws then either.
     attract_pilot = blocks.if_reporter(
-        blocks.op_eq(variable("attract", ATTRACT_ID), number(1)),
+        blocks.op_and(
+            blocks.op_eq(variable("attract", ATTRACT_ID), number(1)),
+            _craft_alive_reporter(blocks),
+        ),
         [blocks.call_proc(ATTRACT_PILOT_PROCCODE, warp=True)],
     )
     tick_body = [
         attract_pilot,
         blocks.call_proc(READ_PLAYER_PROCCODE, warp=True),
-        # WPN-04: the bomb sight leads the craft (needs the just-cached player cell).
-        blocks.call_proc(TRACK_CROSSHAIR_PROCCODE, warp=True),
+        # WPN-04: the bomb sight leads the craft (needs the just-cached player cell). #158: it freezes where it
+        # is through the explosion window (handle_crosshairs is on the live-craft path only, 2014).
+        blocks.if_reporter(
+            _craft_alive_reporter(blocks), [blocks.call_proc(TRACK_CROSSHAIR_PROCCODE, warp=True)]
+        ),
         blocks.call_proc(ADVANCE_AREA_PROCCODE, warp=True),
         blocks.call_proc(ADVANCE_SLOTS_PROCCODE, warp=True),
         # AREA-01 (slice 20): the terrain strips' state for this tick's clock, once the clock and the ground
@@ -11479,34 +11495,19 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         # WPN-04: arm/fly the bomb AFTER the terrain has scrolled this tick, so the landing
         # compare sees the same-tick ground positions (handle_bombing runs late in the frame).
         blocks.call_proc(ADVANCE_BOMB_PROCCODE, warp=True),
-        # DEBUG (temporary, tracked for removal #119): while G is held, cycle one built GROUND family
-        # into the band. Placed after the ground walk (ADVANCE_SLOTS) so the field-empty gate reads the
-        # fully-settled post-cull band, and outside the ADVANCE_AREA -> ADVANCE_SLOTS pair the area clock
-        # requires be adjacent. The stamp scrolls on the NEXT walk, then travels down to the craft — a
-        # one-tick delay that is immaterial for a top-of-field spawn. Self-gated on the key; no effect on
-        # normal play, and it defers to any scheduled ground object (only fills a genuinely empty field).
-        blocks.call_proc(DEBUG_GROUND_SPAWN_PROCCODE, warp=True),
-        # DEBUG (temporary, tracked for removal): overrides the scheduled formation to a Terrazi
-        # wave while the debug key is held, so the spawner below fills a Terrazi wave for playtest.
-        blocks.call_proc(DEBUG_SPAWN_PROCCODE, warp=True),
+        # AREA-02 (#166): place this tick's add_object record (recorded by ADVANCE_AREA above) once the walk and
+        # bomb have run, before the formation refill below — the arcade object pass precedes main_fn_4.
+        blocks.call_proc(PLACE_PENDING_OBJECT_PROCCODE, warp=True),
         blocks.call_proc(SPAWN_FLYING_PROCCODE, warp=True),
-        pump_bacura,
+        # AIR-11: the Bacura live-spawn pump runs in the spawn phase, after ADVANCE_AREA has loaded
+        # this tick's set/reset_bacura_count records and after the walk — so a freshly-stamped slab
+        # first drifts on the NEXT tick, matching the arcade's handle_01_Bacura (init, then yield)
+        # and the flying spawner above (spawn late, drive next tick).
+        blocks.call_proc(PUMP_BACURA_PROCCODE, warp=True),
+        dying_step,
         death_check,
     ]
-    run_when_unpaused = blocks.if_reporter(
-        blocks.op_eq(variable("debug paused", PAUSED_ID), number(0)),
-        tick_body,
-    )
-    # DEBUG (temporary, tracked for removal #119): the pause TOGGLE runs FIRST and OUTSIDE the freeze gate, so a
-    # tap of P can always flip `debug paused` back to 0 and resume. The harness never presses P, so `debug
-    # paused` stays 0 there and the full tick runs every frame as before — the build stays deterministic.
-    blocks.substack(
-        walk_loop,
-        [
-            blocks.call_proc(DEBUG_PAUSE_PROCCODE, warp=True),
-            run_when_unpaused,
-        ],
-    )
+    blocks.substack(walk_loop, tick_body)
     blocks.chain(walk_enter, [blocks.if_state("playing", [walk_loop])])
 
     # A NEW Stage `director reset` receiver — kept out of the transition procedure body
@@ -11554,6 +11555,13 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             # bomb/target/crosshair are already zeroed by `clear slots` above.
             blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(0)),
             blocks.set_var("bomb dx", BOMB_DX_ID, number(0)),
+            # AREA-02 (#166): drop any add_object record still pending (the field it targeted was just cleared).
+            blocks.set_var("pending object type", PENDING_OBJECT_TYPE_ID, number(0)),
+            # #158: every scope ends any explosion window, and drops a hit nothing has acted on yet (a hit raised
+            # on a transition's last tick must not kill the next life on its first).
+            blocks.set_var("dying", DYING_ID, number(0)),
+            blocks.set_var("dying tick", DYING_TICK_ID, number(0)),
+            blocks.set_var("player hit", PLAYER_HIT_ID, number(0)),
             # CAB-05: the crosshair's on-target flash starts each scope unlit.
             blocks.set_var("crosshair lit", CROSSHAIR_LIT_ID, number(0)),
             # SEC-03 (secrets.hidden-credit #93): lower the credit overlay signal on every reset scope, so a
@@ -11609,12 +11617,11 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # pinned opcode chain (like the eight existing reset receivers, each branching on its own
     # scope for its own concern). It touches only the area vars, so the unordered same-target
     # hat execution is safe. A world reset (cold-start / new-game) returns to area 1 and re-tops;
-    # a new life runs the NEAR-END CHECKPOINT (projected from the death-tick progress, see
-    # AREA_CHECKPOINT_PROJECTION): a death that the arcade would read in rows [0x0E, 0x43] after
-    # its explosion advances to the next area instead of restarting (discharging docs/mechanics/003,
-    # 013), then re-tops. On a scope-`none` transition (e.g. the death itself) and on game-over this
-    # receiver does nothing, so `area progress`/`scroll row` stay frozen through the death
-    # sequence and the checkpoint projects from the real death-tick progress.
+    # a new life runs the NEAR-END CHECKPOINT (`_area_checkpoint`): a death whose explosion window
+    # ends in rows [0x0E, 0x43] advances to the next area instead of restarting (discharging
+    # docs/mechanics/003, 013), then re-tops. On a scope-`none` transition (e.g. the death itself) and on
+    # game-over this receiver does nothing, so `area progress`/`scroll row` hold where the walk left them at
+    # the end of the explosion window and the checkpoint reads that row.
     area_reset = blocks.receive("director reset")
     world_area = reset_if(
         blocks,
@@ -11643,6 +11650,9 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
                 ("cold-start", "new-game"),
                 [
                     blocks.set_var("ai level", AI_LEVEL_ID, number(0)),
+                    # DIF-02 (slice 21): the first craft is number 1 (main 444); a 2P start's `copy players`,
+                    # after this reset, gives player 2 the same 1 (456-460).
+                    blocks.set_var("ship number", SHIP_NUMBER_ID, number(1)),
                     blocks.set_var("formation count", FORMATION_COUNT_ID, number(0)),
                     blocks.set_var("formation type offset", FORMATION_TYPE_OFFSET_ID, number(0)),
                     blocks.set_var("ground stop firing row", GROUND_STOP_FIRING_ROW_ID, number(0)),
@@ -11730,8 +11740,8 @@ def _attract_demo_launch(blocks: Blocks, state: str) -> str:
 def _game_over_route(blocks: Blocks) -> list[str]:
     # ECO-04 (slice 19): the end-of-game best-five check + initials routing, run at the DEATH decision (the last
     # craft is gone, `game state` is player-dead), BEFORE any GAME OVER hold — faithful to the arcade's order,
-    # which calls check_for_high_score once the game ends (after the 64-frame forest wait, 534-536, which the port
-    # does not have) and reaches the game_over hold only after name entry
+    # which calls check_for_high_score once the game ends (after the 64-frame forest wait, 534-536, held before the
+    # death-complete handler runs, FOREST_WAIT_TICKS) and reaches the game_over hold only after name entry
     # (xevious_main.68k:546 jra check_for_high_score; :1671-1672 a non-qualifier -> game_over; :1757-1769
     # name_entry_finished -> game_over). `qualified` = the final score REACHES-OR-BEATS fifth place in the live
     # table (`>=`, a tie places — the move_high_score_entry_down fall-through, :1653-1656), OR'd over the OTHER
@@ -12059,7 +12069,10 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
                 [blocks.add(opcode, inputs={input_name: number(limit)})],
             )
         )
-    blocks.substack(movement, movement_body)
+    # #158: through the explosion window the craft is hidden where it was hit (the death renderer draws the
+    # explosion there) and takes no input — handle_solvalou_inputs is on the live-craft path only (2012).
+    alive_tick = _if_else(blocks, _craft_alive_reporter(blocks), movement_body, [blocks.hide()])
+    blocks.substack(movement, [alive_tick])
     playing = blocks.if_state("playing", [blocks.show(), movement])
     dead = blocks.if_either_state("player-dead", "game-over", [blocks.hide()])
     blocks.chain(enter, [snapshot, title, ready, playing, dead])
@@ -12075,23 +12088,20 @@ def title_blocks() -> dict[str, dict[str, Any]]:
     common_stop(blocks, hide=True, clones=True)
     reset = blocks.receive("director reset")
     blocks.chain(reset, [blocks.hide()])
-    # PRES-01 (docs/mechanics/054): the logo at the arcade logo's width. The committed target size is preserved, so
-    # it is set on the green flag; every text clone sets ATTRACT_TEXT_SIZE as it starts.
+    # Slice 21: the logo is the pinned tile art (TITLE_LOGO_*), 1 costume px per arcade px, so the original draws at
+    # the shared sprite scale. The committed target size is preserved, so it is set on the green flag; every text
+    # clone sets ATTRACT_TEXT_SIZE as it starts, and the logo and sparkle clones set the sprite scale back.
     blocks.chain(
         blocks.flag(),
-        [blocks.add("looks_setsizeto", inputs={"SIZE": number(ATTRACT_LOGO_SIZE)})],
+        [blocks.add("looks_setsizeto", inputs={"SIZE": number(SPRITE_RENDER_SIZE)})],
     )
     enter = blocks.receive("director enter")
-    # B4: the logo enters at the top and glides to center (baseline: 1 s from y=250). Preserved-baseline
-    # presentation; the glide is a WALL-CLOCK block (a presentation beat, not gameplay timing) — it does not
-    # advance under the headless harness's fixed-step pump. So the display clones are stamped FIRST, before
-    # the glide, so nothing that must run every attract entry sits behind the glide's wall-clock wait.
-    #
     # CAB-01 display spawn: each clone is positioned by the original just before create_clone (Python-constant
-    # coords, the HUD spawn idiom) and dresses itself in its start-as-clone body; the original NEVER switches
-    # its own costume, so the visible logo is never disturbed. The stamps run in one frame (no blocking block
-    # between the go/create_clone pairs), then the original returns to the glide start and glides in.
-    title_body: list[str] = [blocks.go(0, ATTRACT_LOGO_START_Y), blocks.show()]
+    # coords, the HUD spawn idiom) and dresses itself in its start-as-clone body. The stamps run in one frame (no
+    # blocking block between the go/create_clone pairs); then the original, wearing the logo's background layer,
+    # returns to the logo's place and shows. Slice 21: it is drawn there from the first frame, as the arcade
+    # draws it (display_xevious_logo_flashing) — the baseline's wall-clock glide in from the top is retired.
+    title_body: list[str] = [blocks.switch_costume(TITLE_LOGO_BG_COSTUME)]
     title_body += [
         blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_CREDIT_LABEL)),
         blocks.go(ATTRACT_CREDIT_LABEL_X, ATTRACT_CREDIT_LINE_Y),
@@ -12119,10 +12129,22 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         blocks.go(ATTRACT_SELECTOR_2P_X, ATTRACT_SELECTOR_2P_Y),
         blocks.create_clone(),
     ]
+    # Slice 21: the start-key hint, then the sparkle and the logo's outline, which place themselves. The sparkle is
+    # stamped before the outline, so the outline (fronted after it) draws over it: the arcade draws sprites
+    # between the background and text layers, so the sparkle passes behind the outline and over the background.
+    # `title tick` is zeroed first, so neither clone can read the previous title's count before the Stage's hold
+    # (which zeroes it too) runs in this frame.
     title_body += [
-        # back to the glide start; the logo glides in with the clones already stamped
-        blocks.go(0, ATTRACT_LOGO_START_Y),
-        blocks.glide(1, 0, ATTRACT_LOGO_Y),
+        blocks.set_var("title tick", TITLE_TICK_ID, number(0)),
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_START_HINT)),
+        blocks.go(ATTRACT_START_HINT_X, ATTRACT_START_HINT_Y),
+        blocks.create_clone(),
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_SPARKLE)),
+        blocks.create_clone(),
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_LOGO_OUTLINE)),
+        blocks.create_clone(),
+        blocks.go(TITLE_LOGO_X, TITLE_LOGO_Y),
+        blocks.show(),
     ]
     title = blocks.if_state("title", title_body)
     # CAB-04: the LIVE best-five table. Each cell is its own clone (the credit-digit idiom) — a rank digit,
@@ -12164,8 +12186,15 @@ def title_blocks() -> dict[str, dict[str, Any]]:
                 blocks.create_clone(),
             ]
     # PRES-01: the logo rests above the table, as the arcade draws it with the best five (flash_logo_and_high_
-    # score_table). Shown after the stamps, so the clones (which hide first) never flash the logo costume.
-    scores_body += [blocks.go(0, ATTRACT_LOGO_Y), blocks.show()]
+    # score_table 1465-1468: display_xevious_logo_flashing, so the background and the outline in its red). Shown
+    # after the stamps, so the clones (which hide first) never flash the logo costume.
+    scores_body += [
+        blocks.set_var("attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_LOGO_OUTLINE)),
+        blocks.create_clone(),
+        blocks.switch_costume(TITLE_LOGO_BG_COSTUME),
+        blocks.go(TITLE_LOGO_X, TITLE_LOGO_Y),
+        blocks.show(),
+    ]
     scores = blocks.if_state(ATTRACT_SCORES_STATE, scores_body)
 
     # CAB-04 (slice 19): the initials-entry screen. On entering high-score-entry, stamp the two headers, the
@@ -12205,7 +12234,30 @@ def title_blocks() -> dict[str, dict[str, Any]]:
             blocks.create_clone(),
         ]
     entry = blocks.if_state(HIGH_SCORE_ENTRY_STATE, entry_body)
-    blocks.chain(enter, [title, scores, entry])
+    # Slice 21: the demo shows the yellow logo over the play field for its whole run (attract_mode_gameplay 1319:
+    # display_xevious_logo_yellow, on the text layer, so above the sprites), and flashes INSERT COIN (1328:
+    # flash_insert_coin_and_check_credits each frame), one clone that places itself. A real game (attract 0)
+    # shows neither.
+    demo = blocks.if_state(
+        "playing",
+        [
+            blocks.if_reporter(
+                blocks.op_eq(variable("attract", ATTRACT_ID), number(1)),
+                [
+                    blocks.set_var(
+                        "attract role", ATTRACT_DISPLAY_ROLE_ID, number(ATTRACT_ROLE_DEMO_INSERT_COIN)
+                    ),
+                    blocks.go(ATTRACT_INSERT_COIN_X, ATTRACT_INSERT_COIN_Y),
+                    blocks.create_clone(),
+                    blocks.switch_costume(TITLE_LOGO_YELLOW_COSTUME),
+                    blocks.go(TITLE_LOGO_X, TITLE_LOGO_Y),
+                    blocks.to_front(),
+                    blocks.show(),
+                ],
+            )
+        ],
+    )
+    blocks.chain(enter, [title, scores, entry, demo])
 
     # start-as-clone: dispatch on the snapshotted role. The clone inherits the visible original, so it hides
     # first and each role shows itself only once it has switched to its own costume (no logo flash).
@@ -12273,8 +12325,20 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         [blocks.switch_costume(ATTRACT_COSTUME_TABLE_HEADER), blocks.to_front(), blocks.show()],
     )
 
-    # Prompt: PUSH START when there is a credit to spend, INSERT COIN otherwise, flashing while in title.
-    # The costume is re-picked each cycle so it flips live the tick a coin banks the first credit.
+    # Prompt: PUSH START when there is a credit to spend, INSERT COIN otherwise, re-picked every pass so it flips
+    # live the tick a coin banks the first credit. Slice 21 (#31): PUSH START is steady; INSERT COIN flashes on
+    # the title's own clock, `title tick` (counted by the Stage title hold once a frame, and only read here, so a
+    # loop that spins several times a frame cannot drift it), shown while floor(title tick / 8) mod 2 == 1
+    # (ATTRACT_INSERT_COIN_HALF_TICKS).
+    def insert_coin_shown(clock: Any) -> str:
+        return blocks.op_eq(
+            blocks.op_mod(
+                blocks.op_floor(blocks.op_div(clock, number(ATTRACT_INSERT_COIN_HALF_TICKS))),
+                number(2),
+            ),
+            number(1),
+        )
+
     prompt_tick = blocks.add("control_repeat_until")
     blocks.blocks[prompt_tick]["inputs"]["CONDITION"] = [2, blocks.not_state(prompt_tick, "title")]
     has_credit = blocks.if_reporter(
@@ -12282,6 +12346,7 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.switch_costume(ATTRACT_COSTUME_PUSH_START),
             blocks.go(ATTRACT_PUSH_START_X, ATTRACT_PUSH_START_Y),
+            blocks.show(),
         ],
     )
     no_credit = blocks.if_reporter(
@@ -12289,23 +12354,46 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.switch_costume(ATTRACT_COSTUME_INSERT_COIN),
             blocks.go(ATTRACT_INSERT_COIN_X, ATTRACT_INSERT_COIN_Y),
+            _if_else(
+                blocks,
+                insert_coin_shown(variable("title tick", TITLE_TICK_ID)),
+                [blocks.show()],
+                [blocks.hide()],
+            ),
         ],
     )
-    blocks.substack(
-        prompt_tick,
-        [
-            has_credit,
-            no_credit,
-            blocks.to_front(),
-            blocks.show(),
-            blocks.hold_ticks(ATTRACT_PROMPT_FLASH_HOLD_TICKS),
-            blocks.hide(),
-            blocks.hold_ticks(ATTRACT_PROMPT_FLASH_HOLD_TICKS),
-        ],
-    )
+    blocks.substack(prompt_tick, [has_credit, no_credit])
     prompt_role = blocks.if_var_equals(
         "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_PROMPT,
-        [prompt_tick, blocks.hide(), blocks.add("control_delete_this_clone")],
+        [blocks.to_front(), prompt_tick, blocks.hide(), blocks.add("control_delete_this_clone")],
+    )
+    # The demo's INSERT COIN: placed by the original, it flashes on the walk's `tick` (read, never counted) for as
+    # long as the demo plays; a coin ends the demo, and the transition's clone-clear (common_stop) retires it.
+    demo_coin_tick = blocks.add("control_repeat_until")
+    blocks.blocks[demo_coin_tick]["inputs"]["CONDITION"] = [
+        2,
+        blocks.not_state(demo_coin_tick, "playing"),
+    ]
+    blocks.substack(
+        demo_coin_tick,
+        [
+            _if_else(
+                blocks,
+                insert_coin_shown(variable("tick", TICK_ID)),
+                [blocks.show()],
+                [blocks.hide()],
+            )
+        ],
+    )
+    demo_coin_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_DEMO_INSERT_COIN,
+        [
+            blocks.switch_costume(ATTRACT_COSTUME_INSERT_COIN),
+            blocks.to_front(),
+            demo_coin_tick,
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ],
     )
 
     # CAB-04: the three LIVE best-five cell roles. Each cell re-reads the Stage lists every tick while in
@@ -12340,8 +12428,10 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         ],
     )
 
-    # Score digit: digit = floor(table[row] / 10^place) mod 10, shown as digit/<d> (leading-zero preserving,
-    # matching the HUD score row). 10^place is computed once at clone start into `attract divisor`.
+    # Score digit: digit = floor(table[row] / 10^place) mod 10, worn as digit/<d>. 10^place is computed once at
+    # clone start into `attract divisor`. Slice 21 (#31): the table writes each score with display_score
+    # (display_high_score_table 1475-1542), so its leading zeros are blank exactly as on the HUD score row: the
+    # units and tens always show, and place p >= 2 only while the score is at least 10^p.
     set_score_divisor = blocks.set_var("attract divisor", ATTRACT_DISPLAY_DIVISOR_ID, number(1))
     score_divisor_loop = blocks.add(
         "control_repeat", inputs={"TIMES": variable("attract place", ATTRACT_DISPLAY_PLACE_ID)}
@@ -12371,8 +12461,24 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         ),
         number(10),
     )
+    score_shown = blocks.op_or(
+        blocks.op_lt(variable("attract place", ATTRACT_DISPLAY_PLACE_ID), number(2)),
+        blocks.op_not(
+            blocks.op_lt(
+                blocks.list_item(
+                    "high score table",
+                    HIGH_SCORE_TABLE_ID,
+                    variable("attract row", ATTRACT_DISPLAY_ROW_ID),
+                ),
+                variable("attract divisor", ATTRACT_DISPLAY_DIVISOR_ID),
+            )
+        ),
+    )
     score_tick = table_tick(
-        [blocks.switch_costume_expr(blocks.op_join(text(ATTRACT_DIGIT_PREFIX), score_digit_expr))]
+        [
+            blocks.switch_costume_expr(blocks.op_join(text(ATTRACT_DIGIT_PREFIX), score_digit_expr)),
+            _if_else(blocks, score_shown, [blocks.show()], [blocks.hide()]),
+        ]
     )
     table_score_role = blocks.if_var_equals(
         "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_TABLE_SCORE,
@@ -12380,7 +12486,6 @@ def title_blocks() -> dict[str, dict[str, Any]]:
             set_score_divisor,
             score_divisor_loop,
             blocks.to_front(),
-            blocks.show(),
             score_tick,
             blocks.hide(),
             blocks.add("control_delete_this_clone"),
@@ -12540,12 +12645,16 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         blocks.substack(
             active,
             [
-                blocks.set_var_expr(
-                    "attract char",
-                    ATTRACT_DISPLAY_CHAR_ID,
-                    blocks.op_letter_of(
-                        blocks.op_add(variable("entry char", ENTRY_CHAR_ID), number(1)),
-                        text(ENTRY_RING),
+                # CAB-04: the active cell shows the lowercase letter while the bomb button is held (1717).
+                _entry_case(
+                    blocks,
+                    lambda ring: blocks.set_var_expr(
+                        "attract char",
+                        ATTRACT_DISPLAY_CHAR_ID,
+                        blocks.op_letter_of(
+                            blocks.op_add(variable("entry char", ENTRY_CHAR_ID), number(1)),
+                            text(ring),
+                        ),
                     ),
                 ),
                 blocks.set_effect("GHOST", pulse),
@@ -12610,6 +12719,137 @@ def title_blocks() -> dict[str, dict[str, Any]]:
         ATTRACT_ROLE_SELECTOR_2P, ATTRACT_COSTUME_SELECTOR_2P, 2
     )
 
+    # Slice 21: the title's logo and sparkle clones read `title tick`, the frame count the Stage's title hold keeps
+    # (attract_enter), and pace their own loops with a wait-0 (safe: the walk is off outside `playing`).
+    def tick() -> str:
+        return variable("title tick", TITLE_TICK_ID)
+
+    def sprite_size() -> str:
+        return blocks.add("looks_setsizeto", inputs={"SIZE": number(SPRITE_RENDER_SIZE)})
+
+    # The logo's outline. It rests at red (outline/01); on the title, after TITLE_FLASH_TICK, it steps through the
+    # colour table once a tick from index 7 down (animate_flashing_logo 1276-1290: the timer drops from 0 on every
+    # other frame and indexes the table with its low three bits). The port's 740-frame title is the phase whose
+    # steps fall on the odd frames 229..737 (step 256, on frame 739, exits instead of recolouring), so on tick n
+    # (frame 2n) the index is (114 - n) mod 8: still red on tick 114, and the last tick, 369, on index 1.
+    # A banked credit holds it at red, as coined_up redraws the logo (377-388). On the best five the loop ends at
+    # once and the outline stays red; common_stop retires it on the next transition, like the static labels.
+    outline_loop = blocks.add("control_repeat_until")
+    blocks.blocks[outline_loop]["inputs"]["CONDITION"] = [2, blocks.not_state(outline_loop, "title")]
+    flashing = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(variable("credits", CREDITS_ID), number(0)),
+            blocks.op_gt(tick(), number(TITLE_FLASH_TICK - 1)),
+        ),
+        [
+            blocks.switch_costume_expr(
+                blocks.op_add(
+                    number(TITLE_LOGO_OUTLINE_BASE_ORDINAL),
+                    blocks.op_mod(blocks.op_sub(number(TITLE_FLASH_TICK), tick()), number(TITLE_LOGO_COLOURS)),
+                )
+            )
+        ],
+    )
+    coined_up = blocks.if_reporter(
+        blocks.op_gt(variable("credits", CREDITS_ID), number(0)),
+        [blocks.switch_costume("title-logo/outline/01")],
+    )
+    blocks.substack(
+        outline_loop,
+        [flashing, coined_up, blocks.hold_frames(1)],
+    )
+    logo_outline_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_LOGO_OUTLINE,
+        [
+            sprite_size(),
+            blocks.switch_costume("title-logo/outline/01"),
+            blocks.go(TITLE_LOGO_X, TITLE_LOGO_Y),
+            blocks.to_front(),
+            blocks.show(),
+            outline_loop,
+        ],
+    )
+
+    # The sparkle (TITLE_SPARKLE_*): hidden, then appearing in place, moving right along the top of the letters,
+    # and disappearing at the far end. It is removed when the flash starts, when the title ends, or when a credit is
+    # banked (coined_up clears every object, zero_obj_state_tbl).
+    def between(low: int, high: int) -> str:
+        return blocks.op_and(
+            blocks.op_gt(tick(), number(low - 1)), blocks.op_lt(tick(), number(high + 1))
+        )
+
+    sparkle_loop = blocks.add("control_repeat_until")
+    sparkle_done = blocks.op_or(
+        blocks.not_state(sparkle_loop, "title"),
+        blocks.op_or(
+            blocks.op_gt(variable("credits", CREDITS_ID), number(0)),
+            blocks.op_gt(tick(), number(TITLE_FLASH_TICK - 1)),
+        ),
+    )
+    blocks.blocks[sparkle_done]["parent"] = sparkle_loop
+    blocks.blocks[sparkle_loop]["inputs"]["CONDITION"] = [2, sparkle_done]
+    twinkle_base = TITLE_SPARKLE_BASE_ORDINAL - 1  # twinkle/k is ordinal twinkle_base + k
+    appearing = blocks.if_reporter(
+        between(TITLE_SPARKLE_APPEAR_TICK, TITLE_SPARKLE_MOVE_TICK - 1),
+        [
+            # twinkle/(n - 30)
+            blocks.switch_costume_expr(blocks.op_add(tick(), number(twinkle_base - 30))),
+            blocks.show(),
+        ],
+    )
+    moving = blocks.if_reporter(
+        between(TITLE_SPARKLE_MOVE_TICK, TITLE_SPARKLE_DISAPPEAR_TICK - 1),
+        [
+            # twinkle/(9 + ((2n + 43) & 7)), at x = 2.5n - 170
+            blocks.switch_costume_expr(
+                blocks.op_add(
+                    number(twinkle_base + 9),
+                    blocks.op_mod(blocks.op_add(blocks.op_mul(tick(), number(2)), number(43)), number(8)),
+                )
+            ),
+            blocks.go_expr(
+                blocks.op_add(blocks.op_mul(tick(), number(TITLE_SPARKLE_STEP_X)), number(TITLE_SPARKLE_X_ORIGIN)),
+                number(TITLE_SPARKLE_Y),
+            ),
+            blocks.show(),
+        ],
+    )
+    disappearing = blocks.if_reporter(
+        between(TITLE_SPARKLE_DISAPPEAR_TICK, TITLE_FLASH_TICK - 1),
+        [
+            # twinkle/(115 - n), at the far end
+            blocks.switch_costume_expr(blocks.op_sub(number(twinkle_base + 115), tick())),
+            blocks.go(TITLE_SPARKLE_END_X, TITLE_SPARKLE_Y),
+            blocks.show(),
+        ],
+    )
+    blocks.substack(
+        sparkle_loop,
+        [
+            appearing,
+            moving,
+            disappearing,
+            blocks.hold_frames(1),
+        ],
+    )
+    sparkle_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_SPARKLE,
+        [
+            sprite_size(),
+            blocks.go(TITLE_SPARKLE_START_X, TITLE_SPARKLE_Y),
+            blocks.to_front(),
+            sparkle_loop,
+            blocks.hide(),
+            blocks.add("control_delete_this_clone"),
+        ],
+    )
+
+    # The START SPACE KEY hint (static, title only; common_stop retires it like the CREDIT label).
+    start_hint_role = blocks.if_var_equals(
+        "attract role", ATTRACT_DISPLAY_ROLE_ID, ATTRACT_ROLE_START_HINT,
+        [blocks.switch_costume(ATTRACT_COSTUME_START_HINT), blocks.to_front(), blocks.show()],
+    )
+
     blocks.chain(
         clone,
         [
@@ -12628,6 +12868,10 @@ def title_blocks() -> dict[str, dict[str, Any]]:
             entry_subheader_role,
             entry_player_role,
             entry_name_role,
+            logo_outline_role,
+            sparkle_role,
+            start_hint_role,
+            demo_coin_role,
         ],
     )
     return blocks.blocks
@@ -12647,19 +12891,17 @@ def death_blocks() -> dict[str, dict[str, Any]]:
         DEATH_EPOCH_ID,
         variable("state epoch", EPOCH_ID),
     )
-    # B5/B10: the ~56-frame (28-tick) explosion, then a 32-frame (16-tick) pause before
-    # the respawn transition. CAB-05: the arcade death cue (solvalou_explode, 1.81 s) is
-    # longer than that 1.467 s window; the death-complete handler sets `keep sounds` so
-    # the transition it runs does not cut it, and `death cue playing` holds off any later
-    # stop-all until the cue has ended (the holds below collapse in a browser). The
-    # explosion is one repeat of exactly its 28 ticks (a non-empty loop yields one walk pass
-    # per iteration, like an empty hold); the pause is a flat, empty repeat.
-    # Arcade frame counts cite PLY-02; only the tick roundings live here.
+    # #158: the ~56-frame (28-tick) explosion and the 32-frame (16-tick) pause now run inside `playing`, ticked by
+    # the walk (`dying tick`, see DYING_ID): on each `death draw` this sprite draws the walk's tick — the
+    # explosion frame for the first EXPLOSION_TICKS ticks, hidden for the pause (`finish_solvalou_exploding`
+    # clears the craft's STATE, 2079-2090). It owns no timing of its own. CAB-05: the arcade death cue
+    # (solvalou_explode, 1.81 s) is longer than the 1.467 s window; `death cue playing` holds off every stop-all
+    # until the cue has ended, and the death-complete handler's `keep sounds` covers the transition it runs.
     # CAB-05: each tick draws player-explosion/burst/<step>/<flip> — step = tick // 4 (the 7 codes C0 C1 C4 C8
     # C2 C3 CC, 8 frames each, table 2093-2100), flip from the tick every 2 ticks (`countup & 0x0C`, 2072-2073;
     # the port counts it from the death, the arcade from its free-running frame counter). The 2x2 steps'
     # position nudges (2055-2063) are absorbed by the concentric 32-px art.
-    tick = lambda: variable("explosion tick", DEATH_EXPLOSION_TICK_ID)
+    tick = lambda: variable("dying tick", DYING_TICK_ID)
     explosion_ordinal = blocks.op_add(
         blocks.op_add(
             number(PLAYER_EXPLOSION_BASE_ORDINAL),
@@ -12676,27 +12918,32 @@ def death_blocks() -> dict[str, dict[str, Any]]:
             ),
         ),
     )
-    explosion_loop = blocks.add("control_repeat", inputs={"TIMES": number(EXPLOSION_STEPS * EXPLOSION_HOLD_TICKS)})
-    blocks.substack(
-        explosion_loop,
-        [blocks.switch_costume_expr(explosion_ordinal), blocks.change_var("explosion tick", DEATH_EXPLOSION_TICK_ID, 1)],
-    )
-    explosion: list[str] = [blocks.set_var("explosion tick", DEATH_EXPLOSION_TICK_ID, number(0)), explosion_loop]
-    death_body = [
+    draw_frame = [
         blocks.go_to_sprite("solvalou"),
         blocks.to_front(),  # B9: the explosion renders above the terrain
         blocks.show(),
-        # CAB-05: SOLVALOU_EXPLOSION_SND, not in attract (update_solvalou xevious_main.68k:2028-2031), relayed to
-        # the Stage that owns it. The transition into player-dead has just stopped all sounds, which ends the
-        # flight tune exactly where the arcade stops SOLVALOU_SND (2026).
-        blocks.if_reporter(
-            blocks.op_eq(variable("attract", ATTRACT_ID), number(0)),
-            [blocks.send("sfx death")],
-        ),
-        *explosion,
-        # CAB-05: the craft is gone for the pause (`finish_solvalou_exploding` clears its STATE, 2079-2090).
+        blocks.switch_costume_expr(explosion_ordinal),
+    ]
+    blocks.chain(
+        blocks.receive("death draw"),
+        [_if_else(blocks, _craft_drawn_reporter(blocks), draw_frame, [blocks.hide()])],
+    )
+    # The window has already run in `playing`, so player-dead only hands on to the death-complete route
+    # (epoch-guarded, as before, against a superseding transition). PLY-02.forest-wait (slice 21): the arcade
+    # fills the background with forest and waits 64 frames after EVERY death, before it looks at the craft left
+    # (`main_gameplay_loop` 508-546: the fill at 510, the 64-frame timer 511/535-536, the craft-left test 544).
+    # After a death with craft left the port's READY hold stands in for that wait (READY_HOLD_TICKS); after the
+    # LAST death (no craft left — the game-over route, or a two-player handoff from an eliminated player) the
+    # port now holds the forest for FOREST_WAIT_TICKS paced frames here, before the epoch check, so a superseding
+    # transition during the hold still drops the hand-off. A demo never reaches player-dead (it ends at the
+    # window's end), so it gets no wait, as in the arcade (1326-1334).
+    final_wait = blocks.if_reporter(
+        blocks.op_eq(variable("craft", LIVES_ID), number(0)),
+        [*_forest_terrain(blocks), _real_game_hold(blocks, FOREST_WAIT_TICKS)],
+    )
+    death_body = [
         blocks.hide(),
-        blocks.hold_ticks(POST_DEATH_PAUSE_TICKS),
+        final_wait,
         blocks.if_epoch_state(
             DEATH_EPOCH_ID, "player-dead", [blocks.send("death complete")]
         ),
@@ -12855,7 +13102,7 @@ def install_alloc_bullet_slot(blocks: Blocks) -> None:
 def blaster_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("blaster")
     common_stop(blocks, hide=True, clones=True)
-    install_baseline_size(blocks, "blaster")
+    blocks.chain(blocks.flag(), [blocks.add("looks_setsizeto", inputs={"SIZE": number(SPRITE_RENDER_SIZE)})])
     install_alloc_shot_slot(blocks)
     # Reset clears the reload counter (WPN-01: a fresh press fires at once) so holding
     # fire through death never delays the first post-respawn shot.
@@ -12923,7 +13170,11 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
         release_gate,
         [blocks.set_var("blaster reload", RELOAD_ID, number(RELOAD_TICKS))],
     )
-    blocks.substack(loop, [advance, fire_gate, release_gate])
+    # #158: no new shot while the craft explodes — `handle_shooting` is skipped (main_fn_30 2315-2316) — but the
+    # shot clones already in flight keep their own loops and can still score (2318-2329).
+    blocks.substack(
+        loop, [blocks.if_reporter(_craft_alive_reporter(blocks), [advance, fire_gate, release_gate])]
+    )
     blocks.chain(
         enter,
         [
@@ -12997,6 +13248,17 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             )
         ),
     )
+    # Slice 21 (CAB-05): the shot draws the arcade's own code and colour for the tick (SHOT_ART_BASE_ORDINAL);
+    # `code_step` is (countup >> 2) & 1 at two frames a tick. A fresh reporter per call.
+    code_step = lambda: blocks.op_mod(
+        blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(2))), number(2)
+    )
+    fly_costume = lambda: blocks.switch_costume_expr(
+        blocks.op_add(
+            blocks.op_add(number(SHOT_ART_BASE_ORDINAL), blocks.op_mul(code_step(), number(SHOT_ART_COLOURS))),
+            blocks.op_mod(variable("tick", TICK_ID), number(SHOT_ART_COLOURS)),
+        )
+    )
     blocks.substack(
         travel,
         [
@@ -13004,14 +13266,16 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             mirror_y,
             blocks.change_var("shot depth", SHOT_DEPTH_ID, SHOT_STEP),
             blocks.add("motion_sety", inputs={"Y": shot_depth()}),
-            blocks.add("looks_nextcostume"),
+            fly_costume(),
             past_top_hide,
         ],
     )
     # WPN-01 shot bounce: the travel loop above exits the instant the walk marks this shot non-ACTIVE.
     # When that mark is SHOT_BOUNCE (a `check shot bacura` overlap), the shot does not simply vanish — it
-    # rebounds. Reverse it (BACURA_BOUNCE_DY, the arcade's reflected 1/4-speed) and run the reference's
-    # BACURA_BOUNCE_FRAMES (8) costume frames in place, then fall through to the shared free+delete below.
+    # rebounds (shot_destroyed, see BACURA_BOUNCE_*). The hit tick draws the shot's own code at colour 0x23 in
+    # place; the clone's `bounce timer` then steps from BACURA_BOUNCE_ARM by TICK_TIMER_STEP, and each tick it
+    # moves BACURA_BOUNCE_DY and draws rebound code floor(timer / 2), until the timer passes the last arcade
+    # rebound frame (BACURA_BOUNCE_FRAMES - 1); then it falls through to the shared free+delete below.
     # The Bacura is untouched; only the shot animates away. Ordinary air-kill spends (SHOT_SPENT) and
     # top-expiry (still ACTIVE) skip this branch and delete at once as before. The real BACURA_HIT_SND now
     # plays (src deactivate_shot xevious_main.68k:2559): this branch runs on a blaster clone, which cannot
@@ -13023,22 +13287,42 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
     blocks.blocks[above_top]["parent"] = bounce_visible
     blocks.substack(bounce_visible, [blocks.add("looks_hide")])
     blocks.substack(bounce_visible, [blocks.show()], name="SUBSTACK2")
-    bounce_anim = blocks.add("control_repeat", inputs={"TIMES": number(BACURA_BOUNCE_FRAMES)})
-    blocks.substack(
-        bounce_anim,
+    bounce_timer = lambda: variable("bounce timer", BOUNCE_TIMER_ID)
+    bounce_anim = blocks.add("control_repeat_until")
+    bounce_done = blocks.op_gt(bounce_timer(), number(BACURA_BOUNCE_FRAMES - 1))
+    blocks.blocks[bounce_anim]["inputs"]["CONDITION"] = [2, bounce_done]
+    blocks.blocks[bounce_done]["parent"] = bounce_anim
+    rebound_frame = blocks.if_reporter(
+        blocks.op_gt(bounce_timer(), number(BACURA_BOUNCE_ARM)),
         [
             blocks.change_var("shot depth", SHOT_DEPTH_ID, BACURA_BOUNCE_DY),
             blocks.add("motion_sety", inputs={"Y": shot_depth()}),
-            blocks.add("looks_nextcostume"),
+            blocks.switch_costume_expr(
+                blocks.op_add(
+                    number(SHOT_REBOUND_ART_BASE_ORDINAL),
+                    blocks.op_floor(blocks.op_div(bounce_timer(), number(2))),
+                )
+            ),
             bounce_visible,
         ],
+    )
+    blocks.substack(
+        bounce_anim, [rebound_frame, blocks.change_var("bounce timer", BOUNCE_TIMER_ID, TICK_TIMER_STEP)]
+    )
+    hit_costume = blocks.switch_costume_expr(
+        blocks.op_add(number(SHOT_ART_BASE_ORDINAL), blocks.op_mul(code_step(), number(SHOT_ART_COLOURS)))
     )
     bounce = blocks.if_reporter(
         blocks.op_eq(
             blocks.list_item("slot state", SLOT_STATE_ID, variable("clone slot", CLONE_SLOT_ID)),
             number(SHOT_BOUNCE),
         ),
-        [blocks.send("sfx bacura"), bounce_anim],
+        [
+            blocks.send("sfx bacura"),
+            hit_costume,
+            blocks.set_var("bounce timer", BOUNCE_TIMER_ID, number(BACURA_BOUNCE_ARM)),
+            bounce_anim,
+        ],
     )
     # The clone snapshots `alloc result` (its allocated index) into its own `clone slot`
     # at birth, and frees that slot on expiry — so every delete path returns the slot to
@@ -13052,6 +13336,7 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             ),
             # Born at the craft (go_to_sprite before create_clone), which is always on stage.
             blocks.set_var_expr("shot depth", SHOT_DEPTH_ID, blocks.yposition()),
+            fly_costume(),
             blocks.to_front(),  # B9: shots render above the terrain
             blocks.show(),
             # CAB-05: SHOT_SND (main_fn_30_shot_fn xevious_main.68k:2366), relayed to the Stage that owns it.
@@ -13240,6 +13525,11 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
     # `director stop` (common_stop's clones=True) and rebuilt on `director enter`
     # whenever the state is HUD-visible (anything but title/boot) — director stop always
     # precedes director enter on every transition, so nothing ever double-stacks.
+    # Cost (#24): the whole set is rebuilt on EVERY transition, not only the ones that change a score or the
+    # craft, and each digit clone re-derives its glyph (floor/mod/join/switch costume) every frame it is shown.
+    # That is cheap at this scale and inside the 300-clone ceiling; the release soak (harness/soak.js)
+    # measures the clone headroom through every HUD-visible state. If HUD-visible transitions ever become
+    # frequent, rebuild only the roles whose value changed.
     blocks = Blocks("hud")
     common_stop(blocks, hide=True, clones=True)
     install_hud_spawn_craft(blocks)
@@ -13319,10 +13609,10 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             blocks.create_clone(),
         ]
     spawn_body.append(blocks.if_state("game-over", game_over_body))
-    # CAB-03 (slice 18): the two-player "GAME OVER PLAYER n" elimination banner clone — spawned ONLY in a
-    # two-player game. `banner player` is never raised in a one-player game, so gating the spawn on `two player`
-    # keeps the one-player HUD (and its clone census) byte-identical while giving a two-player game the single
-    # extra clone. One clone, centered on the field; it shows itself only while `banner player` names a player.
+    # CAB-03 (slice 18): the two-player elimination banner — spawned ONLY in a two-player game. `banner player`
+    # is never raised in a one-player game, so gating the spawn on `two player` keeps the one-player HUD (and its
+    # clone census) byte-identical. Two clones, one per row (slice 21): the GAME OVER line and the PLAYER n line;
+    # each shows itself only while `banner player` names a player.
     spawn_body.append(
         blocks.if_var_equals(
             "two player",
@@ -13331,6 +13621,9 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             [
                 blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_BANNER)),
                 blocks.go(HUD_BANNER_X, HUD_BANNER_Y),
+                blocks.create_clone(),
+                blocks.set_var("hud role", HUD_ROLE_ID, number(HUD_ROLE_BANNER_PLAYER)),
+                blocks.go(HUD_BANNER_PLAYER_X, HUD_BANNER_PLAYER_Y),
                 blocks.create_clone(),
             ],
         )
@@ -13398,8 +13691,12 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
                 )
             ],
         )
-        # Every tick while HUD-visible: digit = floor(value / 10^place) mod 10, shown as
-        # leading-zero-preserving digit/D (deterministic integer math, arcade-faithful).
+        # Every tick while HUD-visible: digit = floor(value / 10^place) mod 10, worn as digit/D
+        # (deterministic integer math). Slice 21 (#31): leading zeros are blank, as the arcade
+        # draws a score (display_score / display_bcd_value, xevious_main.68k 1904-1977: up to five
+        # leading zero digits are written as spaces, and the sixth digit and the trailing 0 always
+        # show, so a score of 0 reads "00"). So the units and tens always show, and place p >= 2
+        # shows only while value >= 10^p; interior zeros show.
         # Update every tick while the HUD is visible; stop (fall through to hide+delete) only
         # when the state returns to title/boot. `repeat until` halts when its condition is TRUE,
         # so the condition is "we have LEFT to title/boot" — not its negation.
@@ -13415,14 +13712,25 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             number(10),
         )
         name_expr = blocks.op_join(text("digit/"), digit_expr)
-        blocks.substack(tick_loop, [blocks.switch_costume_expr(name_expr)])
+        shown = blocks.op_or(
+            blocks.op_lt(variable("hud place", HUD_PLACE_ID), number(2)),
+            blocks.op_not(
+                blocks.op_lt(variable(var_name, var_id), variable("hud divisor", HUD_DIVISOR_ID))
+            ),
+        )
+        blocks.substack(
+            tick_loop,
+            [
+                blocks.switch_costume_expr(name_expr),
+                _if_else(blocks, shown, [blocks.show()], [blocks.hide()]),
+            ],
+        )
         return [
-            # Compute 10^place while still hidden, then show and update the costume every tick
-            # (the first iteration sets the right digit before the frame renders — no flash).
+            # Compute 10^place while still hidden, then update the costume and visibility every tick
+            # (the first iteration sets both before the frame renders — no flash).
             set_divisor,
             divisor_loop,
             blocks.to_front(),
-            blocks.show(),
             tick_loop,
             blocks.hide(),
             blocks.add("control_delete_this_clone"),
@@ -13460,28 +13768,45 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             blocks.show(),
         ],
     )
-    # 1UP: flashes (show/hide, held HUD_1UP_FLASH_HOLD_TICKS each way) for as long as the
-    # HUD is visible, epoch/state-safe via the same title/boot guard as the digit loops.
-    # CAB-01 (slice 17): the blank half of the flash is gated on `attract==0` (a real game).
-    # The arcade `flash_1up_2up` (src/xevious_sub.68k 769-776) does `and.b (is_real_game),d3`
-    # before deciding to write the "   " blank string, so a CLEARED flag (the attract demo)
-    # skips the blank and the 1UP/2UP shows steady; only a real game flashes it. In the port a
-    # demo is `playing` with attract==1, so gating the `hide` on attract==0 keeps the demo's
-    # indicator steady while a real game (attract==0) still flashes. `show` always runs, so a
-    # demo clone is never left hidden.
+    # 1UP: flashes for as long as the HUD is visible, epoch/state-safe via the same title/boot guard as the
+    # digit loops. Slice 21 (#31): the arcade blanks the active label while bit 4 of its frame counter is set —
+    # 16 frames shown, 16 blank (sub_fn_6__display_1UP_2UP / flash_1up_2up, xevious_sub.68k 737-775) — and only
+    # in a real game: `and.b (is_real_game),d3` clears the blank in the attract demo, so the demo's label is
+    # steady (CAB-01, slice 17). The port's clock is `tick` (the walk, in play) plus `hud flash frames` (the
+    # real game's paced holds off the play screen: the two-player banner, the last death's forest wait, initials
+    # entry — `_real_game_hold`), copied into the clone each pass. It is read, never counted here: scratch-vm ends
+    # the frame at every `wait` it starts, so a wait in this always-running loop would pace the Stage's collapsing
+    # holds. The label is blank while floor(clock / 8) mod 2 == 1 and attract == 0, on any screen but the best
+    # five (the arcade clears `is_real_game` on its return to attract, main 349). The collapsing beats (READY, the
+    # game-over hold) run inside one frame, so the clock stands still across them (record 056 deviation 14).
     flash_loop = blocks.add("control_repeat_until")
     flash_condition = blocks.either_state(flash_loop, "title", "boot")
     blocks.blocks[flash_loop]["inputs"]["CONDITION"] = [2, flash_condition]
+    flash_clock = lambda: variable("hud flash clock", HUD_FLASH_CLOCK_ID)
+    flash_source = lambda: blocks.op_add(
+        variable("tick", TICK_ID), variable("hud flash frames", HUD_FLASH_FRAMES_ID)
+    )
+    flash_blank = blocks.op_eq(
+        blocks.op_mod(
+            blocks.op_floor(blocks.op_div(flash_clock(), number(HUD_FLASH_HALF_TICKS))), number(2)
+        ),
+        number(1),
+    )
+    real_game_screen = blocks.add("control_if")
+    blocks.blocks[real_game_screen]["inputs"]["CONDITION"] = [
+        2,
+        blocks.not_state(real_game_screen, ATTRACT_SCORES_STATE),
+    ]
+    blocks.substack(real_game_screen, [blocks.if_reporter(flash_blank, [blocks.hide()])])
     blocks.substack(
         flash_loop,
         [
-            blocks.hold_ticks(HUD_1UP_FLASH_HOLD_TICKS),
+            blocks.set_var_expr("hud flash clock", HUD_FLASH_CLOCK_ID, flash_source()),
+            blocks.show(),
             blocks.if_reporter(
                 blocks.op_eq(variable("attract", ATTRACT_ID), number(0)),
-                [blocks.hide()],
+                [real_game_screen],
             ),
-            blocks.hold_ticks(HUD_1UP_FLASH_HOLD_TICKS),
-            blocks.show(),
         ],
     )
     label_1up_role = blocks.if_var_equals(
@@ -13489,8 +13814,8 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         HUD_ROLE_ID,
         HUD_ROLE_LABEL_1UP,
         [
+            blocks.set_var_expr("hud flash clock", HUD_FLASH_CLOCK_ID, flash_source()),
             blocks.to_front(),
-            blocks.show(),
             flash_loop,
             blocks.hide(),
             blocks.add("control_delete_this_clone"),
@@ -13520,41 +13845,48 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
         HUD_ROLE_GAME_OVER_GLYPH,
         [blocks.to_front(), blocks.show()],
     )
-    # CAB-03: the two-player elimination banner. Unlike the static GAME OVER glyphs, this clone re-reads
-    # `banner player` every tick while the HUD is visible (the digit-loop idiom) so the handoff banner appears
-    # the instant the death handler raises it and vanishes when it is lowered. With no player named it hides;
-    # otherwise it switches to that player's "GAME OVER PLAYER n" whole-string costume (n = banner player + 1)
-    # and shows in front. common_stop's clone-clear retires it on the next transition, so — like the flashing
-    # 1UP label — it hides + deletes itself only when the state returns to title/boot.
-    banner_tick = blocks.add("control_repeat_until")
-    banner_stop = blocks.either_state(banner_tick, "title", "boot")
-    blocks.blocks[banner_tick]["inputs"]["CONDITION"] = [2, banner_stop]
-    banner_visible = blocks.add("control_if_else")
-    banner_none = blocks.op_eq(
-        variable("banner player", BANNER_PLAYER_ID), number(BANNER_PLAYER_NONE)
-    )
-    blocks.blocks[banner_none]["parent"] = banner_visible
-    blocks.blocks[banner_visible]["inputs"]["CONDITION"] = [2, banner_none]
-    blocks.substack(banner_visible, [blocks.hide()])
-    banner_name = blocks.op_join(
-        text(HUD_BANNER_COSTUME_PREFIX),
-        blocks.op_add(variable("banner player", BANNER_PLAYER_ID), number(1)),
-    )
-    blocks.substack(
-        banner_visible,
-        [blocks.switch_costume_expr(banner_name), blocks.to_front(), blocks.show()],
-        name="SUBSTACK2",
-    )
-    blocks.substack(banner_tick, [banner_visible])
-    banner_role = blocks.if_var_equals(
-        "hud role",
-        HUD_ROLE_ID,
-        HUD_ROLE_BANNER,
-        [
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(HUD_BANNER_SIZE)}),
+    # CAB-03: the two-player elimination banner, one clone per row. Unlike the static GAME OVER glyphs, each
+    # re-reads `banner player` every tick while the HUD is visible (the digit-loop idiom) so the handoff banner
+    # appears the instant the death handler raises it and vanishes when it is lowered. With no player named it
+    # hides; otherwise the GAME OVER line shows, and the player line switches to that player's costume
+    # (banner-player-<banner player + 1>) and shows, both in front. common_stop's clone-clear retires them on the
+    # next transition, so — like the flashing 1UP label — they hide + delete themselves only when the state
+    # returns to title/boot.
+    def banner_row_role(role: int, shown_body: list[str]) -> str:
+        banner_tick = blocks.add("control_repeat_until")
+        banner_stop = blocks.either_state(banner_tick, "title", "boot")
+        blocks.blocks[banner_tick]["inputs"]["CONDITION"] = [2, banner_stop]
+        banner_none = blocks.op_eq(
+            variable("banner player", BANNER_PLAYER_ID), number(BANNER_PLAYER_NONE)
+        )
+        blocks.substack(
             banner_tick,
-            blocks.hide(),
-            blocks.add("control_delete_this_clone"),
+            [_if_else(blocks, banner_none, [blocks.hide()], [*shown_body, blocks.to_front(), blocks.show()])],
+        )
+        return blocks.if_var_equals(
+            "hud role",
+            HUD_ROLE_ID,
+            role,
+            [
+                blocks.add("looks_setsizeto", inputs={"SIZE": number(HUD_BANNER_SIZE)}),
+                banner_tick,
+                blocks.hide(),
+                blocks.add("control_delete_this_clone"),
+            ],
+        )
+
+    banner_role = banner_row_role(
+        HUD_ROLE_BANNER, [blocks.switch_costume(HUD_BANNER_GAME_OVER_COSTUME)]
+    )
+    banner_player_role = banner_row_role(
+        HUD_ROLE_BANNER_PLAYER,
+        [
+            blocks.switch_costume_expr(
+                blocks.op_join(
+                    text(HUD_BANNER_COSTUME_PREFIX),
+                    blocks.op_add(variable("banner player", BANNER_PLAYER_ID), number(1)),
+                )
+            )
         ],
     )
     blocks.chain(
@@ -13570,6 +13902,7 @@ def hud_blocks() -> dict[str, dict[str, Any]]:
             label_2up_role,
             game_over_glyph_role,
             banner_role,
+            banner_player_role,
         ],
     )
 
@@ -13647,28 +13980,36 @@ def _ensure_hud_target(project: dict[str, Any]) -> None:
 
 
 def _gate_in_view(blocks: Blocks, slotvar, body: list[str]) -> str:
-    # PRES-01 edge-hide: wrap a world renderer's per-tick body so its clone draws only while the slot's
-    # scroll row is on the field — RENDER_VIEW_FIRST_ROW <= slot x < RENDER_VIEW_ROWS cells, the arcade's
-    # visible rows 4..39 — and hides otherwise. Scratch cannot clip a sprite at a screen edge, so an object
-    # off the field is hidden whole rather than drawn fenced at the stage edge. `slotvar` is the renderer's
-    # fresh-per-call slot reporter factory (a reporter binds to one parent, so each read builds its own).
-    # Render-only: writes no slot state.
+    # PRES-01 edge gate: wrap a world renderer's per-tick body so its clone draws while the slot's scroll row
+    # is within RENDER_VIEW_MARGIN_ROWS of the arcade's visible rows 4..39, and hides otherwise. The body moves
+    # the clone before it picks a costume (every world renderer does), so it runs at OFF_EDGE_MOVE_SIZE: the move
+    # is never fenced back onto the stage, and a sprite hanging over the edge is clipped there, as the arcade's
+    # screen clips it. The clone then takes SPRITE_RENDER_SIZE, every world renderer's size. `slotvar` is the
+    # renderer's fresh-per-call slot reporter factory (a reporter binds to one parent, so each read builds its
+    # own). Render-only: writes no slot state.
     in_view = blocks.op_and(
         blocks.op_not(
             blocks.op_lt(
                 blocks.list_item("slot x", SLOT_X_ID, slotvar()),
-                number(RENDER_VIEW_FIRST_ROW * SLOT_UNITS_PER_CELL),
+                number((RENDER_VIEW_FIRST_ROW - RENDER_VIEW_MARGIN_ROWS) * SLOT_UNITS_PER_CELL),
             )
         ),
         blocks.op_lt(
             blocks.list_item("slot x", SLOT_X_ID, slotvar()),
-            number(RENDER_VIEW_ROWS * SLOT_UNITS_PER_CELL),
+            number((RENDER_VIEW_ROWS + RENDER_VIEW_MARGIN_ROWS) * SLOT_UNITS_PER_CELL),
         ),
     )
     gate = blocks.add("control_if_else")
     blocks.blocks[gate]["inputs"]["CONDITION"] = [2, in_view]
     blocks.blocks[in_view]["parent"] = gate
-    blocks.substack(gate, body)
+    blocks.substack(
+        gate,
+        [
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(OFF_EDGE_MOVE_SIZE)}),
+            *body,
+            blocks.add("looks_setsizeto", inputs={"SIZE": number(SPRITE_RENDER_SIZE)}),
+        ],
+    )
     blocks.substack(gate, [blocks.hide()], name="SUBSTACK2")
     return gate
 
@@ -13684,12 +14025,11 @@ def _flip_costume_offset(blocks: Blocks, flip_bits) -> str:
     )
 
 
-def _air_burst_ordinal(blocks: Blocks, base: int, timer, flipped: bool = True) -> str:
+def _air_burst_ordinal(blocks: Blocks, base: int, timer) -> str:
     # CAB-05: the air-explosion costume for a slot clock (`flying_enemy_hit` 4877-4887): phase = TIMER>>2 picks
     # the frame (four flip costumes each) and TIMER&3 the flip bits, which cycle every arcade frame. The slot
     # clock advances 2 frames a tick, so the port draws the even frames (flips none and x) — the arcade's own
-    # formula, sampled once a tick. `flipped=False` draws the unflipped costume of each phase (the Zakato
-    # self-destruct and teleport stand-ins, whose arcade routines store no flip bits).
+    # formula, sampled once a tick.
     ordinal = blocks.op_add(
         number(base),
         blocks.op_mul(
@@ -13697,8 +14037,6 @@ def _air_burst_ordinal(blocks: Blocks, base: int, timer, flipped: bool = True) -
             number(AIR_EXPLOSION_FLIP_COSTUMES),
         ),
     )
-    if not flipped:
-        return ordinal
     return blocks.op_add(
         ordinal, _flip_costume_offset(blocks, lambda: blocks.op_mod(timer(), number(TOROID_EXPLOSION_PHASE_FRAMES)))
     )
@@ -13925,6 +14263,15 @@ WORLD_RENDER_LAYER_ORDERS = {
     JARA_TARGET: 39,
     ENEMY_BULLET_TARGET: 40,
 }
+
+# #23: the two other targets this generator creates keep fixed layers too. Each used to take
+# `max(existing) + 1` once, at creation, so its number depended on which targets another generator had
+# already added — regenerating in a different order renumbered them. These are the values the committed
+# project already holds, so pinning them changes no draw order: the HUD sits above the base targets and
+# the sprite-extraction proof (17, sprite_extractor.GENERATED_LAYER_ORDER) sits just above the HUD, and
+# the SEC-03 overlay tops everything, above the bezel (BEZEL_LAYER_ORDER).
+HUD_LAYER_ORDER = 16
+EASTER_EGG_LAYER_ORDER = 42
 
 # PRES-01: the four baseline border sprites are retired — the play area is the whole stage. They were
 # 15-unit opaque bands (top/bottom) and 1-unit strips (sides) that fronted themselves every frame, so they
@@ -14737,7 +15084,7 @@ def bonus_flag_blocks() -> dict[str, dict[str, Any]]:
     # Unlike the full-band families (Sol Tower, Barra, ...), the Bonus Flag is NOT a per-slot pool: the
     # arcade `add_object` handler (sub_2_fb_0__type_only, xevious_sub.68k:649) stamps the flag's _TYPE at a
     # fixed obj offset, and every scheduled flag record targets obj slot 0x00 (area-schedules areas 1/3/5/7,
-    # one flag each, never concurrent); the debug seed stamps the same GROUND_SLOTS[0] slot. So one clone is
+    # one flag each, never concurrent). So one clone is
     # both faithful (the flag can live nowhere else) and necessary: a 16-clone pool would reserve 15 clones
     # for slots the flag never occupies, and the port's ground families already sit at scratch-vm's hard
     # 300-clone ceiling — those 15 phantom clones starved the player blaster (harness `shot-cap-ceiling`).
@@ -15369,15 +15716,15 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
     # persistent clone per flying slot (59..64), the same pool pattern as the Jara/Kapi: shown and
     # positioned when its slot holds ANY of the four base Zakato types, hidden otherwise. The clone writes
     # no state. It draws whichever of the four phases the slot's `slot state` names — the phase sequence the
-    # update machine drives:
-    #   SLOT_ACTIVE       the single static body (ordinal 1, arcade code 0x11).
-    #   SLOT_TELEPORT     the teleport-in sparkle: the air explosion's unflipped phases played REVERSED (the
-    #                     arcade sparkle is the exploding six-frame set run backwards, 3986-3992), from the slot clock.
-    #   SLOT_SELF_EXPLODE the self-destruct: the air explosion's unflipped phases FORWARD.
+    # update machine drives (costume ordinals in the constants):
+    #   SLOT_ACTIVE       the body at the colour the update kept in `slot flag`: the Zakato's one picture, or
+    #                     the Brag Zakato's own at 0x10..0x13 (at 0x14 it draws the Zakato picture).
+    #   SLOT_TELEPORT     the teleport sparkle (zakato_teleport_sparkles 3969-3984), phase TIMER>>2 in table
+    #                     order, flipped by TIMER & 3 (none or x at the port's even timer values).
+    #   SLOT_SELF_EXPLODE the self-destruct 0x104-0x108, phase TIMER>>2, 1x1 and unflipped, at the colour kept
+    #                     in `slot flag` (the last one drawn, or 0x24 if it fired on its first live frame).
     #   SLOT_HIT          the shot kill: CAB-05's air explosion with its per-frame flips (`flying_enemy_hit`),
     #                     exactly like every other flying kill.
-    # The shot kill is the arcade's own; the teleport and self-destruct borrow the air explosion as a stand-in
-    # (record note in the constants) — the Zakato's own teleport/burst sprites are a deferred cosmetic.
     blocks = Blocks(ZAKATO_TARGET)
     common_stop(blocks, hide=True, clones=True)
     slotvar = lambda: variable("zakato clone slot", ZAKATO_CLONE_SLOT_ID)
@@ -15396,10 +15743,10 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
     loop_condition = blocks.not_state(loop, "playing")
     blocks.blocks[loop]["inputs"]["CONDITION"] = [2, loop_condition]
     stype = lambda: blocks.list_item("slot type", SLOT_TYPE_ID, slotvar())
-    # AIR-07 base variants + AIR-08 Brag variants: all six teleport in, hold a static body while active,
-    # and play the shared burst for their self-destruct / shot-kill — the same four render phases — so the
-    # Brag rnd/closeY fold into this renderer (they need no target of their own). The Garu Zakato does NOT
-    # (no teleport) and has its own Spario-factory renderer instead.
+    # AIR-07 base variants + AIR-08 Brag variants: all six teleport in, pulse while active and share the
+    # self-destruct and shot-kill pictures — the same four render phases — so the Brag rnd/closeY fold into
+    # this renderer (only their active body differs). The Garu Zakato does NOT (no teleport) and has its own
+    # Spario-factory renderer instead.
     is_zakato = blocks.op_or(
         blocks.op_or(
             blocks.op_or(blocks.op_eq(stype(), number(ZAKATO_SLOW_TYPE)), blocks.op_eq(stype(), number(ZAKATO_CLOSEY_TYPE))),
@@ -15421,66 +15768,73 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
             number(RENDER_ROW_STAGE),
         ),
     )
-    # The slot clock (the arcade `TIMER`), fresh per read (a reporter attaches to only one parent). The
-    # teleport, self-destruct and shared-hit phases all step every 4 frames (ZAKATO_ANIM_PHASE_FRAMES ==
-    # TOROID_EXPLOSION_PHASE_FRAMES, asserted below), so they share _air_burst_ordinal's phase.
+    # The slot clock (the arcade `TIMER`) and the kept colour, fresh per read (a reporter attaches to only one
+    # parent). The teleport, self-destruct and shared-hit phases all step every 4 frames
+    # (ZAKATO_ANIM_PHASE_FRAMES == TOROID_EXPLOSION_PHASE_FRAMES, asserted below).
     timer = lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar())
+    colour = lambda: blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar())
     assert ZAKATO_ANIM_PHASE_FRAMES == TOROID_EXPLOSION_PHASE_FRAMES
     phase = lambda: blocks.op_floor(blocks.op_div(timer(), number(ZAKATO_ANIM_PHASE_FRAMES)))
-    # SLOT_SELF_EXPLODE vs SLOT_ACTIVE (the innermost pair): the self-destruct plays the air explosion's
-    # unflipped phases forward (the stand-in for zakato_explode's own codes); the active phase holds the body.
-    self_or_active = blocks.add("control_if_else")
-    is_self = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_SELF_EXPLODE))
-    blocks.blocks[self_or_active]["inputs"]["CONDITION"] = [2, is_self]
-    blocks.blocks[is_self]["parent"] = self_or_active
-    blocks.substack(
-        self_or_active,
+    size = lambda: blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)})
+    # ACTIVE: the Brag Zakato draws its own body at 0x10..0x13 and the Zakato picture at 0x14; the base
+    # Zakato draws its one picture at every colour.
+    is_brag = blocks.op_or(
+        blocks.op_eq(stype(), number(BRAG_ZAKATO_RND_TYPE)), blocks.op_eq(stype(), number(BRAG_ZAKATO_CLOSEY_TYPE))
+    )
+    brag_own = blocks.op_and(is_brag, blocks.op_lt(colour(), number(BRAG_ZAKATO_BODY_COLOURS)))
+    active_body = _ground_if_else(
+        blocks,
+        brag_own,
+        [blocks.switch_costume_expr(blocks.op_add(number(BRAG_ZAKATO_BODY_ORDINAL_BASE), colour())), size()],
+        # A fixed costume, so switch by name (switch_costume_expr obscures a menu with a runtime reporter;
+        # for a constant the by-name switch is direct).
+        [blocks.switch_costume(ZAKATO_BODY_COSTUME), size()],
+    )
+    # SLOT_SELF_EXPLODE vs SLOT_ACTIVE (the innermost pair).
+    self_ordinal = blocks.op_add(
+        number(ZAKATO_SELF_DESTRUCT_ORDINAL_BASE),
+        blocks.op_add(blocks.op_mul(phase(), number(ZAKATO_COLOURS)), colour()),
+    )
+    self_or_active = _ground_if_else(
+        blocks,
+        blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_SELF_EXPLODE)),
+        [blocks.switch_costume_expr(self_ordinal), size()],
+        [active_body],
+    )
+    # SLOT_TELEPORT vs the rest. The sparkle's first two cells are 2x2 sprites (3987-3988), drawn 8 px right
+    # and down of the position (sprite_draw_double_width_and_height): until the timer-8 move they are placed
+    # DOUBLE_TILE_STAGE_OFFSET right (+x) and down (-y), so the picture holds still through the one-cell move
+    # (see the constants).
+    double_sparkle = blocks.if_reporter(
+        blocks.op_lt(timer(), number(ZAKATO_TELEPORT_NUDGE_TIMER)),
         [
-            blocks.switch_costume_expr(_air_burst_ordinal(blocks, ZAKATO_BURST_ORDINAL_BASE, timer, flipped=False)),
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)}),
+            blocks.add("motion_changexby", inputs={"DX": number(DOUBLE_TILE_STAGE_OFFSET)}),
+            blocks.add("motion_changeyby", inputs={"DY": number(-DOUBLE_TILE_STAGE_OFFSET)}),
         ],
     )
-    blocks.substack(
-        self_or_active,
-        [
-            # ACTIVE holds the static body — a fixed costume, so switch by name (switch_costume_expr
-            # obscures a menu with a runtime reporter; for a constant the by-name switch is direct).
-            blocks.switch_costume("zakato/body/01"),
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)}),
-        ],
-        name="SUBSTACK2",
+    # Flip bits TIMER & 3 (rol.b #2 / and #0x0c, 3979-3980): bit 1 is the x flip (see _flip_costume_offset),
+    # bit 0 the y flip, which the port's even timer never sets.
+    teleport_ordinal = blocks.op_add(
+        number(ZAKATO_TELEPORT_ORDINAL_BASE),
+        blocks.op_add(
+            blocks.op_mul(phase(), number(ZAKATO_TELEPORT_FLIPS)),
+            blocks.op_floor(blocks.op_div(blocks.op_mod(timer(), number(4)), number(2))),
+        ),
     )
-    # SLOT_TELEPORT vs the rest: the sparkle plays the unflipped phases REVERSED
-    # (ordinal base + 4 * (PHASES-1 - phase)).
-    tele_or_rest = blocks.add("control_if_else")
-    is_tele = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_TELEPORT))
-    blocks.blocks[tele_or_rest]["inputs"]["CONDITION"] = [2, is_tele]
-    blocks.blocks[is_tele]["parent"] = tele_or_rest
-    blocks.substack(
-        tele_or_rest,
-        [
-            blocks.switch_costume_expr(
-                blocks.op_sub(
-                    number(ZAKATO_BURST_ORDINAL_BASE + AIR_EXPLOSION_FLIP_COSTUMES * (ZAKATO_ANIM_PHASES - 1)),
-                    blocks.op_mul(phase(), number(AIR_EXPLOSION_FLIP_COSTUMES)),
-                )
-            ),
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)}),
-        ],
+    tele_or_rest = _ground_if_else(
+        blocks,
+        blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_TELEPORT)),
+        [double_sparkle, blocks.switch_costume_expr(teleport_ordinal), size()],
+        [self_or_active],
     )
-    blocks.substack(tele_or_rest, [self_or_active], name="SUBSTACK2")
     # SLOT_HIT (`flying_enemy_hit`, CAB-05): the air explosion with its per-frame flips — exactly the other
     # families' hit render.
-    explode_ordinal = _air_burst_ordinal(blocks, ZAKATO_BURST_ORDINAL_BASE, timer)
-    state_render = blocks.add("control_if_else")
-    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
-    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
-    blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(
-        state_render,
-        [blocks.switch_costume_expr(explode_ordinal), blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)})],
+    state_render = _ground_if_else(
+        blocks,
+        blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT)),
+        [blocks.switch_costume_expr(_air_burst_ordinal(blocks, ZAKATO_BURST_ORDINAL_BASE, timer)), size()],
+        [tele_or_rest],
     )
-    blocks.substack(state_render, [tele_or_rest], name="SUBSTACK2")
 
     render = blocks.add("control_if_else")
     blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_zakato]
@@ -15499,15 +15853,20 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
-def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_code: int, flipped: bool) -> dict[str, dict[str, Any]]:
-    # AIR-10 shared Spario renderer (game_director owns these blocks; the costumes are the Zakato body
-    # stand-in + the shared air explosion mirrored on in expected_project). One persistent clone per
-    # flying slot (59..64), the same pool pattern as the Jara/Zakato: shown and positioned when its slot
-    # holds `type_code`, hidden otherwise. The clone writes no state. While ACTIVE it holds the static body
-    # stand-in (ordinal 1); on a hit it plays the air explosion FORWARD from the slot clock. `flipped`
-    # selects the kill: the Brag and Garu Zakato use the shared ~20-frame flying kill with its per-frame flips
-    # (`flying_enemy_hit`); the Giddo's SHORT 8-frame own-burst (giddo_spario_hit xevious_main.68k 5241-5253, codes 4..7 with
-    # no flip bits) plays the unflipped first phases — a small pop (its handler frees it at frame 8).
+def _spario_blocks(
+    target: str,
+    clone_var_name: str,
+    clone_var_id: str,
+    type_code: int,
+    body_ordinal,
+    hit_ordinal=None,
+) -> dict[str, dict[str, Any]]:
+    # AIR-10 shared Spario renderer (game_director owns these blocks; the costumes are mirrored on in
+    # expected_project). One persistent clone per flying slot (59..64), the same pool pattern as the
+    # Jara/Zakato: shown and positioned when its slot holds `type_code`, hidden otherwise. The clone writes no
+    # state. `body_ordinal(blocks, slotvar)` builds the costume it draws while flying; `hit_ordinal`, when
+    # given, the one it draws while SLOT_HIT. Without one (the Brag Spario, slice 21) it always draws the body:
+    # a shot leaves it flying, and the arcade's hit never touches its _CODE (3082, 2525).
     blocks = Blocks(target)
     common_stop(blocks, hide=True, clones=True)
     slotvar = lambda: variable(clone_var_name, clone_var_id)
@@ -15540,29 +15899,18 @@ def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_cod
             number(RENDER_ROW_STAGE),
         ),
     )
-    # The air explosion on a hit: forward from the slot clock (the arcade `TIMER>>2`, fresh per read).
-    explode_ordinal = _air_burst_ordinal(
-        blocks, SPARIO_BURST_ORDINAL_BASE, lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), flipped
-    )
-    hit_body: list[str] = [
-        blocks.switch_costume_expr(explode_ordinal),
-        blocks.add("looks_setsizeto", inputs={"SIZE": number(SPARIO_RENDER_SIZE)}),
-    ]
-    state_render = blocks.add("control_if_else")
-    is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
-    blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
-    blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(state_render, hit_body)
-    blocks.substack(
-        state_render,
-        [
-            # The body stand-in is a fixed costume (the mirrored-in Zakato blob, ordinal 1), so switch by
-            # name — a constant costume needs no runtime reporter, exactly like the Zakato active body.
-            blocks.switch_costume("zakato/body/01"),
-            blocks.add("looks_setsizeto", inputs={"SIZE": number(SPARIO_RENDER_SIZE)}),
-        ],
-        name="SUBSTACK2",
-    )
+    size = lambda: blocks.add("looks_setsizeto", inputs={"SIZE": number(SPARIO_RENDER_SIZE)})
+    body = lambda: [blocks.switch_costume_expr(body_ordinal(blocks, slotvar)), size()]
+    if hit_ordinal is not None:
+        state_render = _ground_if_else(
+            blocks,
+            blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT)),
+            [blocks.switch_costume_expr(hit_ordinal(blocks, slotvar)), size()],
+            body(),
+        )
+        drawn = [state_render]
+    else:
+        drawn = body()
     render = blocks.add("control_if_else")
     blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_family]
     blocks.blocks[is_family]["parent"] = render
@@ -15570,7 +15918,7 @@ def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_cod
         render,
         [
             blocks.go_expr(stage_x, stage_y),
-            state_render,
+            *drawn,
             blocks.show(),
         ],
     )
@@ -15581,26 +15929,61 @@ def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_cod
 
 
 def giddo_spario_blocks() -> dict[str, dict[str, Any]]:
-    # AIR-10: the Giddo Spario clone pool — its SHORT own-burst plays the unflipped first phases.
+    # AIR-10: the Giddo Spario clone pool. Flying, it draws code tick mod 4 (the global countup, 5228-5232) at
+    # the colour its update kept in `slot flag`; hit, its own 4-code burst (giddo_spario_hit 5241-5252), one
+    # code per tick from the slot clock, at that same colour.
+    colour = lambda blocks, slotvar: blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar())
+
+    def flight(blocks: Blocks, slotvar) -> str:
+        code = blocks.op_mod(variable("tick", TICK_ID), number(GIDDO_SPARIO_FLIGHT_FRAMES))
+        return blocks.op_add(
+            number(1), blocks.op_add(blocks.op_mul(code, number(GIDDO_SPARIO_COLOURS)), colour(blocks, slotvar))
+        )
+
+    def hit(blocks: Blocks, slotvar) -> str:
+        code = blocks.op_floor(
+            blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TICK_TIMER_STEP))
+        )
+        return blocks.op_add(
+            number(GIDDO_SPARIO_HIT_ORDINAL_BASE),
+            blocks.op_add(blocks.op_mul(code, number(GIDDO_SPARIO_COLOURS)), colour(blocks, slotvar)),
+        )
+
     return _spario_blocks(
-        GIDDO_SPARIO_TARGET, "giddo spario clone slot", GIDDO_SPARIO_CLONE_SLOT_ID, GIDDO_SPARIO_TYPE, flipped=False
+        GIDDO_SPARIO_TARGET, "giddo spario clone slot", GIDDO_SPARIO_CLONE_SLOT_ID, GIDDO_SPARIO_TYPE, flight, hit
     )
 
 
 def brag_spario_blocks() -> dict[str, dict[str, Any]]:
-    # AIR-10: the Brag Spario clone pool — its kill uses the shared ~20-frame flying explosion.
+    # AIR-10: the Brag Spario clone pool — a shot never destroys it, so it always draws the body (slice 21),
+    # flipped by countup & 0x0C (3116-3119): flip bits floor(tick/2) mod 4 at two arcade frames a tick.
+    def spin(blocks: Blocks, slotvar) -> str:
+        bits = lambda: blocks.op_mod(
+            blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(BRAG_SPARIO_FLIP_PERIOD_TICKS))),
+            number(4),
+        )
+        return blocks.op_add(number(1), _flip_costume_offset(blocks, bits))
+
     return _spario_blocks(
-        BRAG_SPARIO_TARGET, "brag spario clone slot", BRAG_SPARIO_CLONE_SLOT_ID, BRAG_SPARIO_TYPE, flipped=True
+        BRAG_SPARIO_TARGET, "brag spario clone slot", BRAG_SPARIO_CLONE_SLOT_ID, BRAG_SPARIO_TYPE, spin
     )
 
 
 def garu_zakato_blocks() -> dict[str, dict[str, Any]]:
-    # AIR-08: the Garu Zakato clone pool — no teleport phase (ACTIVE body stand-in + the shared ~20-frame
+    # AIR-08: the Garu Zakato clone pool — no teleport phase (ACTIVE pulsing body + the shared ~20-frame
     # flying explosion), so it reuses the shared Spario renderer factory. When it DETONATES
     # (fuse elapsed) it frees its own slot with no burst, so the clone simply hides — the ring bullets and
     # the 4 Brag Sparios it spawns are drawn by their own pools.
+    def body(blocks: Blocks, slotvar) -> str:
+        return blocks.op_add(number(1), blocks.list_item("slot flag", SLOT_FLAG_ID, slotvar()))
+
+    def hit(blocks: Blocks, slotvar) -> str:
+        return _air_burst_ordinal(
+            blocks, GARU_ZAKATO_BURST_ORDINAL_BASE, lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar())
+        )
+
     return _spario_blocks(
-        GARU_ZAKATO_TARGET, "garu zakato clone slot", GARU_ZAKATO_CLONE_SLOT_ID, GARU_ZAKATO_TYPE, flipped=True
+        GARU_ZAKATO_TARGET, "garu zakato clone slot", GARU_ZAKATO_CLONE_SLOT_ID, GARU_ZAKATO_TYPE, body, hit
     )
 
 
@@ -15913,6 +16296,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     for _world_target in result["targets"]:
         if _world_target.get("name") in WORLD_RENDER_LAYER_ORDERS:
             _world_target["layerOrder"] = WORLD_RENDER_LAYER_ORDERS[_world_target["name"]]
+        elif _world_target.get("name") == HUD_TARGET:
+            _world_target["layerOrder"] = HUD_LAYER_ORDER  # #23: pinned, not max+1 at creation
+        elif _world_target.get("name") == EASTER_EGG_TARGET:
+            _world_target["layerOrder"] = EASTER_EGG_LAYER_ORDER
         elif _world_target.get("name") == BEZEL_TARGET:
             # Static and framing the stage even in the editor, before the green flag.
             _world_target.update(
@@ -15984,24 +16371,56 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         jara["costumes"] = proof_by_family("jara/")
         jara["costumes"].extend(proof_by_family("air-explosion/"))
         jara["currentCostume"] = 0
-    # AIR-07: the Zakato renderer mirrors its single active body frame (ordinal 1, arcade code 0x11), then
-    # the air explosion (the same air-explosion costumes appended after it, ordinals 2..21) — which the
-    # teleport (reversed, unflipped), self-destruct (forward, unflipped) and shot-kill (forward, flipped)
-    # phases all draw from.
+    # AIR-07/08 + slice 21: the Zakato renderer (base and Brag Zakato) mirrors the pin-rendered frames in the
+    # ordinal layout the constants list: the Zakato body, the Brag Zakato bodies, the air explosion (its shot
+    # kill), the teleport sparkle and the self-destruct phase-major over ZAKATO_COLOURS. Picked by name, since
+    # the manifest's own order (the 0x24 self-destruct cut last) is not the renderer's.
+    proof_named = lambda names: (
+        [next(copy.deepcopy(c) for c in proof["costumes"] if c.get("name") == name) for name in names]
+        if proof is not None
+        else []
+    )
     zakato = next((t for t in result["targets"] if t.get("name") == ZAKATO_TARGET), None)
     if proof is not None and zakato is not None:
-        zakato["costumes"] = proof_by_family("zakato/")
-        zakato["costumes"].extend(proof_by_family("air-explosion/"))
+        self_destruct_colours = [f"c{0x10 + index:02x}" for index in range(PULSING_COLOUR_PEAK + 1)] + ["c24"]
+        zakato["costumes"] = (
+            proof_by_family("zakato-body/")
+            + proof_by_family("brag-zakato-body/")
+            + proof_by_family("air-explosion/")
+            + proof_by_family("zakato-teleport/")
+            + proof_named(
+                [
+                    f"zakato-self-destruct/burst/{phase + 1:02d}/{colour}"
+                    for phase in range(ZAKATO_ANIM_PHASES)
+                    for colour in self_destruct_colours
+                ]
+            )
+        )
         zakato["currentCostume"] = 0
-    # AIR-10: the Giddo and Brag Spario renderers both mirror the ZAKATO body frame as their body stand-in
-    # (ordinal 1) — the CrazyCarl aerial rip carries no Spario sprite, so the Zakato blob stands in as a
-    # DEFERRED cosmetic (reason recorded in the constants and the mechanics record) — then the air
-    # explosion (ordinals 2..21) their hit draws from. Idempotent; a no-op when any source is absent.
-    for spario_name in (GIDDO_SPARIO_TARGET, BRAG_SPARIO_TARGET, GARU_ZAKATO_TARGET):
+        ordinals = [c.get("name") for c in zakato["costumes"]]
+        for ordinal, name in (
+            (ZAKATO_BODY_ORDINAL, ZAKATO_BODY_COSTUME),
+            (BRAG_ZAKATO_BODY_ORDINAL_BASE, "brag-zakato-body/pulse/c10"),
+            (ZAKATO_BURST_ORDINAL_BASE, "air-explosion/burst/01/none"),
+            (ZAKATO_TELEPORT_ORDINAL_BASE, "zakato-teleport/sparkle/01/none"),
+            (ZAKATO_SELF_DESTRUCT_ORDINAL_BASE, "zakato-self-destruct/burst/01/c10"),
+        ):
+            if ordinals[ordinal - 1] != name:
+                raise AssertionError(f"zakato: costume {ordinal} must be {name}")
+    # AIR-10 + slice 21: the Giddo, Brag Spario and Garu Zakato renderers mirror their own pin-rendered frames
+    # (layouts in the Spario constants). Only the Garu appends the air explosion: the Giddo's hit is its own
+    # burst, and the Brag Spario is never destroyed by a shot, so like the Bacura it appends none.
+    # Idempotent; a no-op when any source is absent.
+    for spario_name, family, burst in (
+        (GIDDO_SPARIO_TARGET, "giddo-spario/", False),
+        (BRAG_SPARIO_TARGET, "brag-spario/", False),
+        (GARU_ZAKATO_TARGET, "garu-zakato-body/", True),
+    ):
         spario = next((t for t in result["targets"] if t.get("name") == spario_name), None)
         if proof is not None and spario is not None:
-            spario["costumes"] = proof_by_family("zakato/")
-            spario["costumes"].extend(proof_by_family("air-explosion/"))
+            spario["costumes"] = proof_by_family(family)
+            if burst:
+                spario["costumes"].extend(proof_by_family("air-explosion/"))
             spario["currentCostume"] = 0
     # AIR-11: the Bacura renderer mirrors its eight tumble frames (bacura/slab/01..08, ordinals 1..8) — and
     # NOTHING else. The Bacura is never destroyed, so unlike every flying family it appends NO air
@@ -16115,12 +16534,13 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     if proof is not None and enemy_bullet is not None:
         enemy_bullet["costumes"] = proof_by_family(ENEMY_BULLET_ART_FAMILY)
         enemy_bullet["currentCostume"] = 0
-    # CAB-05: the crosshair, bomb target and bomb append the pinned art after their preserved baseline costumes
-    # (no block selects those any more). Idempotent: a previous append is dropped first.
+    # CAB-05: the crosshair, bomb target and bomb — and, since slice 21, the shot — append the pinned art after
+    # their preserved baseline costumes (no block selects those any more). Idempotent: a previous append is dropped first.
     for marker_name, family, base in (
         ("target_a", "crosshair/", CROSSHAIR_ART_BASE_ORDINAL),
         ("target_b", "bomb-target/", None),
         ("bomb", "bomb/fall/", BOMB_ART_BASE_ORDINAL),
+        ("blaster", "zapper-shot/", SHOT_ART_BASE_ORDINAL),
     ):
         marker = next((t for t in result["targets"] if t.get("name") == marker_name), None)
         if proof is None or marker is None:
@@ -16131,6 +16551,26 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         names = [c.get("name") for c in marker["costumes"]]
         if base is not None and not str(names[base - 1]).startswith(family):
             raise AssertionError(f"{marker_name}: the pinned art must start at ordinal {base}")
+    # Slice 21 (CAB-01): the title logo and sparkle, rendered from the pin, go on start_screen right after its
+    # preserved baseline logo (costume 1, which no block selects any more), ahead of the text costumes
+    # tools/hud_glyphs.py appends — so they hold fixed ordinals (TITLE_LOGO_*_ORDINAL, TITLE_SPARKLE_BASE_ORDINAL).
+    # hud_glyphs keeps them in place, so the two generators reach the same fixpoint. Idempotent.
+    start_screen = next((t for t in result["targets"] if t.get("name") == "start_screen"), None)
+    if proof is not None and start_screen is not None:
+        kept = [c for c in start_screen["costumes"] if not str(c.get("name", "")).startswith(TITLE_ART_FAMILIES)]
+        title_art = [c for family in TITLE_ART_FAMILIES for c in proof_by_family(family)]
+        start_screen["costumes"] = kept[:1] + title_art + kept[1:]
+        start_screen["currentCostume"] = 0
+        names = [c.get("name") for c in start_screen["costumes"]]
+        expected = {
+            TITLE_LOGO_BG_ORDINAL: TITLE_LOGO_BG_COSTUME,
+            TITLE_LOGO_OUTLINE_BASE_ORDINAL: "title-logo/outline/01",
+            TITLE_LOGO_YELLOW_ORDINAL: TITLE_LOGO_YELLOW_COSTUME,
+            TITLE_SPARKLE_BASE_ORDINAL: "title-sparkle/twinkle/01",
+            TITLE_SPARKLE_BASE_ORDINAL + 15: "title-sparkle/twinkle/16",
+        }
+        if names[0] != "start_screen" or any(names[o - 1] != n for o, n in expected.items()):
+            raise AssertionError("start_screen: the title art must sit at its fixed ordinals")
     stage = next(target for target in result["targets"] if target["isStage"])
     owned_stage_variables = {
         STATE_ID,
@@ -16169,7 +16609,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         TERRAIN_BAND_ID,
         TERRAIN_BAND_COLUMN_ID,
         TERRAIN_OVERLAP_ID,
-        CHECKPOINT_PROGRESS_ID,
+        # #158: the checkpoint projection's register is retired; owning it drops it from the Stage.
+        "area-checkpoint-progress",
         SCHEDULE_CURSOR_ID,
         SCHEDULE_FIRED_ID,
         AI_LEVEL_ID,
@@ -16177,10 +16618,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         FORMATION_TYPE_OFFSET_ID,
         FORMATION_INDEX_ID,
         AI_ADJUST_ID,
+        SHIP_NUMBER_ID,
         GROUND_STOP_FIRING_ROW_ID,
         *(mask_id for _suffix, _name, mask_id in FIRE_MASK_FAMILIES),
         # CAB-03 (cabinet.two-player, slice 18): the active-player index and two-player flag (director state,
-        # write-forbidden), the swap scratch register (machinery), and the 14 `other <x>` per-player shadows.
+        # write-forbidden), the swap scratch register (machinery), and the 15 `other <x>` per-player shadows.
         CURR_PLAYER_ID,
         TWO_PLAYER_ID,
         SWAP_TMP_ID,
@@ -16216,6 +16658,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         GARU_DET_X_ID,
         GARU_DET_Y_ID,
         GARU_DET_SLOT_ID,
+        # AREA-02 (#166): the one-tick add_object pending register (type + target slot).
+        PENDING_OBJECT_TYPE_ID,
+        PENDING_OBJECT_SLOT_ID,
         PLAYER_ROW_ID,
         PLAYER_COL_ID,
         PLAYER_SLOT_X_ID,
@@ -16226,15 +16671,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         WALK_TYPE_ID,
         PLAYER_HIT_ID,
         INVULN_ID,
-        # DEBUG (tracked for removal, #119): the T-key family-cycle cursor.
-        DEBUG_SPAWN_INDEX_ID,
-        # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor and its rising-edge sample
-        # (the boss dismiss fires only on a fresh press, never on the press that armed it).
-        DEBUG_GROUND_INDEX_ID,
-        DEBUG_GROUND_KEY_HELD_ID,
-        # DEBUG (tracked for removal, #119): the P-key freeze/resume toggle and its rising-edge sample.
-        PAUSED_ID,
-        PAUSE_KEY_HELD_ID,
+        DYING_ID,
+        DYING_TICK_ID,
         # CAB-02 (cabinet.attract-credits, slice 17): the credit bank (economy) and the coin key's
         # previous-tick sample (machinery). Classified in the partition test to match.
         CREDITS_ID,
@@ -16243,6 +16681,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         ATTRACT_ID,
         ATTRACT_EPOCH_ID,
         ATTRACT_STAGE_ID,
+        TITLE_TICK_ID,
+        HUD_FLASH_FRAMES_ID,
         # CAB-05 (slice 20): the audio machinery (coin-sound latch, attract mute, death-cue keep and playing latch,
         # Andor drone).
         COIN_SOUND_ID,
@@ -16269,8 +16709,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SHEONITE_LOCK_COL_ID,
         # SEC-03 (secrets.hidden-credit #93): the credit overlay's show/hide signal.
         EASTER_EGG_SHOWING_ID,
-        # BOSS-01 (andor.lifecycle #94): the Andor Genesis end flag — set by the schedule end record (later commit)
-        # or the debug dismiss; the master's update proc tears the composite down on it.
+        # BOSS-01 (andor.lifecycle #94): the Andor Genesis end flag — set by the schedule end record; the master's
+        # update proc tears the composite down on it.
         ANDOR_GENESIS_END_FLAG_ID,
         # BOSS-01: the shared colour-cycle byte (drives the `color` effect on every part) and the core's
         # flip-orientation phase (selects one of the four pre-flipped core costumes). Written by the master
@@ -16290,6 +16730,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         variable_id: value
         for variable_id, value in stage["variables"].items()
         if variable_id not in owned_stage_variables
+        and variable_id not in RETIRED_PLAYTEST_KEY_VARIABLE_IDS
         and value[0] not in {"death", "stage"}
     }
     stage["variables"] = preserved_variables | {
@@ -16360,9 +16801,6 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         TERRAIN_BAND_ID: ["terrain band", 0],
         TERRAIN_BAND_COLUMN_ID: ["terrain band column", 0],
         TERRAIN_OVERLAP_ID: ["terrain overlap", 0],
-        # AREA-01 (slice 20): the near-end checkpoint's projected-progress working register (machinery,
-        # like `swap tmp`): written and read only inside `_area_checkpoint`.
-        CHECKPOINT_PROGRESS_ID: ["checkpoint progress", 0],
         # AREA-02 scheduler state (Stage-written, write-forbidden): the 1-based cursor into the
         # flattened schedule lists and the per-area count of records fired (the observable).
         SCHEDULE_CURSOR_ID: ["schedule cursor", 1],
@@ -16377,6 +16815,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         FORMATION_INDEX_ID: ["formation index", 0],
         # DIF-02 transient score re-tune addend (machinery, like `formation index`).
         AI_ADJUST_ID: ["ai adjust", 0],
+        # DIF-02 (slice 21): the craft-in-play counter; every game and demo start resets it to 1.
+        SHIP_NUMBER_ID: ["ship number", 1],
         # DIF-03 per-family fire-permission masks + the ground-stop-firing row (difficulty-director
         # state, Stage-written, sprite-read, write-forbidden). Set by the schedule; consumed by the
         # enemy slices (8+). All reset to 0 on a world reset, alongside the AI level and formation.
@@ -16385,7 +16825,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         # CAB-03 (cabinet.two-player, slice 18): the active-player index (0/1) and the two-player-game flag
         # (0/1) — director-control state, sprite-read, write-forbidden. Both default 0 (player one, one-player
         # game), reset only on a world reset (cold-start forces P1/1P). `swap tmp` is `swap players`'s scratch
-        # register (machinery). The 14 `other <x>` shadows hold the inactive player's saved state, all default
+        # register (machinery). The 15 `other <x>` shadows hold the inactive player's saved state, all default
         # 0 (untouched until a 2P game seeds `other` via `copy players`). They persist across death/respawn.
         CURR_PLAYER_ID: ["curr player", 0],
         TWO_PLAYER_ID: ["two player", 0],
@@ -16428,6 +16868,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         GARU_DET_X_ID: ["garu det x", 0],
         GARU_DET_Y_ID: ["garu det y", 0],
         GARU_DET_SLOT_ID: ["garu det slot", 0],
+        # AREA-02 (#166): the add_object pending register — type 0 means nothing pending.
+        PENDING_OBJECT_TYPE_ID: ["pending object type", 0],
+        PENDING_OBJECT_SLOT_ID: ["pending object slot", 0],
         PLAYER_ROW_ID: ["player row", 0],
         PLAYER_COL_ID: ["player col", 0],
         PLAYER_SLOT_X_ID: ["player slot x", 0],
@@ -16441,18 +16884,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         PLAYER_HIT_ID: ["player hit", 0],
         # Debug/test invulnerability seam (default 0; the harness sets it, never game logic).
         INVULN_ID: ["invuln", 0],
-        # DEBUG (tracked for removal, #119): the T-key family-cycle cursor (0-based into
-        # DEBUG_SPAWN_FAMILIES); starts at the first family.
-        DEBUG_SPAWN_INDEX_ID: ["debug spawn index", 0],
-        # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor (0-based into
-        # DEBUG_GROUND_FAMILIES); starts at the first family. Its rising-edge sample starts 0, so the first G press
-        # is always a fresh edge; normal play never presses G, and the boss-summon harness scenario drives it live.
-        DEBUG_GROUND_INDEX_ID: ["debug ground index", 0],
-        DEBUG_GROUND_KEY_HELD_ID: ["debug ground key held", 0],
-        # DEBUG (tracked for removal, #119): the P-key freeze toggle (1 = frozen) and its previous-tick
-        # P sample for rising-edge detection; both start at 0 so the walk runs and the harness is unaffected.
-        PAUSED_ID: ["debug paused", 0],
-        PAUSE_KEY_HELD_ID: ["debug pause key held", 0],
+        # #158: the player-explosion window (walk-owned; both 0 outside it, cleared on every reset scope).
+        DYING_ID: ["dying", 0],
+        DYING_TICK_ID: ["dying tick", 0],
         # CAB-02 (slice 17): the credit bank (0..99, `credits`) and the coin key's previous-tick sample
         # (`coin key held`), both cleared only at power-on (the Stage green flag). See install_coin_poll.
         CREDITS_ID: ["credits", 0],
@@ -16461,6 +16895,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         ATTRACT_ID: ["attract", 0],
         ATTRACT_EPOCH_ID: ["attract epoch", 0],
         ATTRACT_STAGE_ID: ["attract stage", 0],
+        TITLE_TICK_ID: ["title tick", 0],
+        HUD_FLASH_FRAMES_ID: ["hud flash frames", 0],
         COIN_SOUND_ID: ["coin sound", 0],
         AUDIO_MUTED_ID: ["audio muted", -1],
         KEEP_SOUNDS_ID: ["keep sounds", 0],
@@ -16483,8 +16919,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         SHEONITE_PHASE_TMP_ID: ["sheonite phase", 0],
         SHEONITE_LOCK_COL_ID: ["sheonite lock col", 0],
         # BOSS-01 (andor.lifecycle #94): the Andor Genesis end flag (0 = alive/holding, 1 = tear down). Cleared on
-        # every arm and consumed by the master proc. (The per-area re-clear joins the other schedule flags when the
-        # live start/end opcodes are wired in a later commit; the debug path arms and consumes it within a session.)
+        # every arm and consumed by the master proc.
         ANDOR_GENESIS_END_FLAG_ID: ["andor genesis end flag", 0],
         # BOSS-01: colour-cycle value (0 = untinted base) and core flip phase (0 = unflipped base). Both init 0
         # so the base crops render before the lifecycle proc (C3) drives them.
@@ -16495,7 +16930,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         ANDOR_MASTER_X_ID: ["andor master x", 0],
         ANDOR_MASTER_Y_ID: ["andor master y", 0],
         # BOSS-03: the destroyed-departure clock. Init 0 (alive); the master proc latches it on core death and
-        # resets it to 0 when the wreck clears the field, so a fresh boss (schedule or debug re-summon) starts alive.
+        # resets it to 0 when the wreck clears the field, so a fresh boss starts alive.
         ANDOR_DESTROYED_TIMER_ID: ["andor destroyed timer", 0],
     }
     owned_lists = {
@@ -16726,10 +17161,12 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 SOLVALOU_EPOCH_ID: ["entry epoch", 0]
             }
         elif target["name"] == "solv_death":
-            target["variables"] = target["variables"] | {
-                DEATH_EPOCH_ID: ["entry epoch", 0],
-                DEATH_EXPLOSION_TICK_ID: ["explosion tick", 0],
-            }
+            # #158: the explosion now reads the walk's `dying tick`; the sprite's own counter is retired.
+            target["variables"] = {
+                var_id: value
+                for var_id, value in target["variables"].items()
+                if var_id != RETIRED_DEATH_EXPLOSION_TICK_ID
+            } | {DEATH_EPOCH_ID: ["entry epoch", 0]}
         elif target["name"] == "blaster":
             target["variables"] = target["variables"] | {
                 RELOAD_ID: ["blaster reload", RELOAD_TICKS],
@@ -16737,6 +17174,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 ALLOC_RESULT_ID: ["alloc result", 0],
                 CLONE_SLOT_ID: ["clone slot", 0],
                 SHOT_DEPTH_ID: ["shot depth", 0],
+                BOUNCE_TIMER_ID: ["bounce timer", 0],
             }
         elif target["name"] in TERRAIN_STRIP_TARGETS.values():
             # AREA-01: the decoupled strips' `scroll step` counters are retired (idempotent), and each strip
@@ -16760,7 +17198,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             # CAB-01: all attract-display state is sprite-local to start_screen (never a Stage
             # variable) — the role snapshotted into each clone at creation, the digit's place, and
             # the cached 10^place divisor. The clones only READ `credits`/`game state`.
-            target["variables"] = target["variables"] | {
+            target["variables"] = {
+                var_id: value
+                for var_id, value in target["variables"].items()
+                if var_id != RETIRED_ATTRACT_TICK_ID
+            } | {
                 ATTRACT_DISPLAY_ROLE_ID: ["attract role", 0],
                 ATTRACT_DISPLAY_PLACE_ID: ["attract place", 0],
                 ATTRACT_DISPLAY_DIVISOR_ID: ["attract divisor", 1],
@@ -16780,6 +17222,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
                 HUD_LIFE_INDEX_ID: ["hud life index", 0],
                 HUD_LIFE_COUNT_ID: ["hud life count", 0],
                 HUD_IS_CLONE_ID: ["hud is clone", 0],
+                HUD_FLASH_CLOCK_ID: ["hud flash clock", 0],
             }
         elif target["name"] == TOROID_TARGET:
             # AIR-01: the only toroid state is sprite-local — which flying slot each clone renders,
@@ -16932,6 +17375,7 @@ def identifier_manifest(project: dict[str, Any]) -> dict[str, Any]:
         "render_stage_top": RENDER_STAGE_TOP,
         "render_view_first_row": RENDER_VIEW_FIRST_ROW,
         "render_view_rows": RENDER_VIEW_ROWS,
+        "render_view_margin_rows": RENDER_VIEW_MARGIN_ROWS,
         "slot_units_per_cell": SLOT_UNITS_PER_CELL,
         # AREA-01 screen phase (tools/terrain_render.py): a map row's top line is 8R - C/32 + phase, a
         # ground object's centre line is slot x / 32 + bias, and an object fired at row S rides with its

@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,28 @@ import scratch_project as scratch  # noqa: E402
 import check_mechanics_record as mechanics  # noqa: E402
 import game_director as director  # noqa: E402
 import hud_glyphs  # noqa: E402
+
+
+# #161: every flying family whose contact kills the craft, by its update procedure. Each raises `player hit`
+# from an `if <alive and overlap>` test — the shared `_craft_overlap_reporter` (the flying/bullet box,
+# check_bullet_or_flying_hit_solvalou, xevious_main.68k 2207-2219) or, for the Bacura, its fair box
+# (`_bacura_fair_craft_reporter`, check_bacura_hit_solvalou 2225-2237, record 037). The Sheonite is inert
+# (record 039) and is listed separately: it must never raise the flag.
+CRAFT_CONTACT_PROCS = {
+    "toroid": director.UPDATE_TOROID_PROCCODE,
+    "bullet": director.UPDATE_BULLET_PROCCODE,
+    "terrazi": director.UPDATE_TERRAZI_PROCCODE,
+    "kapi": director.UPDATE_KAPI_PROCCODE,
+    "torkan": director.UPDATE_TORKAN_PROCCODE,
+    "jara": director.UPDATE_JARA_PROCCODE,
+    "zoshi": director.UPDATE_ZOSHI_PROCCODE,
+    "zakato": director.UPDATE_ZAKATO_PROCCODE,
+    "giddo-spario": director.UPDATE_GIDDO_SPARIO_PROCCODE,
+    "brag-spario": director.UPDATE_BRAG_SPARIO_PROCCODE,
+    "brag-zakato": director.UPDATE_BRAG_ZAKATO_PROCCODE,
+    "garu-zakato": director.UPDATE_GARU_ZAKATO_PROCCODE,
+    "bacura": director.UPDATE_BACURA_PROCCODE,
+}
 
 
 def _proc_body_blocks(stage: dict, proccode: str) -> list:
@@ -60,6 +83,31 @@ def _proc_body_blocks(stage: dict, proccode: str) -> list:
             if isinstance(value, list) and len(value) >= 2 and isinstance(value[1], str):
                 frontier.append(value[1])
     return [blocks[bid] for bid in seen]
+
+
+def _proc_top_chain(stage: dict, proccode: str) -> list:
+    """The ids of a custom-procedure definition's top-level blocks, in `next` order (empty when absent)."""
+    blocks = stage["blocks"]
+    proto_ids = {
+        bid
+        for bid, b in blocks.items()
+        if b["opcode"] == "procedures_prototype" and b.get("mutation", {}).get("proccode") == proccode
+    }
+    definition = next(
+        (
+            b
+            for b in blocks.values()
+            if b["opcode"] == "procedures_definition"
+            and b.get("inputs", {}).get("custom_block", [None, None])[1] in proto_ids
+        ),
+        None,
+    )
+    chain: list = []
+    bid = definition.get("next") if definition else None
+    while bid and bid in blocks and bid not in chain:
+        chain.append(bid)
+        bid = blocks[bid].get("next")
+    return chain
 
 
 def _float_operand(inp):
@@ -149,6 +197,12 @@ SPRITE_SHEET_HASHES = {
     # by tools/effects_sprite_render.py.
     "Effects": (
         "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c"
+    ),
+    # Slice 21 (presentation.reference-art): the remaining enemy, shot and sparkle sprites — Giddo Spario,
+    # the pulsing Zakato bodies, the self-destruct and teleport frames, the Brag Spario, the shot and its
+    # rebound, the title sparkle and the title logo's tile layers — decoded from the pin by tools/reference_art_render.py.
+    "Reference Art": (
+        "2c07f8f34a7ab131a331e35e9afaf755e3252eaadcd2db1f64be4ad06d1c82ae"
     ),
 }
 
@@ -367,7 +421,21 @@ class ScratchProjectTests(unittest.TestCase):
         # = the slice-20 CAB-05 text re-render at the drawn size (resolution 2, one 20-px column per character):
         # every HUD, attract, banner and credit PNG is replaced one for one; the HUD digits (20-px canvas) stay
         # distinct from the attract digits (18-px composite) and glyph/O still dedups to digit/0. Still 335.
-        self.assertEqual(335, len(assets))
+        # + the slice-21 reference-art sheet (tools/reference_art_render.py) on the sprite_sheets library and
+        # its 123 derivatives on the proof pen (Giddo Spario, the pulsing bodies, the self-destruct, the Brag
+        # Spario, the shot and its rebound, the title sparkle, the teleport sparkle). 335 + 1 + 123 = 459.
+        # - the teleport sparkle's y and xy flips (10), which the build's even slot timer never draws, + the
+        # self-destruct at the teleport colour 0x24 (5) for a Zakato that fires on its first live frame. 459 - 10 + 5
+        # = 454.
+        # - the shot's mirrored flight frames and unmirrored rebound frames (8), which a tick's even countup never
+        # draws. 454 - 8 = 446.
+        # + the slice-21 title logo's 10 tile layers on the proof pen (the sheet itself is the same reference-art
+        # library sheet, re-rendered taller) + the START SPACE KEY hint re-rendered as attract text. 446 + 11 = 457.
+        # - slice 21 (#31): the two-row banner replaces the two "GAME OVER PLAYER n" PNGs with GAME OVER (new) and
+        # PLAYER 1 / PLAYER 2, which are byte-identical to the initials-entry tags and dedup. 457 - 2 + 1 = 456.
+        # + slice 21 audit (CAB-04): the 26 lowercase initials letters glyph/a-z on start_screen (the reference-art
+        # sheet grows a row in place, so it stays one asset). 456 + 26 = 482.
+        self.assertEqual(482, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -463,12 +531,13 @@ class ScratchProjectTests(unittest.TestCase):
             ["player-explosion/burst/01/none"],
         )
         source_death["costumes"] = source_death["costumes"][:len(original_death["costumes"])]
-        # CAB-05: the crosshair, bomb target and bomb likewise append their pinned art after the preserved
-        # baseline costumes.
+        # CAB-05: the crosshair, bomb target, bomb and (slice 21) shot likewise append their pinned art after the
+        # preserved baseline costumes.
         for marker_name, first_appended in (
             ("target_a", "crosshair/aim/idle"),
             ("target_b", "bomb-target/mark/01"),
             ("bomb", "bomb/fall/01/c25"),
+            ("blaster", "zapper-shot/fly/01/c23/none"),
         ):
             original_marker = next(t for t in original["targets"] if t["name"] == marker_name)
             source_marker = next(t for t in historical_targets if t["name"] == marker_name)
@@ -1137,6 +1206,70 @@ class ScratchProjectTests(unittest.TestCase):
             director.project_bytes(director.expected_project(project)),
         )
 
+    def test_layer_order_independent_of_generation_order(self) -> None:
+        # #23: the committed draw layers are the same whichever order the generators run in, and from a
+        # project that has lost the generated targets entirely (a first generation). Only game_director and
+        # sprite_extractor write `layerOrder`; hud_glyphs, bezel_panels and terrain_render only fill
+        # costumes into targets that already exist, so they cannot reorder anything.
+        import sprite_extractor
+
+        committed = load_source(scratch.SOURCE_DIR)
+
+        def layers(project):
+            return {t["name"]: t.get("layerOrder") for t in project["targets"]}
+
+        def run_director(p):
+            return director.expected_project(p)
+
+        proof_costumes = next(t for t in committed["targets"] if t["name"] == sprite_extractor.GENERATED_TARGET)[
+            "costumes"
+        ]
+
+        def run_extractor(p):
+            # Only the layers are under test, so skip re-rendering every frame: an empty derivative list still
+            # (re)inserts the target, which then gets the committed costumes game_director mirrors from it.
+            p = sprite_extractor.expected_project(p, [])
+            next(t for t in p["targets"] if t["name"] == sprite_extractor.GENERATED_TARGET)["costumes"] = (
+                copy.deepcopy(proof_costumes)
+            )
+            return p
+
+        expected = layers(committed)
+        self.assertEqual(len(set(expected.values())), len(expected), "every target holds its own layer")
+        self.assertEqual(expected[director.HUD_TARGET], director.HUD_LAYER_ORDER)
+        self.assertEqual(expected[director.EASTER_EGG_TARGET], director.EASTER_EGG_LAYER_ORDER)
+        self.assertEqual(expected[sprite_extractor.GENERATED_TARGET], sprite_extractor.GENERATED_LAYER_ORDER)
+
+        generated = {director.HUD_TARGET, director.EASTER_EGG_TARGET, director.BEZEL_TARGET,
+                     sprite_extractor.GENERATED_TARGET, *director.WORLD_RENDER_LAYER_ORDERS}
+
+        def stripped():
+            # A first generation: every generated target gone, so each is created afresh.
+            p = copy.deepcopy(committed)
+            p["targets"] = [t for t in p["targets"] if t["name"] not in generated]
+            return p
+
+        def scrambled():
+            # The generated targets present but on other layers (a stale or hand-edited project).
+            p = copy.deepcopy(committed)
+            for t in p["targets"]:
+                if t["name"] in generated:
+                    t["layerOrder"] += 100
+            return p
+
+        for start_name, start in (("committed", lambda: copy.deepcopy(committed)), ("stripped", stripped),
+                                  ("scrambled", scrambled)):
+            self.assertTrue(start_name == "committed" or layers(start()) != expected, start_name)
+            for order_name, order in (("director-first", (run_director, run_extractor)),
+                                      ("extractor-first", (run_extractor, run_director))):
+                with self.subTest(start=start_name, order=order_name):
+                    p = start()
+                    for _ in range(2):  # twice: each generator sees the other's targets
+                        for generator in order:
+                            p = generator(p)
+                    got = {name: layer for name, layer in layers(p).items() if name in expected}
+                    self.assertEqual(got, expected)
+
     def test_runtime_identifier_manifest_is_current(self) -> None:
         # The committed manifest the JS harness reads must equal what the generator
         # emits from the current project, so a variable rename cannot leave the harness
@@ -1255,6 +1388,10 @@ class ScratchProjectTests(unittest.TestCase):
             "garu det x",
             "garu det y",
             "garu det slot",
+            # AREA-02 (slice 21): the one-tick add_object register the schedule fills and `place pending object`
+            # consumes after the walk and bomb.
+            "pending object type",
+            "pending object slot",
             "player row",
             "player col",
             "player slot x",
@@ -1268,23 +1405,11 @@ class ScratchProjectTests(unittest.TestCase):
             # by the test harness) that gates that death so the agency-less headless craft can survive.
             "player hit",
             "invuln",
-            # DEBUG (tracked for removal, #119): the T-key family-cycle cursor — a transient dev-tool
-            # register, not Stage-write-protected state.
-            "debug spawn index",
-            # DEBUG (tracked for removal, #119): the G-key GROUND family-cycle cursor — the ground analog
-            # of the T-key cursor, likewise a transient dev-tool register, not durable Stage state.
-            "debug ground index",
-            # DEBUG (tracked for removal, #119): the previous-tick G sample for rising-edge detection — so the
-            # Andor boss's debug DISMISS fires only on a FRESH G press, never on the press that summons it.
-            # A transient dev-tool register (default 0; the harness drives it only in the boss-summon scenario).
-            "debug ground key held",
-            # DEBUG (tracked for removal, #119): the P-key freeze/resume TOGGLE (1 = frozen) and its
-            # previous-tick P sample for rising-edge detection — transient dev-tool registers, not durable
-            # Stage state (both default 0; the harness never presses P, so the walk runs every tick).
-            "debug paused",
-            "debug pause key held",
+            # #158 (slice 21): the walk-owned player-explosion window (the flag and its tick count).
+            "dying",
+            "dying tick",
             # CAB-02 (slice 17): the coin key's previous-tick sample for rising-edge (tap) coin detection —
-            # a transient input register like the debug-key held samples, not durable Stage state (the
+            # a transient input register, not durable Stage state (the
             # credit bank it feeds is economy state, below). Written by the always-on coin poll.
             "coin key held",
             # CAB-01 (slice 17): the attract-cycle machinery. `coin edge` is the one-tick coin-inserted pulse
@@ -1296,6 +1421,12 @@ class ScratchProjectTests(unittest.TestCase):
             "attract",
             "attract epoch",
             "attract stage",
+            # Slice 21 (presentation.reference-art): `title tick`, the title hold's frame count that the logo
+            # outline's flash and the sparkle read. Zeroed on every title entry; transient machinery.
+            "title tick",
+            # Slice 21 (#31): `hud flash frames`, the frames the real game's paced holds off the play screen add to
+            # the 1UP flash clock. A free-running count; transient machinery.
+            "hud flash frames",
             # CAB-05 (slice 20): audio machinery. `coin sound` is the poll-to-loop coin-sound latch, `audio muted`
             # the last volume the attract mute applied (-1 unknown), `keep sounds` the death-complete handler's
             # one-transition stop-all skip, `death cue playing` the death cue's own stop-all skip while it sounds,
@@ -1338,8 +1469,8 @@ class ScratchProjectTests(unittest.TestCase):
             "sheonite end flag",
             "sheonite phase",
             "sheonite lock col",
-            # BOSS-01 (slice 15): the Andor Genesis end flag — Stage-written (by the schedule end record / the
-            # debug dismiss), read and consumed by the master's update proc in the walk, which tears the composite
+            # BOSS-01 (slice 15): the Andor Genesis end flag — Stage-written (by the schedule end record),
+            # read and consumed by the master's update proc in the walk, which tears the composite
             # down on it. A schedule on/off flag like `sheonite end flag`: transient machinery, never sprite-written.
             "andor genesis end flag",
             # BOSS-01 (slice 15): the boss's two shared per-tick animation registers. `andor genesis colour`
@@ -1387,9 +1518,6 @@ class ScratchProjectTests(unittest.TestCase):
             # `swap tmp`. A pure Stage-internal working register — NOT part of the entry category below (those
             # are sprite-READ and write-forbidden); nothing outside `rank in` touches it.
             "rank cursor",
-            # AREA-01 (slice 20): the near-end checkpoint's projected-progress working register, like
-            # `swap tmp` — written and read only inside the shared checkpoint statements, never durable.
-            "checkpoint progress",
             # AREA-01 (slice 20): `update terrain`'s working registers (the counter in lines, a strip's band top,
             # band, band column and overlap), written and read only inside that proc.
             "terrain line",
@@ -1444,6 +1572,8 @@ class ScratchProjectTests(unittest.TestCase):
         # is machinery, above.
         difficulty_state_names = {
             "ai level",
+            # DIF-02 (slice 21): the per-player craft-in-play count the score re-tune divides by.
+            "ship number",
             "formation count",
             "formation type offset",
             # DIF-03 per-family fire-permission masks + the ground-stop-firing row.
@@ -1742,8 +1872,8 @@ class ScratchProjectTests(unittest.TestCase):
             # teleport->active->self-destruct update ending in a 5-bullet radiating fan (`brag zakato
             # shoot`); the Garu Zakato has its own no-teleport straight update whose fuse detonates into a
             # 16-bullet ring + 4 Brag Sparios (`garu zakato detonate`). All warp, no state write beyond the
-            # slot's own phase machine — dispatched from the same spawner / walk (the Garu stamped by the
-            # debug key). Plus the shared radiating-bullet emitter (AIR-12, slice 11) whose first live
+            # slot's own phase machine — dispatched from the same spawner / walk (the Garu placed by the
+            # add_object schedule). Plus the shared radiating-bullet emitter (AIR-12, slice 11) whose first live
             # callers are this family's fan and ring.
             director.INIT_BRAG_ZAKATO_PROCCODE,
             director.UPDATE_BRAG_ZAKATO_PROCCODE,
@@ -1754,8 +1884,8 @@ class ScratchProjectTests(unittest.TestCase):
             director.RADIATING_EMIT_PROCCODE,
             # AIR-11 (slice 11) air.bacura: the indestructible slab's spawn init and per-tick update, both
             # warp, no state write beyond the slot's own drift. Dispatched from the walk by BAND membership
-            # (its own reserved band 17-32), not by type; the init is also called by the debug direct-stamp
-            # and (Commit 3) the live per-second spawn pump. Its update deliberately makes NO CHECK_AIR_HIT
+            # (its own reserved band 17-32), not by type; the init is called by the live per-second spawn
+            # pump. Its update deliberately makes NO CHECK_AIR_HIT
             # call — that omission is the shot-invulnerability.
             director.INIT_BACURA_PROCCODE,
             director.UPDATE_BACURA_PROCCODE,
@@ -1766,12 +1896,6 @@ class ScratchProjectTests(unittest.TestCase):
             # `update bacura`. It marks an overlapping player shot SHOT_BOUNCE and never touches the slab —
             # the shot bounces (blaster clone reverses+animates), the Bacura is never destroyed or scored.
             director.CHECK_SHOT_BACURA_PROCCODE,
-            # DEBUG / temporary (tracked for removal): the playtest spawn-a-wave tool.
-            director.DEBUG_SPAWN_PROCCODE,
-            # DEBUG / temporary (tracked for removal, #119): the playtest cycle-a-ground-family tool.
-            director.DEBUG_GROUND_SPAWN_PROCCODE,
-            # DEBUG / temporary (tracked for removal, #119): the playtest freeze/resume (P) toggle.
-            director.DEBUG_PAUSE_PROCCODE,
             director.CULL_SLOT_PROCCODE,
             # WPN-02 (slice 8): the shot-vs-air overlap detector and the struck-Toroid explosion tick.
             director.CHECK_AIR_HIT_PROCCODE,
@@ -1877,6 +2001,11 @@ class ScratchProjectTests(unittest.TestCase):
             # AREA-01 (slice 20): the terrain strips' state from the clock, called by the walk after the
             # ground objects move and at the end of every re-top. Writes only the terrain vars. Warp.
             director.UPDATE_TERRAIN_PROCCODE,
+            # AREA-02 (slice 21) area.add-object-dispatch: consumes the one-tick add_object register the schedule
+            # filled — places the flag or single flyer into its raw slot if it is still empty (running that type's
+            # existing init), else drops it — then clears the register. Called by the walk after the bomb, before
+            # the formation refill. Warp.
+            director.PLACE_PENDING_OBJECT_PROCCODE,
         }
         self.assertTrue(
             all(block["mutation"]["proccode"] in allowed_proccodes for block in calls)
@@ -1905,6 +2034,7 @@ class ScratchProjectTests(unittest.TestCase):
             director.SCHEDULE_FIRED_ID,
             # DIF-01/FORM-01/DIF-03 difficulty-director state: Stage-only-written.
             director.AI_LEVEL_ID,
+            director.SHIP_NUMBER_ID,
             director.FORMATION_COUNT_ID,
             director.FORMATION_TYPE_OFFSET_ID,
             director.GROUND_STOP_FIRING_ROW_ID,
@@ -2839,8 +2969,8 @@ class ScratchProjectTests(unittest.TestCase):
                 failures.add("garu-zakato-lifecycle-procs-warp")
 
         # (3)-(6) Each family is driven: the formation spawner inits the Brags by type, the ordered walk
-        # dispatches to both updaters, and the Garu (no formation entry) is stamped by its own spawner
-        # (the debug key) — so a spawned member actually advances.
+        # dispatches to both updaters, and the Garu (no formation entry) is placed by the add_object
+        # schedule — so a spawned member actually advances.
         if not calls(director.INIT_BRAG_ZAKATO_PROCCODE):
             failures.add("spawn-inits-brag-zakato")
         if not calls(director.UPDATE_BRAG_ZAKATO_PROCCODE):
@@ -2941,6 +3071,39 @@ class ScratchProjectTests(unittest.TestCase):
             and writes_const(detonate, director.SLOT_STATE_ID, 0)
         ):
             failures.add("garu-detonate-frees-garu")
+
+        # (23) A slot already holding an enemy gets no Spario: every Spario type stamp and init sits inside an
+        # `if slot type = 0`. The arcade writes _TYPE=9 into 0x3C-0x3F unconditionally, but only an idle slot's
+        # add_obj_handler picks it up (xevious_main.68k 4801-4815); a live enemy keeps its handler.
+        def in_free_slot_gate(target):
+            for b in blocks.values():
+                if b.get("opcode") != "control_if":
+                    continue
+                cond = blocks.get(ref(b["inputs"].get("CONDITION")))
+                if not cond or cond["opcode"] != "operator_equals" or _num_operand(cond["inputs"].get("OPERAND2")) != 0:
+                    continue
+                item = blocks.get(ref(cond["inputs"].get("OPERAND1")))
+                if not item or item["opcode"] != "data_itemoflist" or item["fields"]["LIST"][1] != director.SLOT_TYPE_ID:
+                    continue
+                bid = ref(b["inputs"].get("SUBSTACK"))
+                while bid in blocks:
+                    if blocks[bid] is target:
+                        return True
+                    bid = blocks[bid]["next"]
+            return False
+
+        spario_steps = [
+            b
+            for b in detonate
+            if (b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == director.INIT_BRAG_SPARIO_PROCCODE)
+            or (
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_TYPE_ID
+                and _const_item(b) == director.BRAG_SPARIO_TYPE
+            )
+        ]
+        if len(spario_steps) != 2 * director.GARU_SPARIO_COUNT or not all(in_free_slot_gate(b) for b in spario_steps):
+            failures.add("garu-detonate-spares-busy-slots")
         return failures
 
     # Roadmap closure evidence for leaf `air.special-pairs` (AIR-08): the Brag Zakato pair and the Garu
@@ -3050,6 +3213,15 @@ class ScratchProjectTests(unittest.TestCase):
                         b["inputs"]["NUM2"] = [1, [4, 0]]
             return corrupt
 
+        def regate_free_slot(host_proccode):
+            # Turn every `if ... = 0` in the proc into `= 9` → the Sparios no longer wait for a free slot.
+            def corrupt(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for b in _proc_body_blocks(stage, host_proccode):
+                    if b["opcode"] == "operator_equals" and _num_operand(b["inputs"].get("OPERAND2")) == 0:
+                        b["inputs"]["OPERAND2"] = [1, [10, "9"]]
+            return corrupt
+
         cases = [
             ("brag-zakato-lifecycle-procs-warp", unwarp(director.UPDATE_BRAG_ZAKATO_PROCCODE)),
             ("garu-zakato-lifecycle-procs-warp", unwarp(director.GARU_ZAKATO_DETONATE_PROCCODE)),
@@ -3073,6 +3245,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("garu-detonate-spawns-four-sparios", noop_call_in(director.GARU_ZAKATO_DETONATE_PROCCODE, director.INIT_BRAG_SPARIO_PROCCODE)),
             ("garu-detonate-cardinal-velocities", repoint_write(director.GARU_ZAKATO_DETONATE_PROCCODE, director.SLOT_DX_ID)),
             ("garu-detonate-frees-garu", reitem(director.GARU_ZAKATO_DETONATE_PROCCODE, director.SLOT_STATE_ID, 1)),
+            ("garu-detonate-spares-busy-slots", regate_free_slot(director.GARU_ZAKATO_DETONATE_PROCCODE)),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -5382,6 +5555,131 @@ class ScratchProjectTests(unittest.TestCase):
         if not (self_tick and hit_tick and offers_detector):
             failures.add("zakato-self-destruct-no-score")
 
+        # (15) BOTH ZAKATO FAMILIES TELEPORT IN MID-FIELD (init_teleport 3994-4001). Each init draws the row
+        # FIRST — an RNG call, then a top-level `slot x` write of `((rng mod 16) + 5) * cell` — ahead of the
+        # column draw loop, and never stamps the top row the other flying families enter on.
+        top_row = director.TOROID_SPAWN_ROW * director.SLOT_UNITS_PER_CELL
+        for proccode in (director.INIT_ZAKATO_PROCCODE, director.INIT_BRAG_ZAKATO_PROCCODE):
+            top = _proc_top_chain(stage, proccode)
+            body = _proc_body_blocks(stage, proccode)
+
+            def top_index(pred):
+                return next((i for i, bid in enumerate(top) if pred(blocks[bid])), None)
+
+            rng_at = top_index(
+                lambda b: b["opcode"] == "procedures_call" and b.get("mutation", {}).get("proccode") == director.RNG_PROCCODE
+            )
+            row_at = top_index(
+                lambda b: b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_X_ID
+                and (root := ref(b["inputs"].get("ITEM"))) is not None
+                and cond_has_num(root, director.ZAKATO_TELEPORT_ROW_MASK + 1)
+                and cond_has_num(root, director.ZAKATO_TELEPORT_ROW_BASE)
+            )
+            loop_at = top_index(lambda b: b["opcode"] == "control_repeat_until")
+            fixed_row = any(
+                b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == director.SLOT_X_ID
+                and const_item(b) == top_row
+                for b in body
+            )
+            if None in (rng_at, row_at, loop_at) or not (rng_at < row_at < loop_at) or fixed_row:
+                failures.add("zakato-teleports-mid-field")
+
+        # (16)/(17) BOTH ZAKATO FAMILIES DRIFT WITH THE TERRAIN while the sparkle plays and while the self-destruct
+        # burst plays (scroll_sprite_X from the teleport and explode loops, 3741/3770, 3869/3899): a `slot x +=
+        # AREA_PROGRESS_STEP` gated on that state, plus the one-cell move at the phase's timer value —
+        # sparkle at 8 (+1 row, -1 column, 3964-3967), burst at 0x10 (-1 row, +1 column, 3934-3937).
+        def adds(body, list_id, value):
+            return [
+                id_of[id(b)]
+                for b in body
+                if b["opcode"] == "data_replaceitemoflist"
+                and b["fields"]["LIST"][1] == list_id
+                and (item := rref(b["inputs"].get("ITEM"))) is not None
+                and item["opcode"] == "operator_add"
+                and num_operand(item["inputs"].get("NUM2")) == value
+            ]
+
+        def at_timer(node_id, value):
+            return ancestor_if(node_id, lambda c: cond_has_eq(c, director.SLOT_TIMER_ID, value))
+
+        cell = director.SLOT_UNITS_PER_CELL
+        for proccode in (director.UPDATE_ZAKATO_PROCCODE, director.UPDATE_BRAG_ZAKATO_PROCCODE):
+            body = _proc_body_blocks(stage, proccode)
+            for state_value, nudge_timer, row_step, label in (
+                (director.SLOT_TELEPORT, director.ZAKATO_TELEPORT_NUDGE_TIMER, 1, "zakato-drifts-while-teleporting"),
+                (director.SLOT_SELF_EXPLODE, director.ZAKATO_EXPLODE_NUDGE_TIMER, -1, "zakato-drifts-while-self-destructing"),
+            ):
+                scroll = any(gated_by_state(w, state_value) for w in adds(body, director.SLOT_X_ID, director.AREA_PROGRESS_STEP))
+                nudge_x = any(
+                    gated_by_state(w, state_value) and at_timer(w, nudge_timer)
+                    for w in adds(body, director.SLOT_X_ID, row_step * cell)
+                )
+                nudge_y = any(
+                    gated_by_state(w, state_value) and at_timer(w, nudge_timer)
+                    for w in adds(body, director.SLOT_Y_ID, -row_step * cell)
+                )
+                if not (scroll and nudge_x and nudge_y):
+                    failures.add(label)
+
+        # (18) THE SPARKLE HOLDS STILL THROUGH ITS MOVE. Its first two cells are 2x2 sprites (3987-3988), drawn
+        # 8 px right and down of the position (sprite_draw_double_width_and_height, amiga 2529-2544), and the
+        # timer-8 move cancels that. The Zakato renderer places the sparkle DOUBLE_TILE_STAGE_OFFSET right
+        # (+x) and down (-y) while `slot timer` < ZAKATO_TELEPORT_NUDGE_TIMER, inside the SLOT_TELEPORT branch.
+        # (The burst gets no such offset: zakato_explode never stores its size bits, 3946-3949.)
+        renderer = next((t for t in project["targets"] if t["name"] == director.ZAKATO_TARGET), None)
+        rb = renderer["blocks"] if renderer else {}
+
+        def r_ancestor_if(node_id, pred):
+            cur = rb.get(node_id)
+            while cur is not None:
+                parent = rb.get(cur.get("parent")) if cur.get("parent") else None
+                if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                    cond = rb.get(ref(parent["inputs"].get("CONDITION")))
+                    if cond is not None and pred(cond, parent, cur):
+                        return True
+                cur = parent
+            return False
+
+        def reads_list(inp, list_id):
+            b = rb.get(ref(inp))
+            return b is not None and b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] == list_id
+
+        def before_move(cond, parent, child):
+            return (
+                cond["opcode"] == "operator_lt"
+                and reads_list(cond["inputs"].get("OPERAND1"), director.SLOT_TIMER_ID)
+                and num_operand(cond["inputs"].get("OPERAND2")) == director.ZAKATO_TELEPORT_NUDGE_TIMER
+            )
+
+        def in_teleport_branch(cond, parent, child):
+            # Only the THEN branch of the `slot state = SLOT_TELEPORT` test: walk to the substack head.
+            head = child
+            while head is not None and head.get("parent") and rb.get(head["parent"]) is not parent:
+                head = rb.get(head["parent"])
+            return (
+                cond["opcode"] == "operator_equals"
+                and reads_list(cond["inputs"].get("OPERAND1"), director.SLOT_STATE_ID)
+                and num_operand(cond["inputs"].get("OPERAND2")) == director.SLOT_TELEPORT
+                and ref(parent["inputs"].get("SUBSTACK")) == id_of_r.get(id(head))
+            )
+
+        id_of_r = {id(b): bid for bid, b in rb.items()}
+        offset = director.DOUBLE_TILE_STAGE_OFFSET
+        sparkle_offset = any(
+            b["opcode"] == "motion_changexby"
+            and num_operand(b["inputs"].get("DX")) == offset
+            and (nxt := rb.get(b.get("next"))) is not None
+            and nxt["opcode"] == "motion_changeyby"
+            and num_operand(nxt["inputs"].get("DY")) == -offset
+            and r_ancestor_if(bid, before_move)
+            and r_ancestor_if(bid, in_teleport_branch)
+            for bid, b in rb.items()
+        )
+        if not sparkle_offset:
+            failures.add("zakato-sparkle-holds-still")
+
         return failures
 
     # Roadmap closure evidence for leaf `air.zakato` (AIR-07): the four base Zakato variants are a live
@@ -5395,6 +5693,8 @@ class ScratchProjectTests(unittest.TestCase):
     # `zakato-fires-once-then-vanishes`.
     # roadmap-evidence: AIR-07 success  (test_zakato_slice_authoring_present — lifecycle procs warp, spawn-inits + dispatch-updates, spawns indestructible SLOT_TELEPORT not ACTIVE, per-variant points gated by walk type, no fire mask at spawn, craft-independent draw, teleport commits ACTIVE, commit sets straight dx and 32-tier aim, seeds slow/fast random fuse, fires exactly one aimed bullet then SELF_EXPLODE, never the fire gate, proximity band carries both constants, self-destruct runs the shared tick and awards nothing while a shot-kill plays the shared explosion)
     # roadmap-evidence: AIR-07 failure  (test_zakato_slice_negative_fixtures — each contract clause corrupted bites)
+    # roadmap-evidence: AIR-07 success  (AIR-07.teleport-art, the teleport scatter: test_zakato_slice_authoring_present — both Zakato families draw the teleport row (rng mod 16)+5 before the column, never the top row, and drift one scroll step a tick while teleporting and while self-destructing, moving one cell at timer 8 and 0x10, with the sparkle drawn one cell right and down until its move; harness zakato-teleports-mid-field-and-drifts)
+    # roadmap-evidence: AIR-07 failure  (AIR-07.teleport-art, the teleport scatter: test_zakato_slice_negative_fixtures — a top-row stamp, a column-first draw, a zero drift, a moved one-cell move, or a zeroed or never-applied sparkle offset in either family bites)
     def test_zakato_slice_authoring_present(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._air07_failures(project))
@@ -5598,6 +5898,99 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["mutation"]["proccode"] = "noop"
 
+        def top_row_entry(proccode):
+            # Stamp the old fixed top row in place of the random teleport row -> the mid-field clause bites.
+            def corrupt(p: dict) -> None:
+                stage = next(t for t in p["targets"] if t["isStage"])
+                for bid in _proc_top_chain(stage, proccode):
+                    b = stage["blocks"][bid]
+                    if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_X_ID:
+                        b["inputs"]["ITEM"] = [1, [4, "0"]]
+
+            return corrupt
+
+        def row_after_column(p: dict) -> None:
+            # Draw the column before the row (swap the RNG/row pair behind the draw loop) -> the mid-field
+            # clause bites on the arcade's draw order.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            blocks = stage["blocks"]
+            top = _proc_top_chain(stage, director.INIT_ZAKATO_PROCCODE)
+            rng, row = top[0], top[1]
+            loop = next(bid for bid in top if blocks[bid]["opcode"] == "control_repeat_until")
+            definition = blocks[rng]["parent"]
+            after_row = blocks[row]["next"]
+            blocks[definition]["next"] = after_row
+            blocks[after_row]["parent"] = definition
+            after_loop = blocks[loop]["next"]
+            blocks[loop]["next"] = rng
+            blocks[rng]["parent"] = loop
+            blocks[row]["next"] = after_loop
+            if after_loop:
+                blocks[after_loop]["parent"] = row
+
+        def zero_drift(proccode, state_value):
+            # Turn that phase's terrain drift into a zero step -> the Zakato holds still in it.
+            def corrupt(p: dict) -> None:
+                stage, body = _body(p, proccode)
+                blocks = stage["blocks"]
+                for b in body:
+                    if (
+                        b["opcode"] == "data_replaceitemoflist"
+                        and b["fields"]["LIST"][1] == director.SLOT_X_ID
+                        and (item := blocks.get(b["inputs"]["ITEM"][1]) if isinstance(b["inputs"]["ITEM"][1], str) else None)
+                        and item["opcode"] == "operator_add"
+                        and _num_operand(item["inputs"].get("NUM2")) == director.AREA_PROGRESS_STEP
+                    ):
+                        # Only the write under this phase's state gate.
+                        cur, inside = b, False
+                        while cur is not None and not inside:
+                            parent = blocks.get(cur.get("parent")) if cur.get("parent") else None
+                            if parent is not None and parent["opcode"] in ("control_if", "control_if_else"):
+                                cond = blocks.get(parent["inputs"]["CONDITION"][1])
+                                o2 = cond["inputs"].get("OPERAND2") if cond else None
+                                o1 = blocks.get(cond["inputs"]["OPERAND1"][1]) if cond and isinstance(cond["inputs"].get("OPERAND1", [None, None])[1], str) else None
+                                if (
+                                    cond is not None and cond["opcode"] == "operator_equals"
+                                    and o1 is not None and o1["opcode"] == "data_itemoflist"
+                                    and o1["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                                    and _num_operand(o2) == state_value
+                                ):
+                                    inside = True
+                            cur = parent
+                        if inside:
+                            item["inputs"]["NUM2"] = [1, [4, "0"]]
+
+            return corrupt
+
+        def no_nudge(proccode, timer_value):
+            # Move the one-cell move off its timer value -> it never fires.
+            def corrupt(p: dict) -> None:
+                stage, body = _body(p, proccode)
+                blocks = stage["blocks"]
+                for b in body:
+                    if b["opcode"] != "operator_equals" or _num_operand(b["inputs"].get("OPERAND2")) != timer_value:
+                        continue
+                    o1 = b["inputs"].get("OPERAND1")
+                    lhs = blocks.get(o1[1]) if isinstance(o1, list) and len(o1) >= 2 and isinstance(o1[1], str) else None
+                    if lhs is not None and lhs["opcode"] == "data_itemoflist" and lhs["fields"]["LIST"][1] == director.SLOT_TIMER_ID:
+                        b["inputs"]["OPERAND2"] = [1, [4, "99"]]
+
+            return corrupt
+
+        def sparkle_offset_edit(key, value):
+            # Corrupt the sparkle's 2x2 placement in the Zakato renderer: zero the offset, or move its
+            # timer bound so it never applies -> the sparkle jumps through the timer-8 move.
+            def corrupt(p: dict) -> None:
+                target = next(t for t in p["targets"] if t["name"] == director.ZAKATO_TARGET)
+                for b in target["blocks"].values():
+                    if key == "offset" and b["opcode"] in ("motion_changexby", "motion_changeyby"):
+                        slot = "DX" if b["opcode"] == "motion_changexby" else "DY"
+                        b["inputs"][slot] = [1, [4, str(value)]]
+                    if key == "bound" and b["opcode"] == "operator_lt" and _num_operand(b["inputs"].get("OPERAND2")) == director.ZAKATO_TELEPORT_NUDGE_TIMER:
+                        b["inputs"]["OPERAND2"] = [1, [4, str(value)]]
+
+            return corrupt
+
         cases = [
             ("zakato-lifecycle-procs-warp", unwarp_update),
             ("spawn-inits-zakato", drop_init_call),
@@ -5612,6 +6005,17 @@ class ScratchProjectTests(unittest.TestCase):
             ("zakato-fires-without-gate", add_fire_gate),
             ("zakato-fire-trigger-proximity-band", break_proximity_band),
             ("zakato-self-destruct-no-score", self_explode_no_tick),
+            ("zakato-teleports-mid-field", top_row_entry(director.INIT_ZAKATO_PROCCODE)),
+            ("zakato-teleports-mid-field", top_row_entry(director.INIT_BRAG_ZAKATO_PROCCODE)),
+            ("zakato-teleports-mid-field", row_after_column),
+            ("zakato-drifts-while-teleporting", zero_drift(director.UPDATE_ZAKATO_PROCCODE, director.SLOT_TELEPORT)),
+            ("zakato-drifts-while-teleporting", zero_drift(director.UPDATE_BRAG_ZAKATO_PROCCODE, director.SLOT_TELEPORT)),
+            ("zakato-drifts-while-teleporting", no_nudge(director.UPDATE_ZAKATO_PROCCODE, director.ZAKATO_TELEPORT_NUDGE_TIMER)),
+            ("zakato-drifts-while-self-destructing", zero_drift(director.UPDATE_ZAKATO_PROCCODE, director.SLOT_SELF_EXPLODE)),
+            ("zakato-drifts-while-self-destructing", zero_drift(director.UPDATE_BRAG_ZAKATO_PROCCODE, director.SLOT_SELF_EXPLODE)),
+            ("zakato-drifts-while-self-destructing", no_nudge(director.UPDATE_BRAG_ZAKATO_PROCCODE, director.ZAKATO_EXPLODE_NUDGE_TIMER)),
+            ("zakato-sparkle-holds-still", sparkle_offset_edit("offset", 0)),
+            ("zakato-sparkle-holds-still", sparkle_offset_edit("bound", 0)),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -5637,8 +6041,10 @@ class ScratchProjectTests(unittest.TestCase):
         spawned from a formation wave (`spawn flying enemies` never inits it — the Garu Zakato detonation,
         air.special-pairs #82, is the only spawner); the ordered walk still drives its updater. Each active tick
         it nudges its velocity toward the craft by +/-BRAG_SPARIO_ACCEL on BOTH axes (scroll `slot dx`, lateral
-        `slot dy`), awards BRAG_SPARIO_PTS (500), plays the SHARED ~20-frame burst on a shot-kill, and offers the
-        shared detector on the non-HIT path.
+        `slot dy`), awards BRAG_SPARIO_PTS (500), and is never destroyed by a shot (slice 21): the craft test runs
+        only while ACTIVE, then a HIT slot goes back to ACTIVE, then the shared detector tests the drawn position,
+        then it moves, so a shot scores it and is consumed while it keeps flying; its renderer always draws the
+        body and carries no explosion.
 
         The families run whole ticks under the settling harness (which cannot see a single mid-flight frame), so
         these once-only structural facts are pinned here."""
@@ -5905,21 +6311,77 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             failures.add("brag-points")
 
-        # (17) Brag plays the SHARED ~20-frame burst on a shot-kill (gated by state == SLOT_HIT), NOT Giddo's
-        # own short burst.
-        shared_calls = [
-            id_of[id(b)]
-            for b in brag_update
-            if b["opcode"] == "procedures_call"
-            and b.get("mutation", {}).get("proccode") == director.EXPLODE_TICK_PROCCODE
-        ]
-        own_in_brag = any(
-            b["opcode"] == "procedures_call"
-            and b.get("mutation", {}).get("proccode") == director.EXPLODE_GIDDO_SPARIO_PROCCODE
+        # (17) A SHOT NEVER DESTROYS THE BRAG (slice 21). handle_09_Brag_Spario has no hit branch and writes
+        # _STATE=2 every frame (3092); the shot test only hits a _STATE 2 enemy (2566) and a hit sets 3 (2525).
+        # Both collision tests read the frame-start sprite snapshot (main 274, sub 292-294), and the craft test
+        # runs before the handler and skips a non-2 enemy (2207-2209). So: no burst call; a HIT slot set back to
+        # ACTIVE under a state == SLOT_HIT gate; in the top-level order the craft test (gated on SLOT_ACTIVE)
+        # before that recovery, and the shot test before the move.
+        explodes = calls_in(brag_update, director.EXPLODE_TICK_PROCCODE) or calls_in(
+            brag_update, director.EXPLODE_GIDDO_SPARIO_PROCCODE
+        )
+        recovers = any(
+            b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            and const_item(b) == director.SLOT_ACTIVE
+            and gated_by_state(id_of[id(b)], director.SLOT_HIT)
             for b in brag_update
         )
-        if not shared_calls or not any(gated_by_state(c, director.SLOT_HIT) for c in shared_calls) or own_in_brag:
-            failures.add("brag-shared-burst")
+        chain = _proc_top_chain(stage, director.UPDATE_BRAG_SPARIO_PROCCODE)
+
+        def top_of(bid):
+            while bid and bid not in chain:
+                bid = blocks.get(bid, {}).get("parent")
+            return chain.index(bid) if bid in chain else None
+
+        move_tops = {
+            top_of(id_of[id(b)])
+            for b in brag_update
+            if b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_X_ID
+        }
+        detector_tops = {
+            top_of(id_of[id(b)])
+            for b in brag_update
+            if b["opcode"] == "procedures_call"
+            and b.get("mutation", {}).get("proccode") == director.CHECK_AIR_HIT_PROCCODE
+        }
+        recover_tops = {
+            top_of(id_of[id(b)])
+            for b in brag_update
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            and const_item(b) == director.SLOT_ACTIVE
+        }
+        craft_writes = [
+            b
+            for b in brag_update
+            if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.PLAYER_HIT_ID
+        ]
+        craft_tops = {top_of(id_of[id(b)]) for b in craft_writes}
+        tests_first = (
+            len(move_tops) == 1
+            and len(detector_tops) == 1
+            and None not in move_tops | detector_tops
+            and max(detector_tops) < min(move_tops)
+        )
+        craft_first = (
+            len(craft_tops) == 1
+            and len(recover_tops) == 1
+            and None not in craft_tops | recover_tops
+            and max(craft_tops) < min(recover_tops)
+            and all(gated_by_state(id_of[id(b)], director.SLOT_ACTIVE) for b in craft_writes)
+        )
+        if explodes or not recovers or not tests_first or not craft_first:
+            failures.add("brag-survives-hit")
+        # Its renderer always draws the body: no explosion costume and no read of the slot state.
+        brag_target = next((t for t in project["targets"] if t["name"] == director.BRAG_SPARIO_TARGET), None)
+        if brag_target is None or any(
+            c.get("name", "").startswith("air-explosion/") for c in brag_target["costumes"]
+        ) or any(
+            b["opcode"] == "data_itemoflist" and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+            for b in brag_target["blocks"].values()
+        ):
+            failures.add("brag-renders-body-only")
 
         # (18) Brag offers the shared detector on the non-HIT path (so a shot scores it).
         if not calls_in(brag_update, director.CHECK_AIR_HIT_PROCCODE):
@@ -5934,7 +6396,9 @@ class ScratchProjectTests(unittest.TestCase):
     # a formation wave (only from the Garu Zakato detonation, air.special-pairs). Both are dispatched by the
     # ordered walk and scored by the shared detector. The live proof is the harness `giddo-aims-once-64-tier`
     # / `giddo-own-short-burst` / `brag-homing-acceleration`.
-    # roadmap-evidence: AIR-10 success  (test_spario_slice_authoring_present — Giddo/Brag lifecycle procs warp, spawn-inits Giddo + dispatch-updates both, Giddo spawns ACTIVE aimed on the 64 tier scoring 10 with no fire mask and a craft-independent draw flying straight and dying to its own 8-frame burst, Brag never formation-spawned, accelerates both axes scoring 500 and dying to the shared burst, both offer the detector)
+    # roadmap-evidence: AIR-10 success  (test_spario_slice_authoring_present — Giddo/Brag lifecycle procs warp, spawn-inits Giddo + dispatch-updates both, Giddo spawns ACTIVE aimed on the 64 tier scoring 10 with no fire mask and a craft-independent draw flying straight and dying to its own 8-frame burst, Brag never formation-spawned, accelerates both axes scoring 500 and survives shots, both offer the detector)
+    # roadmap-evidence: AIR-10 success  (AIR-10.brag-spario-survives: test_spario_slice_authoring_present's brag-survives-hit and brag-renders-body-only; harness brag-spario-survives-a-shot scores 500, spends the shot, and the Spario keeps flying and scores again)
+    # roadmap-evidence: AIR-10 failure  (AIR-10.brag-spario-survives: brag_explodes / brag_stays_hit / brag_moves_before_testing / brag_craft_after_recover / brag_draws_burst negatives bite; brag-spario-survives-a-shot negative leaves the slot HIT)
     # roadmap-evidence: AIR-10 failure  (test_spario_slice_negative_fixtures — each contract clause corrupted bites)
     def test_spario_slice_authoring_present(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -6114,16 +6578,65 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["inputs"]["ITEM"] = [1, [4, str(director.BRAG_SPARIO_PTS + 1)]]
 
-        def brag_own_burst(p: dict) -> None:
-            # Flip the Brag HIT branch's shared tick to Giddo's own burst → the shared-burst clause bites.
+        def brag_explodes(p: dict) -> None:
+            # The pre-slice-21 port: the detector call becomes the shared burst, so the Brag explodes on a hit.
             stage, body = _body(p, director.UPDATE_BRAG_SPARIO_PROCCODE)
             for b in body:
                 if (
                     b["opcode"] == "procedures_call"
-                    and b.get("mutation", {}).get("proccode") == director.EXPLODE_TICK_PROCCODE
+                    and b.get("mutation", {}).get("proccode") == director.CHECK_AIR_HIT_PROCCODE
                 ):
-                    b["mutation"]["proccode"] = director.EXPLODE_GIDDO_SPARIO_PROCCODE
+                    b["mutation"]["proccode"] = director.EXPLODE_TICK_PROCCODE
                     return
+
+        def brag_stays_hit(p: dict) -> None:
+            # The HIT slot is never set back to ACTIVE, so it stops moving and can't be hit again.
+            stage, body = _body(p, director.UPDATE_BRAG_SPARIO_PROCCODE)
+            for b in body:
+                if (
+                    b["opcode"] == "data_replaceitemoflist"
+                    and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                    and _num_operand(b["inputs"].get("ITEM")) == director.SLOT_ACTIVE
+                ):
+                    b["inputs"]["ITEM"] = [1, [4, director.SLOT_HIT]]
+                    return
+
+        def brag_moves_before_testing(p: dict) -> None:
+            # Move the shot test to the end of the update, so it tests the position after the move.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            blocks_ = stage["blocks"]
+            chain = _proc_top_chain(stage, director.UPDATE_BRAG_SPARIO_PROCCODE)
+            test = next(
+                bid
+                for bid in chain
+                if blocks_[bid]["opcode"] == "procedures_call"
+                and blocks_[bid]["mutation"]["proccode"] == director.CHECK_AIR_HIT_PROCCODE
+            )
+            i = chain.index(test)
+            before, after, last = chain[i - 1], chain[i + 1], chain[-1]
+            blocks_[before]["next"], blocks_[after]["parent"] = after, before
+            blocks_[last]["next"] = test
+            blocks_[test]["parent"], blocks_[test]["next"] = last, None
+
+        def brag_craft_after_recover(p: dict) -> None:
+            # Swap the first two blocks, so the craft test runs after the recovery and a just-hit Spario can ram.
+            stage = next(t for t in p["targets"] if t["isStage"])
+            blocks_ = stage["blocks"]
+            chain = _proc_top_chain(stage, director.UPDATE_BRAG_SPARIO_PROCCODE)
+            craft, recover, third = chain[0], chain[1], chain[2]
+            definition = blocks_[craft]["parent"]
+            blocks_[definition]["next"] = recover
+            blocks_[recover]["parent"], blocks_[recover]["next"] = definition, craft
+            blocks_[craft]["parent"], blocks_[craft]["next"] = recover, third
+            blocks_[third]["parent"] = craft
+
+        def brag_draws_burst(p: dict) -> None:
+            # The Brag renderer carries the air explosion again (copied from the Garu, which still draws it).
+            targets = {t["name"]: t for t in p["targets"]}
+            garu = targets[director.GARU_ZAKATO_TARGET]
+            targets[director.BRAG_SPARIO_TARGET]["costumes"].extend(
+                copy.deepcopy(c) for c in garu["costumes"] if c.get("name", "").startswith("air-explosion/")
+            )
 
         cases = [
             ("giddo-lifecycle-procs-warp", unwarp(director.UPDATE_GIDDO_SPARIO_PROCCODE)),
@@ -6140,12 +6653,370 @@ class ScratchProjectTests(unittest.TestCase):
             ("brag-no-formation-spawn", brag_formation_spawn),
             ("brag-accelerates-both-axes", brag_flatten_accel),
             ("brag-points", brag_wrong_points),
-            ("brag-shared-burst", brag_own_burst),
+            ("brag-survives-hit", brag_explodes),
+            ("brag-survives-hit", brag_stays_hit),
+            ("brag-survives-hit", brag_moves_before_testing),
+            ("brag-survives-hit", brag_craft_after_recover),
+            ("brag-renders-body-only", brag_draws_burst),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._air10_failures(project), label)
+
+    @staticmethod
+    def _flag_writes(stage: dict, proccode: str, reads_tick: bool) -> list:
+        """The ids of a proc's `slot flag` writes, keeping those whose ITEM does (reads_tick) or does not read `tick`
+        (the compact variable primitive [12, name, id] anywhere in its reporter subtree)."""
+        blocks = stage["blocks"]
+        id_of = {id(b): bid for bid, b in blocks.items()}
+
+        def reads(bid) -> bool:
+            frontier, seen = [bid], set()
+            while frontier:
+                cid = frontier.pop()
+                if not cid or cid in seen or cid not in blocks:
+                    continue
+                seen.add(cid)
+                for value in blocks[cid].get("inputs", {}).values():
+                    if not isinstance(value, list):
+                        continue
+                    for part in value[1:]:
+                        if isinstance(part, list) and len(part) >= 3 and part[0] == 12 and part[2] == director.TICK_ID:
+                            return True
+                        if isinstance(part, str):
+                            frontier.append(part)
+            return False
+
+        return [
+            id_of[id(b)]
+            for b in _proc_body_blocks(stage, proccode)
+            if b["opcode"] == "data_replaceitemoflist"
+            and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+            and reads(id_of[id(b)]) == reads_tick
+        ]
+
+    @classmethod
+    def _reference_art_consumer_failures(cls, project: dict) -> set:
+        """presentation.reference-art consumers (slice 21) — violated labels. The update side keeps each body's
+        colour in `slot flag`; the renderers mirror the pinned frames in the ordinal layout game_director lists.
+
+        ZAKATO COLOUR. Every Zakato-family handler writes pulsing colour 2 AFTER its fire test (3757, 3798, 3828,
+        3857, 3887, 3916), so a Zakato that fires keeps the colour it had; init_teleport writes 0x24 (4002), which
+        one that fires on its first live frame keeps. So each update's tick-driven flag write sits only in the
+        not-firing branch (the SUBSTACK2 of the if-else whose SUBSTACK flips the slot to SLOT_SELF_EXPLODE), and
+        each init writes ZAKATO_TELEPORT_COLOUR_INDEX.
+        GARU COLOUR. handle_18 writes the pulsing colour each live frame (4027): the update writes it on the
+        not-detonating path; the init writes it too (port choice: the arcade's first frame shows a stale colour).
+        GIDDO COLOUR. The flight writes 0x26 + ((countup>>3)&3) (5233-5237) outside the HIT branch; the hit
+        (5241-5252) never rewrites it, so the burst proc writes no flag.
+        COSTUMES. Each renderer mirrors its own pinned frames at the ordinals its blocks compute."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def in_not_firing_branch(bid) -> bool:
+            # Walk up through the `next` chain to the enclosing C-block; it must be an if-else holding this
+            # write in SUBSTACK2 with a SLOT_SELF_EXPLODE state write in SUBSTACK.
+            cur = bid
+            while True:
+                parent_id = blocks[cur].get("parent")
+                if not parent_id or parent_id not in blocks:
+                    return False
+                parent = blocks[parent_id]
+                if parent.get("next") == cur:
+                    cur = parent_id
+                    continue
+                if parent["opcode"] != "control_if_else":
+                    return False
+                if (parent["inputs"].get("SUBSTACK2") or [None, None])[1] != cur:
+                    return False
+                first = (parent["inputs"].get("SUBSTACK") or [None, None])[1]
+                while first:
+                    b = blocks[first]
+                    if (
+                        b["opcode"] == "data_replaceitemoflist"
+                        and b["fields"]["LIST"][1] == director.SLOT_STATE_ID
+                        and _const_item(b) == director.SLOT_SELF_EXPLODE
+                    ):
+                        return True
+                    first = b.get("next")
+                return False
+
+        for proccode in (director.UPDATE_ZAKATO_PROCCODE, director.UPDATE_BRAG_ZAKATO_PROCCODE):
+            writes = cls._flag_writes(stage, proccode, reads_tick=True)
+            if not writes or not all(in_not_firing_branch(w) for w in writes):
+                failures.add("zakato-colour-after-fire-test")
+        for proccode in (director.INIT_ZAKATO_PROCCODE, director.INIT_BRAG_ZAKATO_PROCCODE):
+            if not any(
+                _const_item(blocks[w]) == director.ZAKATO_TELEPORT_COLOUR_INDEX
+                for w in cls._flag_writes(stage, proccode, reads_tick=False)
+            ):
+                failures.add("zakato-init-teleport-colour")
+        if not cls._flag_writes(stage, director.UPDATE_GARU_ZAKATO_PROCCODE, reads_tick=True) or not cls._flag_writes(
+            stage, director.INIT_GARU_ZAKATO_PROCCODE, reads_tick=True
+        ):
+            failures.add("garu-pulses")
+        giddo_writes = cls._flag_writes(stage, director.UPDATE_GIDDO_SPARIO_PROCCODE, reads_tick=True)
+        if (
+            not giddo_writes
+            or not cls._flag_writes(stage, director.INIT_GIDDO_SPARIO_PROCCODE, reads_tick=True)
+            or any(
+                b["opcode"] == "data_replaceitemoflist" and b["fields"]["LIST"][1] == director.SLOT_FLAG_ID
+                for b in _proc_body_blocks(stage, director.EXPLODE_GIDDO_SPARIO_PROCCODE)
+            )
+        ):
+            failures.add("giddo-colour-cycles-hit-keeps-it")
+
+        targets = {t["name"]: t for t in project["targets"]}
+
+        def names(target):
+            return [c["name"] for c in targets[target]["costumes"]] if target in targets else []
+
+        zakato = names(director.ZAKATO_TARGET)
+        layout = {
+            director.ZAKATO_BODY_ORDINAL: director.ZAKATO_BODY_COSTUME,
+            director.BRAG_ZAKATO_BODY_ORDINAL_BASE: "brag-zakato-body/pulse/c10",
+            director.ZAKATO_BURST_ORDINAL_BASE: "air-explosion/burst/01/none",
+            director.ZAKATO_TELEPORT_ORDINAL_BASE: "zakato-teleport/sparkle/01/none",
+            director.ZAKATO_TELEPORT_ORDINAL_BASE + 1: "zakato-teleport/sparkle/01/x",
+            director.ZAKATO_SELF_DESTRUCT_ORDINAL_BASE: "zakato-self-destruct/burst/01/c10",
+            director.ZAKATO_SELF_DESTRUCT_ORDINAL_BASE + director.ZAKATO_TELEPORT_COLOUR_INDEX: (
+                "zakato-self-destruct/burst/01/c24"
+            ),
+        }
+        expected_count = director.ZAKATO_SELF_DESTRUCT_ORDINAL_BASE - 1 + director.ZAKATO_ANIM_PHASES * director.ZAKATO_COLOURS
+        if len(zakato) != expected_count or any(
+            zakato[ordinal - 1] != name for ordinal, name in layout.items() if ordinal - 1 < len(zakato)
+        ):
+            failures.add("zakato-renders-pinned-frames")
+        giddo = names(director.GIDDO_SPARIO_TARGET)
+        if (
+            len(giddo) != 2 * director.GIDDO_SPARIO_FLIGHT_FRAMES * director.GIDDO_SPARIO_COLOURS
+            or not all(n.startswith("giddo-spario/") for n in giddo)
+            or giddo[director.GIDDO_SPARIO_HIT_ORDINAL_BASE - 1] != "giddo-spario/hit/01/c26"
+        ):
+            failures.add("giddo-renders-pinned-frames")
+        if names(director.BRAG_SPARIO_TARGET) != [f"brag-spario/spin/01/{t}" for t in ("none", "x", "y", "xy")]:
+            failures.add("brag-spario-renders-pinned-frames")
+        # FLIP AXES. countup & 0x0C (3116-3119) sets _ATTR bits 2-3; on the upright screen bit 3 mirrors
+        # left-to-right (amiga.68k 2614; neogeo.68k 927-929 passes both bits on), so a value of 1 is the
+        # top-to-bottom flip: the spin's costume offset is floor(v/2) + (v mod 2)*2, not v itself.
+        spario_blocks = targets[director.BRAG_SPARIO_TARGET]["blocks"] if director.BRAG_SPARIO_TARGET in targets else {}
+
+        def child(b, key):
+            inp = b.get("inputs", {}).get(key)
+            return spario_blocks.get(inp[1]) if inp and isinstance(inp[1], str) else None
+
+        def literal(b, key):
+            inp = b.get("inputs", {}).get(key)
+            return str(inp[1][1]) if inp and isinstance(inp[1], list) else None
+
+        def upright_flip_offset(b):
+            floor, scaled = child(b, "NUM1"), child(b, "NUM2")
+            halved = child(floor, "NUM") if floor else None
+            low_bit = child(scaled, "NUM1") if scaled else None
+            return (
+                b["opcode"] == "operator_add"
+                and floor is not None
+                and floor["opcode"] == "operator_mathop"
+                and floor["fields"]["OPERATOR"][0] == "floor"
+                and halved is not None
+                and halved["opcode"] == "operator_divide"
+                and literal(halved, "NUM2") == "2"
+                and scaled["opcode"] == "operator_multiply"
+                and literal(scaled, "NUM2") == "2"
+                and low_bit is not None
+                and low_bit["opcode"] == "operator_mod"
+                and literal(low_bit, "NUM2") == "2"
+            )
+
+        if not any(upright_flip_offset(b) for b in spario_blocks.values() if isinstance(b, dict)):
+            failures.add("brag-spario-flip-axes")
+        garu = names(director.GARU_ZAKATO_TARGET)
+        if (
+            garu[: director.GARU_ZAKATO_BODY_COLOURS]
+            != [f"garu-zakato-body/pulse/c{0x10 + i:02x}" for i in range(director.GARU_ZAKATO_BODY_COLOURS)]
+            or len(garu) < director.GARU_ZAKATO_BURST_ORDINAL_BASE
+            or garu[director.GARU_ZAKATO_BURST_ORDINAL_BASE - 1] != "air-explosion/burst/01/none"
+        ):
+            failures.add("garu-renders-pinned-frames")
+        # SHOT. main_fn_30_shot_fn (2374-2388) draws code 0x116 + ((countup>>2)&1) at colour 0x23 + ((countup>>1)&1),
+        # mirrored on countup & 1 — never drawn at two frames a tick — and shot_destroyed (2400-2417) the rebound
+        # 0x118..0x11B, drawn on its odd (mirrored) timer frames. The blaster appends them after its preserved
+        # Fire_1..8 and picks the flight frame from `tick` each step: no `next costume`.
+        shot = names("blaster")
+        shot_layout = [
+            f"zapper-shot/fly/{code:02d}/c{clut:02x}/none" for code in (1, 2) for clut in (0x23, 0x24)
+        ] + [f"zapper-shot/rebound/{code:02d}/x" for code in range(1, 5)]
+        if shot[director.SHOT_ART_BASE_ORDINAL - 1 :] != shot_layout or (
+            director.SHOT_REBOUND_ART_BASE_ORDINAL != director.SHOT_ART_BASE_ORDINAL + 4
+        ):
+            failures.add("shot-renders-pinned-frames")
+        blaster_blocks = targets["blaster"]["blocks"] if "blaster" in targets else {}
+
+        def reads_tick(root_id):
+            seen, frontier = set(), [root_id]
+            while frontier:
+                cid = frontier.pop()
+                if not isinstance(cid, str) or cid in seen or cid not in blaster_blocks:
+                    continue
+                seen.add(cid)
+                for value in blaster_blocks[cid].get("inputs", {}).values():
+                    for part in value[1:] if isinstance(value, list) else ():
+                        if isinstance(part, list) and len(part) >= 3 and part[0] == 12 and part[2] == director.TICK_ID:
+                            return True
+                        if isinstance(part, str):
+                            frontier.append(part)
+            return False
+
+        tick_switches = [
+            bid
+            for bid, b in blaster_blocks.items()
+            if isinstance(b, dict) and b["opcode"] == "looks_switchcostumeto" and reads_tick(bid)
+        ]
+        if len(tick_switches) < 2 or any(
+            isinstance(b, dict) and b["opcode"] == "looks_nextcostume" for b in blaster_blocks.values()
+        ):
+            failures.add("shot-costume-from-tick")
+        return failures
+
+    # roadmap-evidence: CAB-05 success  (presentation.reference-art consumers: test_reference_art_consumers_present — Zakato-family colour written after the fire test and 0x24 at init, Garu pulses, Giddo colour cycles and its hit keeps it, each renderer mirrors its pinned frames at its ordinals, the shot draws its pinned flight and rebound frames picked from the tick; harness reference-art-enemy-frames, shot-rebounds-off-a-bacura-in-four-ticks)
+    # roadmap-evidence: CAB-05 failure  (test_reference_art_consumer_negatives — colour written before the fire test, init colour 0, Garu/Giddo colour write dropped, a burst that rewrites the colour, reordered or foreign costumes, a Brag Spario spin with its flip axes swapped, reversed shot costumes and a shot stepping `next costume` each bite)
+    # roadmap-evidence: AIR-08 success  (AIR-08.garu-zakato-art: test_reference_art_consumers_present's garu-pulses and garu-renders-pinned-frames — the Garu body is the rendered 0x113 cell at its pulsing colours c10–c14 in order, and its init and update write the pulsing colour each live tick; harness reference-art-enemy-frames)
+    # roadmap-evidence: AIR-08 failure  (AIR-08.garu-zakato-art: test_reference_art_consumer_negatives — the Garu colour write dropped from its init or its update bites `garu-pulses`; its costumes reversed or its burst missing bites `garu-renders-pinned-frames`)
+    # roadmap-evidence: AIR-11 success  (AIR-11.bounce-burst: test_reference_art_consumers_present's shot-renders-pinned-frames and shot-costume-from-tick — the blaster carries the rendered 0x118–0x11B rebound frames after its flight frames and picks every frame by switch, never `next costume`; harness shot-rebounds-off-a-bacura-in-four-ticks)
+    # roadmap-evidence: AIR-11 failure  (AIR-11.bounce-burst: test_reference_art_consumer_negatives — reversed shot costumes bite `shot-renders-pinned-frames`; a shot stepping `next costume` bites `shot-costume-from-tick`)
+    def test_reference_art_consumers_present(self) -> None:
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._reference_art_consumer_failures(project))
+
+    def test_reference_art_consumer_negatives(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+
+        def stage_of(p):
+            return next(t for t in p["targets"] if t["isStage"])
+
+        def colour_before_fire_test(proccode):
+            # Move the update's colour write from the not-firing branch to the head of the firing branch.
+            def corrupt(p):
+                blocks = stage_of(p)["blocks"]
+                write = self._flag_writes(stage_of(p), proccode, reads_tick=True)[0]
+                node = blocks[write]["parent"]
+                after = blocks[write].get("next")
+                blocks[node]["inputs"]["SUBSTACK2"] = [2, after]
+                blocks[after]["parent"] = node
+                first = blocks[node]["inputs"]["SUBSTACK"][1]
+                blocks[node]["inputs"]["SUBSTACK"] = [2, write]
+                blocks[write]["parent"], blocks[write]["next"] = node, first
+                blocks[first]["parent"] = write
+
+            return corrupt
+
+        def drop_colour_write(proccode):
+            # Unlink the proc's tick-driven colour write from its stack.
+            def corrupt(p):
+                blocks = stage_of(p)["blocks"]
+                write = self._flag_writes(stage_of(p), proccode, reads_tick=True)[0]
+                parent, after = blocks[write]["parent"], blocks[write].get("next")
+                for key, value in blocks[parent]["inputs"].items():
+                    if isinstance(value, list) and len(value) >= 2 and value[1] == write:
+                        blocks[parent]["inputs"][key] = [2, after]
+                if blocks[parent].get("next") == write:
+                    blocks[parent]["next"] = after
+                if after:
+                    blocks[after]["parent"] = parent
+                del blocks[write]
+
+            return corrupt
+
+        def init_colour_zero(proccode):
+            def corrupt(p):
+                blocks = stage_of(p)["blocks"]
+                for w in self._flag_writes(stage_of(p), proccode, reads_tick=False):
+                    if _const_item(blocks[w]) == director.ZAKATO_TELEPORT_COLOUR_INDEX:
+                        blocks[w]["inputs"]["ITEM"] = [1, [4, "0"]]
+
+            return corrupt
+
+        def giddo_burst_rewrites_colour(p):
+            # Retarget the burst proc's first slot write at `slot flag`.
+            for b in _proc_body_blocks(stage_of(p), director.EXPLODE_GIDDO_SPARIO_PROCCODE):
+                if b["opcode"] == "data_replaceitemoflist":
+                    b["fields"]["LIST"] = ["slot flag", director.SLOT_FLAG_ID]
+                    return
+
+        def reverse_costumes(target):
+            def corrupt(p):
+                t = next(t for t in p["targets"] if t["name"] == target)
+                t["costumes"].reverse()
+
+            return corrupt
+
+        def spario_flip_axes_swapped(p):
+            # Rewrite floor(v/2) + (v mod 2)*2 as (v mod 2) + floor(v/2)*2 = v: value 1 would draw the x flip.
+            blocks = next(t for t in p["targets"] if t["name"] == director.BRAG_SPARIO_TARGET)["blocks"]
+            for bid, b in blocks.items():
+                if not isinstance(b, dict) or b["opcode"] != "operator_add":
+                    continue
+                first = blocks.get((b["inputs"].get("NUM1") or [None, None])[1])
+                second = blocks.get((b["inputs"].get("NUM2") or [None, None])[1])
+                if not (isinstance(first, dict) and isinstance(second, dict)):
+                    continue
+                if first["opcode"] != "operator_mathop" or second["opcode"] != "operator_multiply":
+                    continue
+                floor_id, mod_id = b["inputs"]["NUM1"][1], second["inputs"]["NUM1"][1]
+                b["inputs"]["NUM1"] = [2, mod_id]
+                blocks[mod_id]["parent"] = bid
+                second["inputs"]["NUM1"] = [2, floor_id]
+                blocks[floor_id]["parent"] = b["inputs"]["NUM2"][1]
+                return
+            raise AssertionError("no flip offset on the brag spario target")
+
+        def shot_steps_costume(p):
+            # The old build: each travel step advances to the next costume instead of reading the tick.
+            blocks = next(t for t in p["targets"] if t["name"] == "blaster")["blocks"]
+            for b in blocks.values():
+                if isinstance(b, dict) and b["opcode"] == "looks_switchcostumeto":
+                    b["opcode"] = "looks_nextcostume"
+                    b["inputs"] = {}
+
+        def garu_without_burst(p):
+            t = next(t for t in p["targets"] if t["name"] == director.GARU_ZAKATO_TARGET)
+            t["costumes"] = [c for c in t["costumes"] if not c["name"].startswith("air-explosion/")]
+
+        def giddo_with_burst(p):
+            targets = {t["name"]: t for t in p["targets"]}
+            targets[director.GIDDO_SPARIO_TARGET]["costumes"].extend(
+                copy.deepcopy(c)
+                for c in targets[director.GARU_ZAKATO_TARGET]["costumes"]
+                if c["name"].startswith("air-explosion/")
+            )
+
+        cases = [
+            ("zakato-colour-after-fire-test", colour_before_fire_test(director.UPDATE_ZAKATO_PROCCODE)),
+            ("zakato-colour-after-fire-test", colour_before_fire_test(director.UPDATE_BRAG_ZAKATO_PROCCODE)),
+            ("zakato-colour-after-fire-test", drop_colour_write(director.UPDATE_ZAKATO_PROCCODE)),
+            ("zakato-init-teleport-colour", init_colour_zero(director.INIT_ZAKATO_PROCCODE)),
+            ("zakato-init-teleport-colour", init_colour_zero(director.INIT_BRAG_ZAKATO_PROCCODE)),
+            ("garu-pulses", drop_colour_write(director.UPDATE_GARU_ZAKATO_PROCCODE)),
+            ("garu-pulses", drop_colour_write(director.INIT_GARU_ZAKATO_PROCCODE)),
+            ("giddo-colour-cycles-hit-keeps-it", drop_colour_write(director.UPDATE_GIDDO_SPARIO_PROCCODE)),
+            ("giddo-colour-cycles-hit-keeps-it", giddo_burst_rewrites_colour),
+            ("zakato-renders-pinned-frames", reverse_costumes(director.ZAKATO_TARGET)),
+            ("giddo-renders-pinned-frames", reverse_costumes(director.GIDDO_SPARIO_TARGET)),
+            ("giddo-renders-pinned-frames", giddo_with_burst),
+            ("brag-spario-renders-pinned-frames", reverse_costumes(director.BRAG_SPARIO_TARGET)),
+            ("brag-spario-flip-axes", spario_flip_axes_swapped),
+            ("garu-renders-pinned-frames", reverse_costumes(director.GARU_ZAKATO_TARGET)),
+            ("garu-renders-pinned-frames", garu_without_burst),
+            ("shot-renders-pinned-frames", reverse_costumes("blaster")),
+            ("shot-costume-from-tick", shot_steps_costume),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._reference_art_consumer_failures(project), label)
 
     @staticmethod
     def _air11_failures(project: dict) -> set:
@@ -7590,9 +8461,17 @@ class ScratchProjectTests(unittest.TestCase):
             for s in sets(sb, director.KEEP_SOUNDS_ID, 1)
         ):
             failures.add("keep-not-set-at-death")
+        # #158: the cue starts at the hit, so the end of the explosion window (the walk's `dying tick` > 43) keeps
+        # the sounds through the transition into player-dead as well.
+        if not any(
+            gated_on(sb, stage_owner, s, director.DYING_TICK_ID, director.DYING_WINDOW_TICKS - 1)
+            for s in sets(sb, director.KEEP_SOUNDS_ID, 1)
+        ):
+            failures.add("keep-not-set-at-window-end")
 
         # Relays: the clone/sprite broadcasts, the Stage receiver plays.
-        for message, sound, sender in (("sfx shot", "zapper_fire", "blaster"), ("sfx death", "solvalou_explode", "solv_death")):
+        # #158: the death cue is raised by the walk's hit (Stage), which plays it from its own receiver thread.
+        for message, sound, sender in (("sfx shot", "zapper_fire", "blaster"), ("sfx death", "solvalou_explode", "Stage")):
             if not receiver_plays(sb, message, sound):
                 failures.add(f"relay-no-stage-receiver:{message}")
             sender_t = targets.get(sender)
@@ -7624,14 +8503,10 @@ class ScratchProjectTests(unittest.TestCase):
 
         if not death_latch_ok():
             failures.add("death-cue-latch-missing")
-        death_t = targets.get("solv_death")
-        if death_t is not None:
-            downer = enclosures(death_t["blocks"])
-            if not all(
-                gated_on(death_t["blocks"], downer, x, director.ATTRACT_ID, 0)
-                for x in broadcasts(death_t["blocks"], "sfx death")
-            ):
-                failures.add("death-cue-in-attract")
+        if not all(
+            gated_on(sb, stage_owner, x, director.ATTRACT_ID, 0) for x in broadcasts(sb, "sfx death")
+        ):
+            failures.add("death-cue-in-attract")
         for name in ("start", "bgm"):
             if not plays(sb, name) or not all(
                 gated_on(sb, stage_owner, x, director.ATTRACT_ID, 0) for x in plays(sb, name)
@@ -7801,9 +8676,10 @@ class ScratchProjectTests(unittest.TestCase):
             ("death-cue-latch-missing", retarget_var(director.DEATH_CUE_PLAYING_ID, 1, 7)),
             ("keep-not-consumed-after-stop", retarget_var(director.KEEP_SOUNDS_ID, 0, 7)),
             ("keep-not-set-at-death", retarget_var(director.KEEP_SOUNDS_ID, 1, 7)),
+            ("keep-not-set-at-window-end", retarget_var(director.KEEP_SOUNDS_ID, 1, 7)),
             ("relay-no-stage-receiver:sfx shot", drop_receiver("sfx shot")),
             ("relay-no-stage-receiver:sfx death", drop_receiver("sfx death")),
-            ("death-cue-in-attract", blank_var_in_conds("solv_death", director.ATTRACT_ID)),
+            ("death-cue-in-attract", blank_var_in_conds("Stage", director.ATTRACT_ID)),
             ("music-in-attract:bgm", blank_var_in_conds("Stage", director.ATTRACT_ID)),
             ("coin-sound-not-latched-by-poll", retarget_var(director.COIN_SOUND_ID, 1, 7)),
             ("coin-sound-not-gated-on-latch", blank_var_in_conds("Stage", director.COIN_SOUND_ID)),
@@ -7830,9 +8706,12 @@ class ScratchProjectTests(unittest.TestCase):
         `award value` write, and it never writes a Bacura field — the slab drifts on untouched.
 
         SHOT. The blaster clone reads SHOT_BOUNCE when its travel loop ends and, instead of vanishing at
-        once, reverses (motion_changeyby BACURA_BOUNCE_DY, the negative step) and runs BACURA_BOUNCE_FRAMES
-        costume frames before the shared free+delete. That reversal + visible travel is the whole of
-        "bounces"."""
+        once, rebounds (shot_destroyed 2400-2417): the hit tick arms its `bounce timer` at BACURA_BOUNCE_ARM
+        (_TIMER = 0xff) and draws in place; each later tick the timer steps TICK_TIMER_STEP, and while it has
+        passed the arm the shot reverses (`shot depth` by BACURA_BOUNCE_DY, the negative step) and draws a
+        rebound frame — until the timer passes BACURA_BOUNCE_FRAMES - 1, then the shared free+delete. Eight
+        arcade frames at two a tick is four rebound ticks; stepping the timer by one would play them twice
+        as long and twice as far."""
         failures = set()
         stage = next(t for t in project["targets"] if t["isStage"])
         blocks = stage["blocks"]
@@ -7931,10 +8810,12 @@ class ScratchProjectTests(unittest.TestCase):
         ):
             failures.add("bounce-not-scored")
 
-        # (6) THE SHOT REBOUNDS. In the blaster sprite a control_if gated on SHOT_BOUNCE runs the reversal: a
-        # control_repeat of BACURA_BOUNCE_FRAMES whose body changes the clone's `shot depth` by BACURA_BOUNCE_DY
-        # (the negative, reversed step) and sets the sprite's y from it (PRES-01, docs/mechanics/054: the
-        # shot's depth lives in that variable). A forward step or a missing branch is not a bounce.
+        # (6) THE SHOT REBOUNDS. In the blaster sprite a control_if gated on SHOT_BOUNCE arms `bounce timer` at
+        # BACURA_BOUNCE_ARM and runs a control_repeat_until (timer > BACURA_BOUNCE_FRAMES - 1) whose body steps
+        # the timer by TICK_TIMER_STEP and, past the arm, changes the clone's `shot depth` by BACURA_BOUNCE_DY
+        # (the negative, reversed step), sets the sprite's y from it (PRES-01, docs/mechanics/054: the shot's
+        # depth lives in that variable) and switches costume. A forward step, a missing branch or a one-frame
+        # timer step is not the arcade's rebound.
         blaster = next((t for t in project["targets"] if t.get("name") == "blaster"), None)
         bb = blaster["blocks"] if blaster else {}
 
@@ -7963,30 +8844,62 @@ class ScratchProjectTests(unittest.TestCase):
                 cur = bb[cur].get("next")
             return out
 
+        def changes(body, var_id, value):
+            return any(
+                s["opcode"] == "data_changevariableby"
+                and s["fields"]["VARIABLE"][1] == var_id
+                and _float_operand(s["inputs"].get("VALUE")) == value
+                for s in body
+            )
+
+        def rebound_loop(repeat_id):
+            b = bb[repeat_id]
+            if b["opcode"] != "control_repeat_until" or not subtree_has_num(
+                bref(b["inputs"].get("CONDITION")), director.BACURA_BOUNCE_FRAMES - 1
+            ):
+                return None
+            return [bb[i] for i in stack_of(bref(b["inputs"].get("SUBSTACK")))]
+
         def substack_reverses(if_id):
             for sid in stack_of(bref(bb[if_id]["inputs"].get("SUBSTACK"))):
-                b = bb[sid]
-                if b["opcode"] != "control_repeat":
+                body = rebound_loop(sid)
+                if body is None:
                     continue
-                if _num_operand(b["inputs"].get("TIMES")) != director.BACURA_BOUNCE_FRAMES:
-                    continue
-                body = [bb[i] for i in stack_of(bref(b["inputs"].get("SUBSTACK")))]
-                if any(
-                    s["opcode"] == "data_changevariableby"
-                    and s["fields"]["VARIABLE"][1] == director.SHOT_DEPTH_ID
-                    and _float_operand(s["inputs"].get("VALUE")) == director.BACURA_BOUNCE_DY
-                    for s in body
-                ) and any(s["opcode"] == "motion_sety" for s in body):
-                    return True
+                for frame in body:
+                    if frame["opcode"] != "control_if":
+                        continue
+                    moved = [bb[i] for i in stack_of(bref(frame["inputs"].get("SUBSTACK")))]
+                    if (
+                        changes(moved, director.SHOT_DEPTH_ID, director.BACURA_BOUNCE_DY)
+                        and any(m["opcode"] == "motion_sety" for m in moved)
+                        and any(m["opcode"] == "looks_switchcostumeto" for m in moved)
+                    ):
+                        return True
             return False
 
-        if not any(
-            b["opcode"] == "control_if"
-            and subtree_has_num(bref(b["inputs"].get("CONDITION")), director.SHOT_BOUNCE)
-            and substack_reverses(bid)
+        def rebounds_four_ticks(if_id):
+            outer = [bb[i] for i in stack_of(bref(bb[if_id]["inputs"].get("SUBSTACK")))]
+            armed = any(
+                o["opcode"] == "data_setvariableto"
+                and o["fields"]["VARIABLE"][1] == director.BOUNCE_TIMER_ID
+                and _float_operand(o["inputs"].get("VALUE")) == director.BACURA_BOUNCE_ARM
+                for o in outer
+            )
+            return armed and any(
+                body is not None and changes(body, director.BOUNCE_TIMER_ID, director.TICK_TIMER_STEP)
+                for body in (rebound_loop(i) for i in stack_of(bref(bb[if_id]["inputs"].get("SUBSTACK"))))
+            )
+
+        bounce_ifs = [
+            bid
             for bid, b in bb.items()
-        ):
+            if b["opcode"] == "control_if"
+            and subtree_has_num(bref(b["inputs"].get("CONDITION")), director.SHOT_BOUNCE)
+        ]
+        if not any(substack_reverses(bid) for bid in bounce_ifs):
             failures.add("shot-reverses-and-animates")
+        if not any(rebounds_four_ticks(bid) for bid in bounce_ifs):
+            failures.add("shot-rebounds-four-ticks")
 
         return failures
 
@@ -7996,8 +8909,8 @@ class ScratchProjectTests(unittest.TestCase):
     # touches neither score nor slab; the blaster clone reads that mark and reverses (BACURA_BOUNCE_DY) for
     # BACURA_BOUNCE_FRAMES before deleting. The live proof is the harness shot-bounce scenarios (slab lives,
     # shot reverses).
-    # roadmap-evidence: WPN-01 success  (test_bacura_bounce_authoring_present — the detector proc is warp and called from update bacura, marks a shot SHOT_BOUNCE through the doubled window, never resolves a hit or writes a Bacura field, and the blaster clone reverses at BACURA_BOUNCE_DY for BACURA_BOUNCE_FRAMES)
-    # roadmap-evidence: WPN-01 failure  (test_bacura_bounce_negative_fixtures — each contract clause corrupted bites)
+    # roadmap-evidence: WPN-01 success  (test_bacura_bounce_authoring_present — the detector proc is warp and called from update bacura, marks a shot SHOT_BOUNCE through the doubled window, never resolves a hit or writes a Bacura field, and the blaster clone reverses at BACURA_BOUNCE_DY and draws its rebound for four ticks — a bounce timer armed at BACURA_BOUNCE_ARM stepping TICK_TIMER_STEP to BACURA_BOUNCE_FRAMES; harness shot-rebounds-off-a-bacura-in-four-ticks)
+    # roadmap-evidence: WPN-01 failure  (test_bacura_bounce_negative_fixtures — each contract clause corrupted bites, including a rebound timer stepped one frame a tick)
     def test_bacura_bounce_authoring_present(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._wpn01_failures(project))
@@ -8085,6 +8998,16 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["inputs"]["VALUE"] = [1, [4, str(-director.BACURA_BOUNCE_DY)]]
 
+        def one_frame_timer_step(p: dict) -> None:
+            # The old build's length: one rebound frame a tick, so the eight frames play twice as long and far.
+            blaster = next(t for t in p["targets"] if t.get("name") == "blaster")
+            for b in blaster["blocks"].values():
+                if (
+                    b["opcode"] == "data_changevariableby"
+                    and b["fields"]["VARIABLE"][1] == director.BOUNCE_TIMER_ID
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, "1"]]
+
         cases = [
             ("bounce-detector-warp", unwarp_detector),
             ("bacura-update-calls-bounce", drop_bounce_call),
@@ -8092,6 +9015,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("bounce-window", break_window),
             ("bounce-not-scored", add_score),
             ("shot-reverses-and-animates", forward_bounce),
+            ("shot-rebounds-four-ticks", one_frame_timer_step),
         ]
         for label, corrupt in cases:
             project = copy.deepcopy(base)
@@ -10266,7 +11190,7 @@ class ScratchProjectTests(unittest.TestCase):
         def direct_branch_ids(block, key):
             # Only the immediate statements of a branch (its `next` chain), NOT nested control bodies. Use
             # this to pin a per-family branch whose writes would otherwise be indistinguishable from siblings'
-            # writes swept in by `reach` (e.g. the debug seed's tight `if spawn found` under a broad clear-band).
+            # writes swept in by `reach` (e.g. a seed's tight `if spawn found` under a broader branch).
             sub = block["inputs"].get(key) if block else None
             cur = sub[1] if isinstance(sub, list) and len(sub) >= 2 and isinstance(sub[1], str) else None
             out = set()
@@ -10664,12 +11588,12 @@ class ScratchProjectTests(unittest.TestCase):
         choice (ECO-03) — an if/else on `flag awards craft == 1`: craft arm adds a craft (+1) and broadcasts
         `craft changed` with NO `extend` jingle; points arm sets `award value` = 10,000 and routes through the
         single `score` proc — then play the bonus-flag sound and cull the slot. The renderer is a SINGLE clone
-        bound to GROUND_SLOTS[0] (not a 16-clone band — the 300-clone ceiling). Debug spawn seeds ACTIVE/HIDDEN/
+        bound to GROUND_SLOTS[0] (not a 16-clone band — the 300-clone ceiling). The add_object placement seeds ACTIVE/HIDDEN/
         1,000-pt/timer-0 only when the bounded random-lateral draw accepts a column (`spawn found`)."""
         h = cls._sec_helpers(project)
         failures = set()
         upd = _proc_body_blocks(h["stage"], director.UPDATE_BONUS_FLAG_PROCCODE)
-        debug = _proc_body_blocks(h["stage"], director.DEBUG_GROUND_SPAWN_PROCCODE)
+        place = _proc_body_blocks(h["stage"], director.PLACE_PENDING_OBJECT_PROCCODE)
 
         # (1) warp.
         p = h["proto"](director.UPDATE_BONUS_FLAG_PROCCODE)
@@ -10755,15 +11679,14 @@ class ScratchProjectTests(unittest.TestCase):
         if not h["dispatch_calls"](director.BONUS_FLAG_TYPE, director.UPDATE_BONUS_FLAG_PROCCODE):
             failures.add("bonus-flag-dispatch")
 
-        # (14) debug spawn: the flag branch (writes `slot type` = BONUS_FLAG_TYPE) seeds ACTIVE/HIDDEN/
-        # 1,000-pt/timer-0, gated on `spawn found == 1` (a rejected draw leaves the band empty).
+        # (14) spawn: the add_object placement's flag branch (writes `slot type` = BONUS_FLAG_TYPE) seeds
+        # ACTIVE/HIDDEN/1,000-pt/timer-0, gated on `spawn found == 1` (a rejected draw leaves the slot empty).
         flag_seed = set()
-        for b in debug:
+        for b in place:
             if b["opcode"] != "control_if":
                 continue
-            # The tight per-shape `if spawn found` gate writes the flag type DIRECTLY (no nested control), so
-            # match on its direct next-chain — not `branch_ids`, which would sweep in the broad clear-band's
-            # sibling writes and make the seed check pass on any family's values.
+            # The tight `if spawn found` gate writes the flag type DIRECTLY (no nested control), so match on
+            # its direct next-chain — not `branch_ids`, which would sweep in sibling writes.
             ids = h["direct_branch_ids"](b, "SUBSTACK")
             if h["writes_value"](ids, director.SLOT_TYPE_ID, director.BONUS_FLAG_TYPE):
                 flag_seed = ids
@@ -11097,8 +12020,7 @@ class ScratchProjectTests(unittest.TestCase):
             failures.add("andor-dispatch-part")
 
         # (13) LAYOUT EQUALITY: the schedule arm stamps exactly the andor-genesis.json part-type layout into
-        # slots base+1..base+15 (scoped to `advance area` — the debug arm's identical copy lives in its own
-        # proc, so a broken schedule arm still bites here).
+        # slots base+1..base+15 (scoped to `advance area`).
         layout = json.loads(
             (ROOT / "docs" / "spec" / "data" / "andor-genesis.json").read_text(encoding="utf-8")
         )["layout"]["values"]
@@ -11173,7 +12095,7 @@ class ScratchProjectTests(unittest.TestCase):
     # Roadmap closure evidence for leaf `andor.lifecycle` (BOSS-01): the Andor Genesis boss arrives (descends
     # to a fixed hold row), holds its position as one rigid composite of 15 parts pinned to the invisible
     # master, pulses colour on every visible part + the core's flip shimmer, and departs (retreats off the top
-    # and tears the composite down) on the schedule/debug end flag — no firing, no destruction (slice 16).
+    # and tears the composite down) on the schedule end flag — no firing, no destruction (slice 16).
     # roadmap-evidence: BOSS-01 success  (test_andor_lifecycle_authoring_present — master/part warp; colour +
     # flip driven from tick; end-flag state machine descends+clamps to hold, retreats, tears down 15 slots;
     # parts align to the master anchor + offset lists; dispatch routes master+part types; the arm matches the
@@ -14158,7 +15080,7 @@ class ScratchProjectTests(unittest.TestCase):
 
         def break_spawn(p):
             blocks = _stage(p)["blocks"]
-            for b in _proc_body_blocks(_stage(p), director.DEBUG_GROUND_SPAWN_PROCCODE):
+            for b in _proc_body_blocks(_stage(p), director.PLACE_PENDING_OBJECT_PROCCODE):
                 if b["opcode"] != "control_if":
                     continue
                 ids = _direct_branch(blocks, b, "SUBSTACK")
@@ -15138,20 +16060,44 @@ class ScratchProjectTests(unittest.TestCase):
                             return True
             return False
 
+        # Both tests are checked where they are WIRED, not merely present on the Stage (#24): the check-bonus
+        # procedure's first block is an `if` on the enabled guard, and inside it the cap quirk's if/else, whose
+        # condition is the at-cap test and whose first arm is the grant.
+        def linked(spec):
+            ok = isinstance(spec, list) and len(spec) >= 2 and isinstance(spec[1], str)
+            return blocks.get(spec[1], {}) if ok else {}
+
+        prototype = next(
+            (bid for bid, b in blocks.items() if b["opcode"] == "procedures_prototype"
+             and b.get("mutation", {}).get("proccode") == director.CHECK_BONUS_PROCCODE),
+            None,
+        )
+        definition = next(
+            (b for b in vals if b["opcode"] == "procedures_definition"
+             and (b["inputs"].get("custom_block") or [None, None])[1] == prototype),
+            {},
+        )
+        enabled_if = blocks.get(definition.get("next") or "", {})
+        guard = linked(enabled_if.get("inputs", {}).get("CONDITION"))
         # the bonus check only runs when enabled (threshold sentinel non-zero).
-        if not any(
-            b["opcode"] == "operator_gt"
-            and refs(b["inputs"].get("OPERAND1"), director.NEXT_BONUS_ID)
-            and b["inputs"].get("OPERAND2") == [1, [4, director.BONUS_DISABLED]]
-            for b in vals
+        if not (
+            enabled_if.get("opcode") == "control_if"
+            and guard.get("opcode") == "operator_gt"
+            and refs(guard["inputs"].get("OPERAND1"), director.NEXT_BONUS_ID)
+            and guard["inputs"].get("OPERAND2") == [1, [4, director.BONUS_DISABLED]]
         ):
             failures.add("bonus-enabled-guard")
         # cap quirk: an at-cap test (score == 9,999,990) drives an every-award grant branch.
-        if not any(
-            b["opcode"] == "operator_equals"
-            and refs(b["inputs"].get("OPERAND1"), director.SCORE_ID)
-            and b["inputs"].get("OPERAND2") == [1, [4, director.SCORE_CAP]]
-            for b in vals
+        quirk = linked(enabled_if.get("inputs", {}).get("SUBSTACK"))
+        at_cap = linked(quirk.get("inputs", {}).get("CONDITION"))
+        quirk_grant = linked(quirk.get("inputs", {}).get("SUBSTACK"))
+        if not (
+            quirk.get("opcode") == "control_if_else"
+            and at_cap.get("opcode") == "operator_equals"
+            and refs(at_cap["inputs"].get("OPERAND1"), director.SCORE_ID)
+            and at_cap["inputs"].get("OPERAND2") == [1, [4, director.SCORE_CAP]]
+            and quirk_grant.get("opcode") == "data_changevariableby"
+            and quirk_grant["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
         ):
             failures.add("cap-quirk")
         # grant: +1 craft, the extend sound, and the craft-changed HUD signal.
@@ -15174,13 +16120,13 @@ class ScratchProjectTests(unittest.TestCase):
             for b in vals
         ):
             failures.add("bonus-craft-changed")
-        # advance: next bonus += the per-setting increment read from the repeat table.
+        # advance: next bonus += the per-setting increment read from the repeat table (wrapped, see below).
         advance = any(
             b["opcode"] == "data_setvariableto"
             and b["fields"].get("VARIABLE", [None, None])[1] == director.NEXT_BONUS_ID
             and isinstance(b["inputs"].get("VALUE"), list)
             and isinstance(b["inputs"]["VALUE"][1], str)
-            and blocks.get(b["inputs"]["VALUE"][1], {}).get("opcode") == "operator_add"
+            and blocks.get(b["inputs"]["VALUE"][1], {}).get("opcode") in ("operator_add", "operator_mod")
             for b in vals
         )
         repeat_read = any(
@@ -15190,6 +16136,65 @@ class ScratchProjectTests(unittest.TestCase):
         )
         if not (advance and repeat_read):
             failures.add("bonus-advance")
+
+        # catch-up (slice 21, #103; check_for_extra_solvalou 149-155, update_next_bonus_life_Ks 181-183): an
+        # if/else on `next bonus < increment` whose first arm sets `next bonus` TO the increment and whose second
+        # adds it, so the thresholds run 20,000 then 60,000, then every 60,000.
+        def reporter(spec):
+            return blocks.get(spec[1], {}) if isinstance(spec, list) and len(spec) >= 2 and isinstance(spec[1], str) else {}
+
+        def is_increment(spec) -> bool:
+            child = reporter(spec)
+            return child.get("opcode") == "data_itemoflist" and child["fields"].get("LIST", [None])[0] == "repeat bonus 123"
+
+        def arm_sets(branch_id, value_ok) -> bool:
+            b = blocks.get(branch_id or "", {})
+            return (
+                b.get("opcode") == "data_setvariableto"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.NEXT_BONUS_ID
+                and value_ok(b["inputs"].get("VALUE"))
+            )
+
+        def wrapped(spec):
+            # The BCD thousands word drops its carry (check_for_extra_solvalou 163-171): the sum is taken
+            # modulo BONUS_THRESHOLD_WRAP. Returns (wraps, the summed operand).
+            child = reporter(spec)
+            if child.get("opcode") == "operator_mod" and child["inputs"].get("NUM2") == [
+                1,
+                [4, director.BONUS_THRESHOLD_WRAP],
+            ]:
+                return True, child["inputs"].get("NUM1")
+            return False, spec
+
+        def adds_increment(spec) -> bool:
+            child = reporter(wrapped(spec)[1])
+            return (
+                child.get("opcode") == "operator_add"
+                and refs(child["inputs"].get("NUM1"), director.NEXT_BONUS_ID)
+                and is_increment(child["inputs"].get("NUM2"))
+            )
+
+        catch_up = False
+        threshold_wraps = False
+        for b in vals:
+            if b["opcode"] != "control_if_else":
+                continue
+            cond = reporter(b["inputs"].get("CONDITION"))
+            if not (
+                cond.get("opcode") == "operator_lt"
+                and refs(cond["inputs"].get("OPERAND1"), director.NEXT_BONUS_ID)
+                and is_increment(cond["inputs"].get("OPERAND2"))
+            ):
+                continue
+            first_arm = (b["inputs"].get("SUBSTACK") or [None, None])[1]
+            second_arm = (b["inputs"].get("SUBSTACK2") or [None, None])[1]
+            if arm_sets(first_arm, is_increment) and arm_sets(second_arm, adds_increment):
+                catch_up = True
+                threshold_wraps = wrapped(blocks[second_arm]["inputs"].get("VALUE"))[0]
+        if not catch_up:
+            failures.add("bonus-catch-up")
+        if not threshold_wraps:
+            failures.add("bonus-threshold-wrap")
         # DIP seeds: starting craft and the first threshold, read from the ingested tables.
         if not sets_from_list(director.LIVES_ID, "starting lives"):
             failures.add("lives-seeded")
@@ -15197,6 +16202,8 @@ class ScratchProjectTests(unittest.TestCase):
             failures.add("bonus-seeded")
         return failures
 
+    # roadmap-evidence: ECO-03 success  (ECO-03.stop-after-two: test_bonus_economy_present's bonus-catch-up; harness bonus-life-20k-then-60k grants at 20,000 and 60,000, never 80,000)
+    # roadmap-evidence: ECO-03 failure  (ECO-03.stop-after-two: never_catch_up / catch_up_adds negatives bite; bonus-life-20k-then-60k negative leaves the second threshold at 80,000)
     def test_bonus_economy_present(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._eco03_failures(project))
@@ -15231,6 +16238,23 @@ class ScratchProjectTests(unittest.TestCase):
             )(p)
             b["inputs"]["OPERAND2"] = [1, [4, 0]]
 
+        def unwire(opcode, var_id, operand2):
+            # #24: the test stays on the Stage, intact, but its `if` no longer reads it (an empty condition is
+            # false in Scratch), so the checks must look at the wiring, not just the reporter.
+            def corrupt(p):
+                stage = next(t for t in p["targets"] if t["isStage"])
+                bid, b = next(
+                    (bid, b) for bid, b in stage["blocks"].items()
+                    if b["opcode"] == opcode and b["inputs"].get("OPERAND2") == [1, [4, operand2]]
+                    and (b["inputs"].get("OPERAND1") or [None, [None]])[1][2:3] == [var_id]
+                )
+                parent = stage["blocks"][b["parent"]]
+                assert parent["inputs"]["CONDITION"][1] == bid
+                del parent["inputs"]["CONDITION"]
+                b.update({"parent": None, "topLevel": True, "x": 0, "y": 0})
+
+            return corrupt
+
         def break_grant(p):
             # the grant is emitted at both branches (cap quirk + normal) — break every one.
             for b in each(
@@ -15258,11 +16282,43 @@ class ScratchProjectTests(unittest.TestCase):
                 b["inputs"]["BROADCAST_INPUT"][1][1] = "director stop"
 
         def break_advance(p):
-            b = first(
+            # the advance reads the increment three times (the catch-up test and both arms) — break every read.
+            for b in each(
+                p,
                 lambda b: b["opcode"] == "data_itemoflist"
-                and b["fields"].get("LIST", [None])[0] == "repeat bonus 123"
-            )(p)
-            b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+                and b["fields"].get("LIST", [None])[0] == "repeat bonus 123",
+            ):
+                b["fields"]["LIST"] = ["value table", director.VALUE_TABLE_ID]
+
+        def catch_up_block(p):
+            stage = next(t for t in p["targets"] if t["isStage"])
+            blocks = stage["blocks"]
+            for b in blocks.values():
+                if b["opcode"] == "control_if_else":
+                    cond = blocks.get((b["inputs"].get("CONDITION") or [None, None])[1] or "", {})
+                    operand = (cond.get("inputs", {}).get("OPERAND1") or [None, [None, None, None]])[1]
+                    if cond.get("opcode") == "operator_lt" and isinstance(operand, list) and operand[2:3] == [director.NEXT_BONUS_ID]:
+                        return blocks, b, cond
+            raise AssertionError("no catch-up if/else")
+
+        def never_catch_up(p):
+            # The pre-slice-21 port: the test can never be true, so the increment is always added (20K, 80K).
+            _blocks, _b, cond = catch_up_block(p)
+            cond["inputs"]["OPERAND2"] = [1, [4, "0"]]
+
+        def catch_up_adds(p):
+            # The first arm adds the increment too, instead of replacing the threshold with it.
+            blocks, b, _cond = catch_up_block(p)
+            first = blocks[b["inputs"]["SUBSTACK"][1]]
+            second = blocks[b["inputs"]["SUBSTACK2"][1]]
+            first["inputs"]["VALUE"] = copy.deepcopy(second["inputs"]["VALUE"])
+
+        def never_wraps(p):
+            # The pre-fix port: the plain decimal add, so past 9,960,000 no craft until the cap.
+            blocks, b, _cond = catch_up_block(p)
+            second = blocks[b["inputs"]["SUBSTACK2"][1]]
+            wrap = blocks[second["inputs"]["VALUE"][1]]
+            second["inputs"]["VALUE"] = copy.deepcopy(wrap["inputs"]["NUM1"])
 
         def break_lives_seed(p):
             b = first(
@@ -15280,11 +16336,16 @@ class ScratchProjectTests(unittest.TestCase):
 
         cases = [
             ("bonus-enabled-guard", break_guard),
+            ("bonus-enabled-guard", unwire("operator_gt", director.NEXT_BONUS_ID, director.BONUS_DISABLED)),
             ("cap-quirk", break_cap),
+            ("cap-quirk", unwire("operator_equals", director.SCORE_ID, director.SCORE_CAP)),
             ("bonus-craft-grant", break_grant),
             ("bonus-extend-sound", break_sound),
             ("bonus-craft-changed", break_signal),
             ("bonus-advance", break_advance),
+            ("bonus-catch-up", never_catch_up),
+            ("bonus-catch-up", catch_up_adds),
+            ("bonus-threshold-wrap", never_wraps),
             ("lives-seeded", break_lives_seed),
             ("bonus-seeded", break_bonus_seed),
         ]
@@ -15406,18 +16467,35 @@ class ScratchProjectTests(unittest.TestCase):
                         yield from walk_body(inner[1])
                 cursor = node["next"]
 
-        # A flashing "1UP" is a loop whose body both shows and hides (the hide may be
-        # nested inside a gate — see the attract-gate guard below).
-        def flash_loop_body():
+        # A flashing "1UP" is the 1UP role's keep-alive loop whose body both shows and hides (the hide may be
+        # nested inside a gate — see the attract-gate guard below). Slice 21: the digit loops show and hide too
+        # (leading-zero blanking), so the loop is found through the `hud role == HUD_ROLE_LABEL_1UP` dispatch.
+        def role_branch(role: int):
             for b in blocks.values():
-                if b["opcode"] not in ("control_repeat_until", "control_repeat"):
+                if b["opcode"] != "control_if":
                     continue
+                cond = b["inputs"].get("CONDITION")
+                eq = blocks.get(cond[1]) if isinstance(cond, list) and len(cond) > 1 else None
+                if (
+                    eq is not None
+                    and eq["opcode"] == "operator_equals"
+                    and refs(eq["inputs"].get("OPERAND1"), director.HUD_ROLE_ID)
+                    and eq["inputs"].get("OPERAND2") == [1, [4, role]]
+                ):
+                    inner = b["inputs"].get("SUBSTACK")
+                    return inner[1] if isinstance(inner, list) and len(inner) > 1 else None
+            return None
+
+        def flash_loop_body():
+            cursor = role_branch(director.HUD_ROLE_LABEL_1UP)
+            while cursor:
+                b = blocks[cursor]
                 substack = b["inputs"].get("SUBSTACK")
-                if not substack:
-                    continue
-                body = list(walk_body(substack[1]))
-                if {"looks_show", "looks_hide"} <= {n["opcode"] for n in body}:
-                    return substack[1], body
+                if b["opcode"] == "control_repeat_until" and substack:
+                    body = list(walk_body(substack[1]))
+                    if {"looks_show", "looks_hide"} <= {n["opcode"] for n in body}:
+                        return substack[1], body
+                cursor = b["next"]
             return None
 
         if flash_loop_body() is None:
@@ -15478,6 +16556,179 @@ class ScratchProjectTests(unittest.TestCase):
         if not flash_hide_attract_gated():
             failures.add("flash-1up-attract-gated")
 
+        # Slice 21 (#31): the flash's cadence and clock. The arcade blanks the active label while bit 4 of its frame
+        # counter is set (sub_fn_6__display_1UP_2UP / flash_1up_2up, xevious_sub.68k 737-775): 16 frames each way,
+        # 8 port ticks, all through a real game. The clone copies `tick` + `hud flash frames` into `hud flash clock`
+        # (never counting it) and blanks while floor(clock / 8) mod 2 == 1, on any screen but the best five; the
+        # real game's three paced holds off the play screen (two-player banner, last-death forest wait, initials
+        # entry) each count their frames into `hud flash frames`. The loop holds no `wait`: scratch-vm ends the frame
+        # at every wait it starts, which would pace the Stage's collapsing holds in the out-of-play HUD states.
+        # roadmap-evidence: PRES-02 success  (PRES-02.hud-yellow: the 1UP flash runs on the arcade's 16-frame bit-4 clock)
+        def flash_clock_cadence() -> bool:
+            found = flash_loop_body()
+            if found is None:
+                return False
+            _start, body = found
+
+            def sums_both(value) -> bool:
+                linked = isinstance(value, list) and len(value) > 1 and isinstance(value[1], str)
+                add = blocks.get(value[1]) if linked else None
+                operands = [] if add is None else [add["inputs"].get("NUM1"), add["inputs"].get("NUM2")]
+                return (
+                    add is not None
+                    and add["opcode"] == "operator_add"
+                    and any(refs(o, director.TICK_ID) for o in operands)
+                    and any(refs(o, director.HUD_FLASH_FRAMES_ID) for o in operands)
+                )
+
+            reads_tick = any(
+                n["opcode"] == "data_setvariableto"
+                and n["fields"].get("VARIABLE", [None, None])[1] == director.HUD_FLASH_CLOCK_ID
+                and sums_both(n["inputs"].get("VALUE"))
+                for n in body
+            )
+            unpaced = not any(n["opcode"] == "control_wait" for n in body)
+
+            def is_not_scores_gate(n: dict) -> bool:
+                cond = n["inputs"].get("CONDITION")
+                neg = blocks.get(cond[1]) if isinstance(cond, list) and len(cond) > 1 else None
+                operand = (neg or {}).get("inputs", {}).get("OPERAND")
+                eq = blocks.get(operand[1]) if isinstance(operand, list) and len(operand) > 1 else None
+                return (
+                    neg is not None
+                    and neg["opcode"] == "operator_not"
+                    and eq is not None
+                    and eq["opcode"] == "operator_equals"
+                    and refs(eq["inputs"].get("OPERAND1"), director.STATE_ID)
+                    and str((eq["inputs"].get("OPERAND2") or [None, [None, None]])[1][1])
+                    == director.ATTRACT_SCORES_STATE
+                )
+
+            play_gated = any(
+                n["opcode"] == "control_if"
+                and is_not_scores_gate(n)
+                and any(
+                    m["opcode"] == "looks_hide"
+                    for m in walk_body((n["inputs"].get("SUBSTACK") or [None, None])[1] or "")
+                )
+                for n in body
+            )
+            half = any(
+                b["opcode"] == "operator_divide"
+                and refs(b["inputs"].get("NUM1"), director.HUD_FLASH_CLOCK_ID)
+                and b["inputs"].get("NUM2") == [1, [4, director.HUD_FLASH_HALF_TICKS]]
+                for b in blocks.values()
+            )
+            return reads_tick and unpaced and play_gated and half and director.HUD_FLASH_HALF_TICKS == 8
+
+        if not flash_clock_cadence():
+            failures.add("flash-1up-clock")
+
+        # ...and each of the real game's paced holds off the play screen counts its frames into `hud flash frames`:
+        # a chain holding both its `wait 0` and `change hud flash frames by 1` — the banner hold
+        # (BANNER_HOLD_TICKS), the last death's forest wait (FOREST_WAIT_TICKS) and the initials-entry countdown.
+        every_block = {
+            bid: b for t in project["targets"] for bid, b in t["blocks"].items() if isinstance(b, dict)
+        }
+
+        def chain(start) -> list:
+            out, cursor = [], start
+            while cursor and cursor in every_block:
+                out.append(every_block[cursor])
+                cursor = every_block[cursor].get("next")
+            return out
+
+        def counts_frames(nodes: list) -> bool:
+            return any(n["opcode"] == "control_wait" for n in nodes) and any(
+                n["opcode"] == "data_changevariableby"
+                and n["fields"].get("VARIABLE", [None, None])[1] == director.HUD_FLASH_FRAMES_ID
+                and n["inputs"].get("VALUE") == [1, [4, 1]]
+                for n in nodes
+            )
+
+        def repeat_counted(times: int) -> bool:
+            return any(
+                b["opcode"] == "control_repeat"
+                and _num_operand(b["inputs"].get("TIMES")) == times
+                and counts_frames(chain((b["inputs"].get("SUBSTACK") or [None, None])[1]))
+                for b in every_block.values()
+            )
+
+        entry_counted = any(
+            counts_frames(chain((b["inputs"].get("SUBSTACK2") or [None, None])[1]))
+            and any(
+                n["opcode"] == "data_changevariableby"
+                and n["fields"].get("VARIABLE", [None, None])[1] == director.ENTRY_TIMER_ID
+                for n in chain((b["inputs"].get("SUBSTACK2") or [None, None])[1])
+            )
+            for b in every_block.values()
+            if b["opcode"] == "control_if_else"
+        )
+        for label, ok in (
+            ("flash-frames:banner", repeat_counted(director.BANNER_HOLD_TICKS)),
+            ("flash-frames:forest-wait", repeat_counted(director.FOREST_WAIT_TICKS)),
+            ("flash-frames:entry", entry_counted),
+        ):
+            if not ok:
+                failures.add(label)
+
+        # Slice 21 (#31): leading zeros are blank (display_score / display_bcd_value, xevious_main.68k 1904-1977):
+        # each digit loop shows its cell iff place < 2 or value >= 10^place, i.e.
+        # if_else(<place < 2> or <not <value < divisor>>) [show] [hide], for all three score rows.
+        def blanks_leading_zeros(var_id: str) -> bool:
+            for lt in blocks.values():
+                if not (
+                    lt["opcode"] == "operator_lt"
+                    and refs(lt["inputs"].get("OPERAND1"), var_id)
+                    and refs(lt["inputs"].get("OPERAND2"), director.HUD_DIVISOR_ID)
+                ):
+                    continue
+                neg = blocks.get(lt.get("parent")) or {}
+                either = blocks.get(neg.get("parent")) or {}
+                branch = blocks.get(either.get("parent")) or {}
+                if neg.get("opcode") != "operator_not" or either.get("opcode") != "operator_or":
+                    continue
+                place = blocks.get((either["inputs"].get("OPERAND1") or [None, None])[1]) or {}
+                if not (
+                    place.get("opcode") == "operator_lt"
+                    and refs(place["inputs"].get("OPERAND1"), director.HUD_PLACE_ID)
+                    and place["inputs"].get("OPERAND2") == [1, [4, 2]]
+                ):
+                    continue
+                if branch.get("opcode") != "control_if_else":
+                    continue
+                then = branch["inputs"].get("SUBSTACK") or [None, None]
+                other = branch["inputs"].get("SUBSTACK2") or [None, None]
+                if (blocks.get(then[1]) or {}).get("opcode") == "looks_show" and (
+                    blocks.get(other[1]) or {}
+                ).get("opcode") == "looks_hide":
+                    return True
+            return False
+
+        # roadmap-evidence: PRES-02 success  (PRES-02.hud-yellow: score, high-score and other-score digits blank their leading zeros)
+        for var_id in (director.SCORE_ID, director.HIGH_SCORE_ID, director.OTHER_SCORE_ID):
+            if not blanks_leading_zeros(var_id):
+                failures.add("hud-leading-zeros-blank")
+
+        # Slice 21 (#31): the two-player banner is two rows, as display_game_over_player_1_2 (845-855) writes it —
+        # a GAME OVER clone and a PLAYER n clone, each dispatched by its own role, the player line wearing
+        # banner-player-<banner player + 1>.
+        # roadmap-evidence: PRES-02 success  (PRES-02.hud-yellow: the elimination banner is two rows: GAME OVER over PLAYER n)
+        game_over_row = role_branch(director.HUD_ROLE_BANNER)
+        player_row = role_branch(director.HUD_ROLE_BANNER_PLAYER)
+        wears_game_over = game_over_row is not None and any(
+            n["opcode"] == "looks_costume"
+            and n["fields"].get("COSTUME", [None])[0] == director.HUD_BANNER_GAME_OVER_COSTUME
+            for n in blocks.values()
+        )
+        player_join = any(
+            b["opcode"] == "operator_join"
+            and b["inputs"].get("STRING1") == [1, [10, director.HUD_BANNER_COSTUME_PREFIX]]
+            for b in blocks.values()
+        )
+        if not (wears_game_over and player_row is not None and player_join):
+            failures.add("hud-banner-two-rows")
+
         # Regression guard for the "header flashes then vanishes" bug: a clone's keep-alive
         # `repeat until` must LOOP while the HUD is visible and stop only on return to
         # title/boot, so its condition is "state is title or boot" (operator_or) — never the
@@ -15514,6 +16765,7 @@ class ScratchProjectTests(unittest.TestCase):
             director.HUD_LIFE_INDEX_ID,
             director.HUD_LIFE_COUNT_ID,
             director.HUD_IS_CLONE_ID,
+            director.HUD_FLASH_CLOCK_ID,
         }
         writes = {
             b["fields"].get("VARIABLE", [None, None])[1]
@@ -15678,48 +16930,150 @@ class ScratchProjectTests(unittest.TestCase):
                         yield from walk_body(blocks, inner[1])
                 cursor = node["next"]
 
+        def role_loop_nodes(blocks: dict, role: int) -> list:
+            # The nodes of `role`'s keep-alive loop body, found through the `hud role == role` dispatch.
+            for b in blocks.values():
+                if b["opcode"] != "control_if":
+                    continue
+                cond = b["inputs"].get("CONDITION")
+                eq = blocks.get(cond[1]) if isinstance(cond, list) and len(cond) > 1 else None
+                if not (
+                    eq is not None
+                    and eq["opcode"] == "operator_equals"
+                    and refs(eq["inputs"].get("OPERAND1"), director.HUD_ROLE_ID)
+                    and eq["inputs"].get("OPERAND2") == [1, [4, role]]
+                ):
+                    continue
+                cursor = b["inputs"]["SUBSTACK"][1]
+                while cursor:
+                    node = blocks[cursor]
+                    if node["opcode"] == "control_repeat_until" and node["inputs"].get("SUBSTACK"):
+                        return list(walk_body(blocks, node["inputs"]["SUBSTACK"][1]))
+                    cursor = node["next"]
+            return []
+
         def break_flash(p: dict) -> None:
-            blocks = hud_blocks(p)
-            for b in list(blocks.values()):
-                if b["opcode"] not in ("control_repeat_until", "control_repeat"):
-                    continue
-                substack = b["inputs"].get("SUBSTACK")
-                if not substack:
-                    continue
-                nodes = list(walk_body(blocks, substack[1]))
-                if {"looks_show", "looks_hide"} <= {n["opcode"] for n in nodes}:
-                    for node in nodes:
-                        if node["opcode"] == "looks_hide":
-                            node["opcode"] = "looks_show"
+            for node in role_loop_nodes(hud_blocks(p), director.HUD_ROLE_LABEL_1UP):
+                if node["opcode"] == "looks_hide":
+                    node["opcode"] = "looks_show"
 
         def break_flash_gate(p: dict) -> None:
             # Ungate the flash's hide: neutralise the `attract == 0` condition so the
             # attract demo would flash the 1UP/2UP indicator like a real game.
             blocks = hud_blocks(p)
-            for b in list(blocks.values()):
-                if b["opcode"] not in ("control_repeat_until", "control_repeat"):
+            for node in role_loop_nodes(blocks, director.HUD_ROLE_LABEL_1UP):
+                if node["opcode"] != "control_if":
                     continue
-                substack = b["inputs"].get("SUBSTACK")
-                if not substack:
+                cond = node["inputs"].get("CONDITION")
+                if not (isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)):
                     continue
-                nodes = list(walk_body(blocks, substack[1]))
-                if not ({"looks_show", "looks_hide"} <= {n["opcode"] for n in nodes}):
+                eq = blocks.get(cond[1])
+                if eq is None or eq["opcode"] != "operator_equals":
                     continue
-                for node in nodes:
-                    if node["opcode"] != "control_if":
-                        continue
-                    cond = node["inputs"].get("CONDITION")
-                    if not (
-                        isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)
-                    ):
-                        continue
-                    eq = blocks.get(cond[1])
-                    if eq is None or eq["opcode"] != "operator_equals":
-                        continue
-                    for slot in ("OPERAND1", "OPERAND2"):
-                        if refs(eq["inputs"].get(slot), director.ATTRACT_ID):
-                            eq["inputs"][slot] = [1, [4, 0]]
-                return
+                for slot in ("OPERAND1", "OPERAND2"):
+                    if refs(eq["inputs"].get(slot), director.ATTRACT_ID):
+                        eq["inputs"][slot] = [1, [4, 0]]
+
+        def break_flash_half(p: dict) -> None:
+            # Back to the old project-defined 15-tick cadence.
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_divide" and refs(
+                    b["inputs"].get("NUM1"), director.HUD_FLASH_CLOCK_ID
+                ):
+                    b["inputs"]["NUM2"] = [1, [4, 15]]
+
+        def break_flash_clock_source(p: dict) -> None:
+            # The clock stops reading the walk's tick during play.
+            for b in hud_blocks(p).values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.HUD_FLASH_CLOCK_ID
+                ):
+                    b["inputs"]["VALUE"] = [1, [10, "0"]]
+
+        def break_flash_paced(p: dict) -> None:
+            # A `wait 0` back in the 1UP loop, after the clock copy (the frame-pacing regression).
+            blocks = hud_blocks(p)
+            for bid, b in list(blocks.items()):
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.HUD_FLASH_CLOCK_ID
+                    and b["parent"]
+                    and blocks[b["parent"]]["opcode"] == "control_repeat_until"
+                ):
+                    wid = bid + "-wait"
+                    blocks[wid] = {
+                        "opcode": "control_wait",
+                        "next": b["next"],
+                        "parent": bid,
+                        "inputs": {"DURATION": [1, [5, "0"]]},
+                        "fields": {},
+                        "shadow": False,
+                        "topLevel": False,
+                    }
+                    if b["next"]:
+                        blocks[b["next"]]["parent"] = wid
+                    b["next"] = wid
+
+        def break_flash_play_gate(p: dict) -> None:
+            # The blank no longer spares the best five (the arcade's `is_real_game` is clear there).
+            blocks = hud_blocks(p)
+            for b in blocks.values():
+                if (
+                    b["opcode"] == "operator_equals"
+                    and refs(b["inputs"].get("OPERAND1"), director.STATE_ID)
+                    and str((b["inputs"].get("OPERAND2") or [None, [None, None]])[1][1])
+                    == director.ATTRACT_SCORES_STATE
+                    and blocks.get(b["parent"] or "", {}).get("opcode") == "operator_not"
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [10, "ready"]]
+
+        def break_flash_frames(times):
+            # The hold no longer counts its frames into `hud flash frames` (the 1UP label freezes through it).
+            def corrupt(p: dict) -> None:
+                every = {bid: b for t in p["targets"] for bid, b in t["blocks"].items() if isinstance(b, dict)}
+                hit = 0
+                for b in every.values():
+                    if times is None:
+                        if b["opcode"] != "control_if_else":
+                            continue
+                        start = (b["inputs"].get("SUBSTACK2") or [None, None])[1]
+                    else:
+                        if b["opcode"] != "control_repeat" or _num_operand(b["inputs"].get("TIMES")) != times:
+                            continue
+                        start = (b["inputs"].get("SUBSTACK") or [None, None])[1]
+                    cursor = start
+                    while cursor and cursor in every:
+                        n = every[cursor]
+                        if (
+                            n["opcode"] == "data_changevariableby"
+                            and n["fields"].get("VARIABLE", [None, None])[1] == director.HUD_FLASH_FRAMES_ID
+                        ):
+                            n["fields"]["VARIABLE"] = ["tick", director.TICK_ID]
+                            hit += 1
+                        cursor = n.get("next")
+                assert hit, times
+
+            return corrupt
+
+        def break_leading_zeros(p: dict) -> None:
+            # Every place counts as "always shown" (place < 7), so the leading zeros come back.
+            blocks = hud_blocks(p)
+            for b in blocks.values():
+                if (
+                    b["opcode"] == "operator_lt"
+                    and refs(b["inputs"].get("OPERAND1"), director.HUD_PLACE_ID)
+                    and b["inputs"].get("OPERAND2") == [1, [4, 2]]
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, 7]]
+
+        def break_banner_rows(p: dict) -> None:
+            # Misnumber the banner's PLAYER-line role in the clone dispatch, so only one row ever draws.
+            for b in hud_blocks(p).values():
+                if b["opcode"] == "operator_equals" and refs(
+                    b["inputs"].get("OPERAND1"), director.HUD_ROLE_ID
+                ) and b["inputs"].get("OPERAND2") == [1, [4, director.HUD_ROLE_BANNER_PLAYER]]:
+                    b["inputs"]["OPERAND2"] = [1, [4, 99]]
 
         def break_write_only_local(p: dict) -> None:
             blocks = hud_blocks(p)
@@ -15827,6 +17181,16 @@ class ScratchProjectTests(unittest.TestCase):
             ("flashing-1up", break_flash),
             # roadmap-evidence: CAB-01 failure
             ("flash-1up-attract-gated", break_flash_gate),
+            # roadmap-evidence: PRES-02 failure  (PRES-02.hud-yellow: the 1UP flash off the 16-frame clock, leading zeros drawn, or a one-row banner)
+            ("flash-1up-clock", break_flash_half),
+            ("flash-1up-clock", break_flash_clock_source),
+            ("flash-1up-clock", break_flash_paced),
+            ("flash-1up-clock", break_flash_play_gate),
+            ("flash-frames:banner", break_flash_frames(director.BANNER_HOLD_TICKS)),
+            ("flash-frames:forest-wait", break_flash_frames(director.FOREST_WAIT_TICKS)),
+            ("flash-frames:entry", break_flash_frames(None)),
+            ("hud-leading-zeros-blank", break_leading_zeros),
+            ("hud-banner-two-rows", break_banner_rows),
             ("hud-writes-only-local", break_write_only_local),
             ("hud-life-spawn-loop-capped", break_life_spawn_loop_cap),
             ("hud-life-count-capped", break_life_count_cap),
@@ -15885,6 +17249,45 @@ class ScratchProjectTests(unittest.TestCase):
         if not raises_player_hit(director.UPDATE_BULLET_PROCCODE):
             failures.add("bullet-raises-player-hit")
 
+        # #161: so does every other flying family (CRAFT_CONTACT_PROCS), each from an `if` whose condition is
+        # `<dying = 0> and <overlap>` (#158: no hit during the explosion window) and whose body raises the flag;
+        # the inert Sheonite never raises it.
+        def alive_gated_raise(proccode: str) -> bool:
+            def linked(inp):
+                ok = isinstance(inp, list) and len(inp) > 1 and isinstance(inp[1], str)
+                return blocks.get(inp[1]) if ok else None
+
+            for b in _proc_body_blocks(stage, proccode):
+                if b["opcode"] != "control_if":
+                    continue
+                first = linked(b["inputs"].get("SUBSTACK"))
+                both = linked(b["inputs"].get("CONDITION"))
+                alive = linked((both or {}).get("inputs", {}).get("OPERAND1"))
+                if (
+                    first is not None
+                    and first["opcode"] == "data_setvariableto"
+                    and first["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+                    and first["inputs"].get("VALUE") == [1, [4, 1]]
+                    and both is not None
+                    and both["opcode"] == "operator_and"
+                    and alive is not None
+                    and alive["opcode"] == "operator_equals"
+                    and alive["inputs"].get("OPERAND1", [None, [None]])[1][2:3] == [director.DYING_ID]
+                    and _num_operand(alive["inputs"].get("OPERAND2")) == 0
+                ):
+                    return True
+            return False
+
+        for family, proccode in CRAFT_CONTACT_PROCS.items():
+            if not raises_player_hit(proccode):
+                failures.add(f"contact-kills:{family}")
+            if not alive_gated_raise(proccode):
+                failures.add(f"contact-gated-on-alive:{family}")
+        if not _proc_body_blocks(stage, director.UPDATE_SHEONITE_PROCCODE) or raises_player_hit(
+            director.UPDATE_SHEONITE_PROCCODE
+        ):
+            failures.add("sheonite-inert")
+
         # The walk's death gate: a control_if whose CONDITION is an AND of (player hit == 1) and
         # (invuln == 0) — so contact kills only when not invulnerable.
         def equals_var(op_spec) -> str | None:
@@ -15912,20 +17315,19 @@ class ScratchProjectTests(unittest.TestCase):
             if {director.PLAYER_HIT_ID, director.INVULN_ID} <= refs:
                 death_if = bid
                 break
-        if death_if is None:
-            failures.add("death-gated-on-hit-and-invuln")
-        else:
-            body = reachable(death_if)
+        def sets_to(body, var_id, value):
+            return any(
+                blocks[bid]["opcode"] == "data_setvariableto"
+                and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == var_id
+                and blocks[bid]["inputs"].get("VALUE") == [1, [4, value]]
+                for bid in body
+            )
+
+        def spends_and_transitions(body):
             spends = any(
                 blocks[bid]["opcode"] == "data_changevariableby"
                 and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.LIVES_ID
                 and blocks[bid]["inputs"].get("VALUE") == [1, [4, -1]]
-                for bid in body
-            )
-            clears = any(
-                blocks[bid]["opcode"] == "data_setvariableto"
-                and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
-                and blocks[bid]["inputs"].get("VALUE") == [1, [4, 0]]
                 for bid in body
             )
             transitions = any(
@@ -15933,7 +17335,45 @@ class ScratchProjectTests(unittest.TestCase):
                 and blocks[bid].get("mutation", {}).get("proccode") == director.PROCCODE
                 for bid in body
             )
-            if not (spends and clears and transitions):
+            return spends and transitions
+
+        # #158: the hit opens the explosion window — clear the hit, `dying` = 1, `dying tick` = 0 — and the
+        # game stays in `playing`: the hit body itself neither spends a craft nor transitions.
+        if death_if is None:
+            failures.add("death-gated-on-hit-and-invuln")
+        else:
+            body = reachable(death_if)
+            opens = (
+                sets_to(body, director.PLAYER_HIT_ID, 0)
+                and sets_to(body, director.DYING_ID, 1)
+                and sets_to(body, director.DYING_TICK_ID, 0)
+            )
+            if not opens or spends_and_transitions(body):
+                failures.add("death-opens-window")
+        # The window's end: `if dying tick > DYING_WINDOW_TICKS - 1` (inside the `dying == 1` step, which counts
+        # the tick) runs the old death route — the craft is spent and the player-dead transition runs there.
+        window_end = [
+            bid
+            for bid, b in blocks.items()
+            if b["opcode"] == "control_if"
+            and blocks.get((b["inputs"].get("CONDITION") or [None, None])[1], {}).get("opcode") == "operator_gt"
+            and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND1", [None, [None]])[1][2:3]
+            == [director.DYING_TICK_ID]
+            and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND2") == [1, [4, director.DYING_WINDOW_TICKS - 1]]
+        ]
+        if len(window_end) != 1 or not spends_and_transitions(reachable(window_end[0])):
+            failures.add("death-spends-craft-and-transitions")
+        else:
+            step = blocks[window_end[0]]["parent"]
+            while step and blocks[step]["opcode"] != "control_if":
+                step = blocks[step]["parent"]
+            counts = step and any(
+                blocks[bid]["opcode"] == "data_changevariableby"
+                and blocks[bid]["fields"].get("VARIABLE", [None, None])[1] == director.DYING_TICK_ID
+                and blocks[bid]["inputs"].get("VALUE") == [1, [4, 1]]
+                for bid in reachable(step)
+            )
+            if not counts or equals_var(blocks[step]["inputs"].get("CONDITION")) != director.DYING_ID:
                 failures.add("death-spends-craft-and-transitions")
 
         # the death-complete handler decides from craft > 0: respawn vs game over.
@@ -15965,7 +17405,430 @@ class ScratchProjectTests(unittest.TestCase):
 
             if branch_transitions("SUBSTACK") < 1 or branch_transitions("SUBSTACK2") < 1:
                 failures.add("lives-driven-decision")
+
+        # #158: in the 16-tick pause the craft object is inactive and the shadow update zeroes its _X/_Y
+        # (finish_solvalou_exploding 2081; amiga.68k 1659-1668, neogeo.68k 896-904), so `read player` reports
+        # position 0 (slot and cell) while `dying tick` >= EXPLOSION_TICKS instead of reading the hidden sprite.
+        pause_at_zero = False
+        for b in _proc_body_blocks(stage, director.READ_PLAYER_PROCCODE):
+            if b["opcode"] != "control_if_else":
+                continue
+            cond = blocks.get((b["inputs"].get("CONDITION") or [None, None])[1], {})
+            inner = blocks.get((cond.get("inputs", {}).get("OPERAND") or [None, None])[1], {})
+            if (
+                cond.get("opcode") != "operator_not"
+                or inner.get("opcode") != "operator_lt"
+                or inner["inputs"].get("OPERAND1", [None, [None]])[1][2:3] != [director.DYING_TICK_ID]
+                or _num_operand(inner["inputs"].get("OPERAND2")) != director.EXPLOSION_TICKS
+            ):
+                continue
+            zeroed = {
+                blocks[x]["fields"]["VARIABLE"][1]
+                for x in reachable((b["inputs"].get("SUBSTACK") or [None, None])[1])
+                if blocks[x]["opcode"] == "data_setvariableto" and _num_operand(blocks[x]["inputs"].get("VALUE")) == 0
+            }
+            if zeroed >= {director.PLAYER_SLOT_X_ID, director.PLAYER_SLOT_Y_ID, director.PLAYER_ROW_ID, director.PLAYER_COL_ID}:
+                pause_at_zero = True
+        if not pause_at_zero:
+            failures.add("death-pause-craft-at-zero")
         return failures
+
+    @staticmethod
+    def _forest_wait_failures(project: dict) -> set:
+        """PLY-02.forest-wait (slice 21): after the LAST death (craft = 0) solv_death's player-dead entry shows the
+        forest filler alone and holds FOREST_WAIT_TICKS paced frames (the arcade's 64-frame wait, xevious_main.68k
+        508-546), leaves the area clock alone, and only then runs the epoch-guarded `death complete` hand-off."""
+        # roadmap-evidence: PLY-02 success  (PLY-02.forest-wait: test_final_forest_wait — the craft-0 forest hold precedes the epoch-guarded hand-off; harness final-forest-wait-before-game-over measures it live)
+        # roadmap-evidence: PLY-02 failure  (PLY-02.forest-wait: test_final_forest_wait_negative_fixtures — a short hold, a hold on every death, a missing forest and a clock reset each bite; the harness negative empties the hold)
+        failures = set()
+        death = next(t for t in project["targets"] if t["name"] == "solv_death")
+        blocks = death["blocks"]
+
+        def var_id(inp):
+            return inp[1][2] if isinstance(inp, list) and len(inp) > 1 and isinstance(inp[1], list) and len(inp[1]) > 2 else None
+
+        def chain(start):
+            out, bid = [], start
+            while bid:
+                out.append(bid)
+                bid = blocks[bid].get("next")
+            return out
+
+        def broadcasts(bid, name):
+            b = blocks[bid]
+            return b["opcode"] == "event_broadcast" and b["inputs"]["BROADCAST_INPUT"][1][1] == name
+
+        waits = []
+        for bid, b in blocks.items():
+            if not isinstance(b, dict) or b.get("opcode") != "control_if":
+                continue
+            cond = blocks.get((b["inputs"].get("CONDITION") or [None, None])[1], {})
+            if (
+                cond.get("opcode") == "operator_equals"
+                and var_id(cond["inputs"].get("OPERAND1")) == director.LIVES_ID
+                and _num_operand(cond["inputs"].get("OPERAND2")) == 0
+            ):
+                waits.append(bid)
+        if len(waits) != 1:
+            return {"final-death-wait"}
+        wait = waits[0]
+        body = chain((blocks[wait]["inputs"].get("SUBSTACK") or [None, None])[1])
+        holds = [
+            x for x in body
+            if blocks[x]["opcode"] == "control_repeat"
+            and _num_operand(blocks[x]["inputs"].get("TIMES")) == director.FOREST_WAIT_TICKS == 32
+            and blocks[(blocks[x]["inputs"].get("SUBSTACK") or [None, None])[1] or ""]["opcode"] == "control_wait"
+        ]
+        if len(holds) != 1:
+            failures.add("final-death-wait")
+        sets = {
+            blocks[x]["fields"]["VARIABLE"][1]: (blocks[x]["inputs"]["VALUE"][1] or [None, None])[1]
+            for x in body
+            if blocks[x]["opcode"] == "data_setvariableto"
+        }
+        forest = director.terrain_render.terrain_state(0, 0, director.terrain_render.NO_PREVIOUS_COLUMN)
+        even, odd = director.TERRAIN_STRIP_VARS["even"], director.TERRAIN_STRIP_VARS["odd"]
+        draws = [i for i, x in enumerate(body) if broadcasts(x, "terrain draw")]
+        if (
+            forest.even.costume != director.terrain_render.FILLER_COSTUME
+            or not forest.even.shown
+            or forest.odd.shown
+            or str(sets.get(even["costume"][1])) != director.terrain_render.FILLER_COSTUME
+            or str(sets.get(even["shown"][1])) != "1"
+            or str(sets.get(odd["shown"][1])) != "0"
+            or not draws
+            or not holds
+            or draws[0] > body.index(holds[0])
+        ):
+            failures.add("final-death-forest")
+        if {director.AREA_PROGRESS_ID, director.SCROLL_ROW_ID} & set(sets):
+            failures.add("final-death-clock-untouched")
+        after = blocks[wait].get("next")
+        if not (
+            after
+            and blocks[after]["opcode"] == "control_if"
+            and blocks[(blocks[after]["inputs"].get("CONDITION") or [None, None])[1]]["opcode"] == "operator_and"
+            and any(broadcasts(x, "death complete") for x in chain(blocks[after]["inputs"]["SUBSTACK"][1]))
+        ):
+            failures.add("final-death-wait-before-handoff")
+        return failures
+
+    def test_final_forest_wait(self) -> None:
+        self.assertEqual(set(), self._forest_wait_failures(load_source(scratch.SOURCE_DIR)))
+
+    def test_final_forest_wait_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._forest_wait_failures(base))
+
+        def death_blocks(p):
+            return next(t for t in p["targets"] if t["name"] == "solv_death")["blocks"]
+
+        def wait_if(blocks):
+            return next(
+                bid for bid, b in blocks.items()
+                if isinstance(b, dict) and b.get("opcode") == "control_if"
+                and blocks[b["inputs"]["CONDITION"][1]]["opcode"] == "operator_equals"
+            )
+
+        def short_hold(p):
+            blocks = death_blocks(p)
+            for b in blocks.values():
+                if isinstance(b, dict) and b.get("opcode") == "control_repeat" and _num_operand(b["inputs"].get("TIMES")) == 32:
+                    b["inputs"]["TIMES"] = [1, [6, "16"]]
+
+        def every_death(p):
+            # Hold on the wrong death (craft = 1, a death with craft left) instead of the last one.
+            blocks = death_blocks(p)
+            cond = blocks[blocks[wait_if(blocks)]["inputs"]["CONDITION"][1]]
+            cond["inputs"]["OPERAND2"] = [1, [10, "1"]]
+
+        def no_forest(p):
+            blocks = death_blocks(p)
+            for b in blocks.values():
+                if isinstance(b, dict) and b.get("opcode") == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.TERRAIN_STRIP_VARS["even"]["costume"][1]:
+                    b["inputs"]["VALUE"] = [1, [10, director.terrain_render.BAND_COSTUMES[0]]]
+
+        def clock_reset(p):
+            blocks = death_blocks(p)
+            for b in blocks.values():
+                if isinstance(b, dict) and b.get("opcode") == "data_setvariableto" and b["fields"]["VARIABLE"][1] == director.TERRAIN_STRIP_VARS["odd"]["shown"][1]:
+                    b["fields"]["VARIABLE"] = ["area progress", director.AREA_PROGRESS_ID]
+
+        for expected, mutate in (
+            ("final-death-wait", short_hold),
+            ("final-death-wait", every_death),
+            ("final-death-forest", no_forest),
+            ("final-death-clock-untouched", clock_reset),
+        ):
+            with self.subTest(expected=expected, mutate=mutate.__name__):
+                project = copy.deepcopy(base)
+                mutate(project)
+                self.assertIn(expected, self._forest_wait_failures(project))
+
+    @staticmethod
+    def _ship_number_failures(project: dict) -> set:
+        """DIF-02.ship-divisor (slice 21): the score re-tune divides by the per-player `ship number` (the arcade's
+        `solvalou_number`), which is 1 at the game start (main 444), one more, as a byte, when the death window
+        ends (2086), swapped with the other player, and never the craft left."""
+        failures = set()
+        stage = next(t for t in project["targets"] if t["isStage"])
+        blocks = stage["blocks"]
+
+        def var_id(inp):
+            return inp[1][2] if isinstance(inp, list) and len(inp) > 1 and isinstance(inp[1], list) and len(inp[1]) > 2 else None
+
+        def reporter(inp):
+            return blocks.get(inp[1]) if isinstance(inp, list) and len(inp) > 1 and isinstance(inp[1], str) else None
+
+        def sets_of(var):
+            return [
+                (bid, b) for bid, b in blocks.items()
+                if isinstance(b, dict) and b.get("opcode") == "data_setvariableto" and b["fields"]["VARIABLE"][1] == var
+            ]
+
+        def enclosing_if(bid):
+            # The control_if whose SUBSTACK chain holds `bid` (parent pointers run back through the siblings).
+            cur = bid
+            while cur:
+                parent = blocks[cur].get("parent")
+                if parent and blocks[parent]["opcode"] in ("control_if", "control_if_else") and cur in (
+                    (blocks[parent]["inputs"].get("SUBSTACK") or [None, None])[1],
+                    (blocks[parent]["inputs"].get("SUBSTACK2") or [None, None])[1],
+                ):
+                    return parent
+                cur = parent
+            return None
+
+        # (1) the count: `ship number` = (ship number + 1) mod 256, inside the `dying tick > 43` window end.
+        counted = False
+        for bid, b in sets_of(director.SHIP_NUMBER_ID):
+            mod = reporter(b["inputs"].get("VALUE"))
+            add = reporter(mod["inputs"].get("NUM1")) if mod and mod["opcode"] == "operator_mod" else None
+            if not (
+                add and add["opcode"] == "operator_add"
+                and var_id(add["inputs"].get("NUM1")) == director.SHIP_NUMBER_ID
+                and _num_operand(add["inputs"].get("NUM2")) == 1
+                and _num_operand(mod["inputs"].get("NUM2")) == director.SHIP_NUMBER_WRAP == 256
+            ):
+                continue
+            gate = enclosing_if(bid)
+            cond = reporter(blocks[gate]["inputs"].get("CONDITION")) if gate else None
+            if (
+                cond and cond["opcode"] == "operator_gt"
+                and var_id(cond["inputs"].get("OPERAND1")) == director.DYING_TICK_ID
+                and _num_operand(cond["inputs"].get("OPERAND2")) == director.DYING_WINDOW_TICKS - 1
+            ):
+                counted = True
+        if not counted:
+            failures.add("ship-number-counts-at-window-end")
+        # (2) the start: the new-game reset sets it to 1.
+        if not any(_num_operand(b["inputs"].get("VALUE")) == 1 for _bid, b in sets_of(director.SHIP_NUMBER_ID)):
+            failures.add("ship-number-starts-at-1")
+        # (3) the divisor: the re-tune divides by `ship number`, and nothing on the Stage divides by the craft left.
+        divisors = [
+            var_id(b["inputs"].get("NUM2")) for b in blocks.values()
+            if isinstance(b, dict) and b.get("opcode") == "operator_divide"
+        ]
+        if divisors.count(director.SHIP_NUMBER_ID) != 1 or director.LIVES_ID in divisors:
+            failures.add("ship-number-divides")
+        # (4) per player: `ship number` is one of the swapped fields.
+        if ("ship number", director.SHIP_NUMBER_ID, "other ship number", "other-ship-number") not in director.PLAYER_CONTEXT_FIELDS:
+            failures.add("ship-number-per-player")
+        return failures
+
+    def test_ship_number_divisor(self) -> None:
+        self.assertEqual(set(), self._ship_number_failures(load_source(scratch.SOURCE_DIR)))
+
+    def test_ship_number_divisor_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._ship_number_failures(base))
+
+        def stage_blocks(p):
+            return next(t for t in p["targets"] if t["isStage"])["blocks"]
+
+        def ship_sets(p):
+            return [
+                b for b in stage_blocks(p).values()
+                if isinstance(b, dict) and b.get("opcode") == "data_setvariableto"
+                and b["fields"]["VARIABLE"][1] == director.SHIP_NUMBER_ID
+            ]
+
+        def never_counts(p):
+            # The window end writes a literal 1 instead of counting up.
+            for b in ship_sets(p):
+                if isinstance(b["inputs"]["VALUE"][1], str):
+                    b["inputs"]["VALUE"] = [1, [10, "1"]]
+
+        def starts_at_0(p):
+            for b in ship_sets(p):
+                if _num_operand(b["inputs"]["VALUE"]) == 1:
+                    b["inputs"]["VALUE"] = [1, [10, "0"]]
+
+        def divides_by_craft(p):
+            for b in stage_blocks(p).values():
+                if isinstance(b, dict) and b.get("opcode") == "operator_divide":
+                    num2 = b["inputs"].get("NUM2")
+                    if isinstance(num2, list) and isinstance(num2[1], list) and num2[1][2:3] == [director.SHIP_NUMBER_ID]:
+                        num2[1] = [12, "craft", director.LIVES_ID]
+
+        for expected, mutate in (
+            ("ship-number-counts-at-window-end", never_counts),
+            ("ship-number-starts-at-1", starts_at_0),
+            ("ship-number-divides", divides_by_craft),
+        ):
+            with self.subTest(expected=expected, mutate=mutate.__name__):
+                project = copy.deepcopy(base)
+                mutate(project)
+                self.assertIn(expected, self._ship_number_failures(project))
+
+    @staticmethod
+    def _ai_death_drop_failures(project: dict) -> set:
+        """DIF-01 (slice 21 review fix): each real-game death lowers `ai level` by the difficulty setting's death
+        decrement (`enemy_AI_dec_value` xevious_main.68k 1204-1205, applied at 522-533) — 0x10 at the port's
+        index 0 — and clears it on a borrow. It runs in the `death complete` receiver (only a real game sends it),
+        before the two-player swap, so the dying player's level drops."""
+        failures = set()
+        blocks = next(t for t in project["targets"] if t["isStage"])["blocks"]
+
+        def chain(start):
+            out = []
+            while isinstance(start, str) and start in blocks:
+                out.append(start)
+                start = blocks[start].get("next")
+            return out
+
+        def subtree(bid):
+            # bid and everything nested in its inputs — not the blocks that follow it
+            root = blocks[bid]
+            seen = {bid}
+            stack = [
+                v[1] for v in root["inputs"].values()
+                if isinstance(v, list) and len(v) > 1 and isinstance(v[1], str)
+            ]
+            while stack:
+                cur = stack.pop()
+                if not isinstance(cur, str) or cur in seen or cur not in blocks:
+                    continue
+                seen.add(cur)
+                b = blocks[cur]
+                stack.append(b.get("next"))
+                for val in b["inputs"].values():
+                    if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str):
+                        stack.append(val[1])
+            return seen
+
+        receiver = next(
+            (
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "event_whenbroadcastreceived"
+                and b["fields"].get("BROADCAST_OPTION", [None])[0] == "death complete"
+            ),
+            None,
+        )
+        gate = next(
+            (bid for bid in chain(blocks[receiver]["next"]) if blocks[bid]["opcode"] == "control_if"),
+            None,
+        ) if receiver else None
+        body = chain((blocks[gate]["inputs"].get("SUBSTACK") or [None, None])[1]) if gate else []
+
+        def is_drop(bid):
+            b = blocks[bid]
+            return (
+                b["opcode"] == "data_changevariableby"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.AI_LEVEL_ID
+                and _num_operand(b["inputs"].get("VALUE")) == -director.AI_DEATH_DROP
+            )
+
+        def is_floor(bid):
+            b = blocks[bid]
+            if b["opcode"] != "control_if":
+                return False
+            cond = blocks.get((b["inputs"].get("CONDITION") or [None, None])[1])
+            inner = chain((b["inputs"].get("SUBSTACK") or [None, None])[1])
+            return (
+                cond is not None
+                and cond["opcode"] == "operator_lt"
+                and len(inner) == 1
+                and blocks[inner[0]]["opcode"] == "data_setvariableto"
+                and blocks[inner[0]]["fields"].get("VARIABLE", [None, None])[1] == director.AI_LEVEL_ID
+                and _num_operand(blocks[inner[0]]["inputs"].get("VALUE")) == 0
+            )
+
+        def swaps(bid):
+            return any(
+                blocks[x]["opcode"] == "procedures_call"
+                and blocks[x].get("mutation", {}).get("proccode") == director.SWAP_PLAYERS_PROCCODE
+                for x in subtree(bid)
+            )
+
+        drops = [i for i, bid in enumerate(body) if is_drop(bid)]
+        swap_at = next((i for i, bid in enumerate(body) if swaps(bid)), None)
+        if len(drops) != 1:
+            failures.add("ai-death-drop")
+        elif not (drops[0] + 1 < len(body) and is_floor(body[drops[0] + 1])):
+            failures.add("ai-death-drop-floored")
+        if drops and (swap_at is None or drops[0] > swap_at):
+            failures.add("ai-death-drop-before-swap")
+        return failures
+
+    def test_ai_level_drops_on_death(self) -> None:
+        # roadmap-evidence: DIF-01 success  (each death lowers the AI level by the death decrement, floored at 0,
+        #   before the two-player swap; harness ai-level-drops-on-death drives 40 -> 24, 10 -> 0 and the dying
+        #   player's level in two-player)
+        self.assertEqual(director.AI_DEATH_DROP, 0x10)
+        self.assertEqual(set(), self._ai_death_drop_failures(load_source(scratch.SOURCE_DIR)))
+
+    def test_ai_level_drops_on_death_negative_fixtures(self) -> None:
+        # roadmap-evidence: DIF-01 failure  (a missing or mis-sized drop, a missing floor, or a drop after the
+        #   swap each bite)
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._ai_death_drop_failures(base))
+
+        def stage_blocks(p):
+            return next(t for t in p["targets"] if t["isStage"])["blocks"]
+
+        def drop_ids(p):
+            return [
+                bid for bid, b in stage_blocks(p).items()
+                if b["opcode"] == "data_changevariableby"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.AI_LEVEL_ID
+                and _num_operand(b["inputs"].get("VALUE")) == -director.AI_DEATH_DROP
+            ]
+
+        def resize(p):
+            for bid in drop_ids(p):
+                stage_blocks(p)[bid]["inputs"]["VALUE"] = [1, [4, "-8"]]
+
+        def unfloor(p):
+            blocks = stage_blocks(p)
+            for bid in drop_ids(p):
+                floor = blocks[bid]["next"]
+                blocks[bid]["next"] = blocks[floor]["next"]
+                blocks[blocks[floor]["next"]]["parent"] = bid
+
+        def after_swap(p):
+            # Move the drop and its floor to after the alternate/solo decision.
+            blocks = stage_blocks(p)
+            for bid in drop_ids(p):
+                floor = blocks[bid]["next"]
+                alt = blocks[floor]["next"]
+                prev = blocks[bid]["parent"]
+                blocks[prev]["next"] = alt
+                blocks[alt]["parent"] = prev
+                blocks[alt]["next"] = bid
+                blocks[bid]["parent"] = alt
+                blocks[floor]["next"] = None
+
+        for expected, mutate in (
+            ("ai-death-drop", resize),
+            ("ai-death-drop-floored", unfloor),
+            ("ai-death-drop-before-swap", after_swap),
+        ):
+            with self.subTest(expected=expected, mutate=mutate.__name__):
+                project = copy.deepcopy(base)
+                mutate(project)
+                self.assertIn(expected, self._ai_death_drop_failures(project))
 
     def test_death_decision_is_lives_driven(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
@@ -16003,6 +17866,67 @@ class ScratchProjectTests(unittest.TestCase):
                     return
             raise AssertionError("no `set player hit = 1` in update bullet to break")
 
+        def break_contact(proccode):
+            # #161: the family's `set player hit = 1` retargeted to another flag: its contact no longer kills.
+            def corrupt(p):
+                s = next(t for t in p["targets"] if t["isStage"])
+                for b in _proc_body_blocks(s, proccode):
+                    if (
+                        b["opcode"] == "data_setvariableto"
+                        and b["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+                        and b["inputs"].get("VALUE") == [1, [4, 1]]
+                    ):
+                        b["fields"]["VARIABLE"] = ["invuln", director.INVULN_ID]
+                raise_count = sum(
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.PLAYER_HIT_ID
+                    for b in _proc_body_blocks(s, proccode)
+                )
+                assert raise_count == 0, proccode
+
+            return corrupt
+
+        def break_alive_gate(proccode):
+            # #161 / #158: the family's hit test no longer checks the explosion window (`dying = 0` -> `dying = 1`).
+            def corrupt(p):
+                s = next(t for t in p["targets"] if t["isStage"])
+                for b in _proc_body_blocks(s, proccode):
+                    if (
+                        b["opcode"] == "operator_equals"
+                        and b["inputs"].get("OPERAND1", [None, [None]])[1][2:3] == [director.DYING_ID]
+                    ):
+                        b["inputs"]["OPERAND2"] = [1, [4, 1]]
+
+            return corrupt
+
+        def sheonite_kills(p):
+            # The inert Sheonite gains a `set player hit to 1` at the top of its update.
+            s = next(t for t in p["targets"] if t["isStage"])
+            blocks = s["blocks"]
+            proto = next(
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.UPDATE_SHEONITE_PROCCODE
+            )
+            did, definition = next(
+                (bid, b)
+                for bid, b in blocks.items()
+                if b["opcode"] == "procedures_definition" and b["inputs"]["custom_block"][1] == proto
+            )
+            blocks["sheonite-kills"] = {
+                "opcode": "data_setvariableto",
+                "next": definition["next"],
+                "parent": did,
+                "inputs": {"VALUE": [1, [4, 1]]},
+                "fields": {"VARIABLE": ["player hit", director.PLAYER_HIT_ID]},
+                "shadow": False,
+                "topLevel": False,
+            }
+            if definition["next"]:
+                blocks[definition["next"]]["parent"] = "sheonite-kills"
+            definition["next"] = "sheonite-kills"
+
         def break_death_gate(p):
             # Drop `invuln` from the death gate's AND so contact would kill even while invulnerable —
             # retarget the invuln equals-operand to the score, defeating the guard.
@@ -16030,39 +17954,16 @@ class ScratchProjectTests(unittest.TestCase):
                         return
             raise AssertionError("no invuln equals-operand in a death gate to break")
 
-        def break_death_body(p):
-            # Death registers but never spends a craft: neutralise the `change craft by -1` reachable
-            # from the death gate.
-            s = next(t for t in p["targets"] if t["isStage"])
-            blocks = s["blocks"]
-
-            def equals_var(op_spec):
-                if not (isinstance(op_spec, list) and len(op_spec) > 1 and isinstance(op_spec[1], str)):
-                    return None
-                eq = blocks.get(op_spec[1])
-                if not eq or eq["opcode"] != "operator_equals":
-                    return None
-                lhs = eq["inputs"].get("OPERAND1")
-                if isinstance(lhs, list) and len(lhs) > 1 and isinstance(lhs[1], list) and lhs[1][0] == 12:
-                    return lhs[1][2]
-                return None
-
-            death_if = None
-            for bid, b in blocks.items():
-                if b["opcode"] != "control_if":
-                    continue
-                cond = b["inputs"].get("CONDITION")
-                if not (isinstance(cond, list) and len(cond) > 1 and isinstance(cond[1], str)):
-                    continue
-                cb = blocks.get(cond[1])
-                if not cb or cb["opcode"] != "operator_and":
-                    continue
-                refs = {equals_var(cb["inputs"].get("OPERAND1")), equals_var(cb["inputs"].get("OPERAND2"))}
-                if {director.PLAYER_HIT_ID, director.INVULN_ID} <= refs:
-                    death_if = bid
-                    break
-            assert death_if is not None
-            seen, stack = set(), [death_if]
+        def window_end_body(blocks):
+            end = next(
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "control_if"
+                and blocks.get((b["inputs"].get("CONDITION") or [None, None])[1], {}).get("opcode") == "operator_gt"
+                and blocks[b["inputs"]["CONDITION"][1]]["inputs"].get("OPERAND1", [None, [None]])[1][2:3]
+                == [director.DYING_TICK_ID]
+            )
+            seen, stack = set(), [blocks[end]["inputs"]["SUBSTACK"][1]]
             while stack:
                 bid = stack.pop()
                 if not bid or bid in seen or bid not in blocks:
@@ -16074,7 +17975,12 @@ class ScratchProjectTests(unittest.TestCase):
                     val = b["inputs"].get(slot)
                     if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str):
                         stack.append(val[1])
-            for bid in seen:
+            return end, seen
+
+        def break_death_body(p):
+            # The window ends but never spends a craft: neutralise the `change craft by -1` at its end.
+            blocks = next(t for t in p["targets"] if t["isStage"])["blocks"]
+            for bid in window_end_body(blocks)[1]:
                 b = blocks[bid]
                 if (
                     b["opcode"] == "data_changevariableby"
@@ -16083,12 +17989,31 @@ class ScratchProjectTests(unittest.TestCase):
                 ):
                     b["inputs"]["VALUE"] = [1, [4, 0]]
                     return
-            raise AssertionError("no `change craft by -1` in the death body to break")
+            raise AssertionError("no `change craft by -1` at the window's end to break")
+
+        def break_window_length(p):
+            # A 43-tick window (one tick short of the arcade's 88 frames).
+            blocks = next(t for t in p["targets"] if t["isStage"])["blocks"]
+            end = window_end_body(blocks)[0]
+            blocks[blocks[end]["inputs"]["CONDITION"][1]]["inputs"]["OPERAND2"] = [1, [4, director.DYING_WINDOW_TICKS - 2]]
+
+        def break_window_open(p):
+            # The hit no longer opens the window (its `dying = 1` writes 0).
+            blocks = next(t for t in p["targets"] if t["isStage"])["blocks"]
+            for b in blocks.values():
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"].get("VARIABLE", [None, None])[1] == director.DYING_ID
+                    and b["inputs"].get("VALUE") == [1, [4, 1]]
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, 0]]
+                    return
+            raise AssertionError("no `set dying to 1` to break")
 
         def break_decision(p):
             # Target the DEATH-decision `craft > threshold` specifically — the operator_gt that is the
             # CONDITION of the control_if_else (as _ply02_failures identifies it), not any other craft
-            # comparison on the Stage (e.g. DIF-02's `craft > 0` re-tune guard).
+            # comparison on the Stage (e.g. DIF-02's `ship number = 0` re-tune branch).
             s = next(t for t in p["targets"] if t["isStage"])
             blocks = s["blocks"]
             decision = next(
@@ -16103,11 +18028,34 @@ class ScratchProjectTests(unittest.TestCase):
             cond = blocks[decision["inputs"]["CONDITION"][1]]
             cond["inputs"]["OPERAND1"][1][2] = director.SCORE_ID  # decide from score, not craft
 
+        def break_pause_zero(p):
+            # The pause keeps the craft's depth where it died (its literal-0 `player slot x` write reads 5).
+            s = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(s, director.READ_PLAYER_PROCCODE):
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"]["VARIABLE"][1] == director.PLAYER_SLOT_X_ID
+                    and _num_operand(b["inputs"].get("VALUE")) == 0
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, 5]]
+                    return
+            raise AssertionError("no `set player slot x to 0` in read player to break")
+
         cases = [
+            ("death-pause-craft-at-zero", break_pause_zero),
             ("flying-raises-player-hit", break_flying_hit),
             ("bullet-raises-player-hit", break_bullet_hit),
+            # roadmap-evidence: PLY-02 failure  (#161: any flying family's contact stops killing, or kills during the explosion window, or the inert Sheonite kills)
+            *[(f"contact-kills:{family}", break_contact(proccode)) for family, proccode in CRAFT_CONTACT_PROCS.items()],
+            *[
+                (f"contact-gated-on-alive:{family}", break_alive_gate(proccode))
+                for family, proccode in CRAFT_CONTACT_PROCS.items()
+            ],
+            ("sheonite-inert", sheonite_kills),
             ("death-gated-on-hit-and-invuln", break_death_gate),
             ("death-spends-craft-and-transitions", break_death_body),
+            ("death-spends-craft-and-transitions", break_window_length),
+            ("death-opens-window", break_window_open),
             ("lives-driven-decision", break_decision),
         ]
         for label, corrupt in cases:
@@ -16340,10 +18288,12 @@ class ScratchProjectTests(unittest.TestCase):
         if not derived_ok:
             failures.add("scroll-row-derived")
 
-        # 5. completion: an `if/else` on AND(scroll row == 14, area progress > 0) whose THEN body
+        # 5. completion: an `if` on AND(scroll row == 14, area progress > 0) whose THEN body
         # advances the area (a wrap), CARRIES the clock (changes area progress by -65536, never sets
         # it or the row), points the schedule at the new area, and clears no wave register — the
-        # arcade's sub_fn_3__handle_next_area does only the offset/pointer swap.
+        # arcade's sub_fn_3__handle_next_area does only the offset/pointer swap. Since slice 21 (record 056
+        # item 12) it is a plain `if` AFTER the schedule consume, the arcade's order (handle_objects runs
+        # before handle_next_area each frame), no longer an `if/else` with the consume as its other arm.
         def and_parts(cond_spec):
             if not (isinstance(cond_spec, list) and len(cond_spec) > 1):
                 return []
@@ -16365,7 +18315,7 @@ class ScratchProjectTests(unittest.TestCase):
             (
                 bid
                 for bid in body
-                if blocks[bid]["opcode"] == "control_if_else"
+                if blocks[bid]["opcode"] in ("control_if", "control_if_else")
                 and any(
                     eq_var_num(p, director.SCROLL_ROW_ID, director.AREA_COMPLETE_ROW)
                     for p in and_parts(blocks[bid]["inputs"].get("CONDITION"))
@@ -16373,6 +18323,20 @@ class ScratchProjectTests(unittest.TestCase):
             ),
             None,
         )
+        # The consume runs first: the proc's own statements end [..., consume loop, completion `if`].
+        top_level = []
+        cur = blocks[definition_id].get("next")
+        while cur:
+            top_level.append(cur)
+            cur = blocks[cur]["next"]
+        if not (
+            completion
+            and blocks[completion]["opcode"] == "control_if"
+            and len(top_level) >= 2
+            and top_level[-1] == completion
+            and blocks[top_level[-2]]["opcode"] == "control_repeat_until"
+        ):
+            failures.add("consume-before-completion")
         then_spec = blocks[completion]["inputs"].get("SUBSTACK") if completion else None
         then_body = (
             reachable(then_spec[1])
@@ -16430,14 +18394,13 @@ class ScratchProjectTests(unittest.TestCase):
         if not wrap_conditions or not all(is_area_wrap(bid) for bid in wrap_conditions):
             failures.add("area-wrap-16-7")
 
-        # 7. near-end checkpoint, projected, at BOTH sites (new-life re-top and the 2P handoff): the
-        # three statements `set checkpoint progress to (area progress + 1408)`; `if checkpoint
-        # progress > 65055 { wrap; change checkpoint progress by -65536 }`; `if AND(row(checkpoint
-        # progress) > 13, 68 > row(checkpoint progress)) { wrap }` — the window [14, 67] on the row
-        # the arcade reads after its 44 ticks of post-death scrolling. The row VALUES are checked by
-        # interpretation in test_spec_docs.
-        def is_row_of_checkpoint(spec):
-            # floor(((3328 - checkpoint progress) mod 65536) / 256)
+        # 7. near-end checkpoint at BOTH sites (new-life re-top and the 2P handoff): one statement,
+        # `if AND(row(area progress) > 13, 68 > row(area progress)) { wrap }` — the window [14, 67] on the live
+        # row. #158 (slice 21): the walk scrolls through the 44-tick explosion window, so the row is read where
+        # the arcade reads it; the slice-20 projection register and its completion branch are gone. The row
+        # VALUES are checked by interpretation in test_spec_docs.
+        def is_row_of_progress(spec):
+            # floor(((3328 - area progress) mod 65536) / 256)
             fb = blocks.get(spec[1]) if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str) else None
             if not fb or fb["opcode"] != "operator_mathop" or fb["fields"].get("OPERATOR", [None])[0] != "floor":
                 return False
@@ -16452,7 +18415,7 @@ class ScratchProjectTests(unittest.TestCase):
                 sub is not None
                 and sub["opcode"] == "operator_subtract"
                 and literal(sub["inputs"].get("NUM1")) == director.AREA_COUNTER_INIT
-                and refs_var(sub["inputs"].get("NUM2"), director.CHECKPOINT_PROGRESS_ID)
+                and refs_var(sub["inputs"].get("NUM2"), director.AREA_PROGRESS_ID)
             )
 
         def then_advances(b):
@@ -16463,60 +18426,36 @@ class ScratchProjectTests(unittest.TestCase):
                 and any(is_area_wrap(x) for x in reachable(spec[1]))
             )
 
-        def checkpoint_at(start):
-            b = blocks[start]
-            val = b["inputs"].get("VALUE")
-            add = blocks.get(val[1]) if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str) else None
-            if not (
-                add
-                and add["opcode"] == "operator_add"
-                and refs_var(add["inputs"].get("NUM1"), director.AREA_PROGRESS_ID)
-                and literal(add["inputs"].get("NUM2")) == director.AREA_CHECKPOINT_PROJECTION
-            ):
-                return False
-            comp = blocks.get(b.get("next"))
-            if not (
-                comp
-                and comp["opcode"] == "control_if"
-                and gt_var_num(
-                    comp["inputs"].get("CONDITION"),
-                    director.CHECKPOINT_PROGRESS_ID,
-                    director.AREA_COMPLETE_PROGRESS - 1,
-                )
-                and then_advances(comp)
-                and any(
-                    blocks[x]["opcode"] == "data_changevariableby"
-                    and blocks[x]["fields"].get("VARIABLE", [None, None])[1] == director.CHECKPOINT_PROGRESS_ID
-                    and blocks[x]["inputs"].get("VALUE") == [1, [4, -director.AREA_COUNTER_WRAP]]
-                    for x in reachable(comp["inputs"]["SUBSTACK"][1])
-                )
-            ):
-                return False
-            band = blocks.get(comp.get("next"))
-            if not band or band["opcode"] != "control_if" or not then_advances(band):
+        def is_checkpoint_band(bid):
+            band = blocks[bid]
+            if band["opcode"] != "control_if" or not then_advances(band):
                 return False
             gts = [blocks.get(p[1]) if isinstance(p, list) and len(p) > 1 and isinstance(p[1], str) else None
                    for p in and_parts(band["inputs"].get("CONDITION"))]
             if len(gts) != 2 or any(g is None or g["opcode"] != "operator_gt" for g in gts):
                 return False
             low_ok = any(
-                is_row_of_checkpoint(g["inputs"].get("OPERAND1"))
+                is_row_of_progress(g["inputs"].get("OPERAND1"))
                 and literal(g["inputs"].get("OPERAND2")) == director.AREA_CHECKPOINT_LOW_EXCL
                 for g in gts
             )
             high_ok = any(
                 literal(g["inputs"].get("OPERAND1")) == director.AREA_CHECKPOINT_HIGH_EXCL
-                and is_row_of_checkpoint(g["inputs"].get("OPERAND2"))
+                and is_row_of_progress(g["inputs"].get("OPERAND2"))
                 for g in gts
             )
             return low_ok and high_ok
 
-        starts = [
-            bid for bid, b in blocks.items()
-            if b["opcode"] == "data_setvariableto"
-            and b["fields"].get("VARIABLE", [None, None])[1] == director.CHECKPOINT_PROGRESS_ID
-        ]
-        if len(starts) != 2 or not all(checkpoint_at(s) for s in starts):
+        bands = [bid for bid, b in blocks.items() if b["opcode"] == "control_if" and is_checkpoint_band(bid)]
+        if len(bands) != 2:
+            failures.add("checkpoint-window")
+        # No projection may come back: nothing adds the old 44-tick projection to `area progress`.
+        if any(
+            b["opcode"] == "operator_add"
+            and refs_var(b["inputs"].get("NUM1"), director.AREA_PROGRESS_ID)
+            and literal(b["inputs"].get("NUM2")) == 44 * director.AREA_PROGRESS_STEP
+            for b in blocks.values()
+        ):
             failures.add("checkpoint-window")
         # No checkpoint may still read the frozen `scroll row` (the pre-slice-20 shape).
         if any(
@@ -16621,21 +18560,16 @@ class ScratchProjectTests(unittest.TestCase):
             assert len(matches) == 2, "expected one checkpoint high bound per site"
             matches[1]["inputs"]["OPERAND1"] = [1, [4, director.AREA_CHECKPOINT_HIGH_EXCL - 2]]
 
-        def break_checkpoint_projection(p):
+        def break_checkpoint_reads_progress(p):
+            # Point one site's low-bound row read at another register: the band must read `area progress`.
             s = stage_of(p)
-            b = next(
-                b
-                for b in s["blocks"].values()
-                if b["opcode"] == "operator_add"
-                and (b["inputs"].get("NUM2") or [None, [None, None]])[1][1:2] == [director.AREA_CHECKPOINT_PROJECTION]
-            )
-            b["inputs"]["NUM2"] = [1, [4, 0]]
-
-        def break_checkpoint_completion(p):
-            s = stage_of(p)
-            matches = gt_with(s, None, director.AREA_COMPLETE_PROGRESS - 1)
-            assert len(matches) == 2, "expected one projected-completion test per site"
-            matches[0]["inputs"]["OPERAND2"] = [1, [4, director.AREA_COMPLETE_PROGRESS + 255]]
+            g = gt_with(s, None, director.AREA_CHECKPOINT_LOW_EXCL)[0]
+            sub = s["blocks"][
+                s["blocks"][s["blocks"][s["blocks"][g["inputs"]["OPERAND1"][1]]["inputs"]["NUM"][1]]["inputs"]["NUM1"][1]][
+                    "inputs"
+                ]["NUM1"][1]
+            ]
+            sub["inputs"]["NUM2"] = [3, [12, "schedule cursor", director.SCHEDULE_CURSOR_ID], [10, ""]]
 
         def break_checkpoint_frozen_row(p):
             # Restore the pre-slice-20 shape at one site: a band bound reading the frozen `scroll row`.
@@ -16692,8 +18626,26 @@ class ScratchProjectTests(unittest.TestCase):
                 bid = b["next"]
             raise AssertionError("no terrain column write after the carry")
 
+        def break_consume_order(p):
+            # Put the completion test back in front of the consume (the pre-slice-21 order).
+            s = stage_of(p)["blocks"]
+            proto = next(
+                k for k, b in s.items()
+                if b["opcode"] == "procedures_prototype" and b["mutation"]["proccode"] == director.ADVANCE_AREA_PROCCODE
+            )
+            chain = []
+            cur = s[s[proto]["parent"]]["next"]
+            while cur:
+                chain.append(cur)
+                cur = s[cur]["next"]
+            completion, consume = chain[-1], chain[-2]
+            s[chain[-3]]["next"] = completion
+            s[completion].update(parent=chain[-3], next=consume)
+            s[consume].update(parent=completion, next=None)
+
         cases = [
             ("advance-area-before-slots", break_phase_order),
+            ("consume-before-completion", break_consume_order),
             ("progress-steps-32", break_progress_step),
             ("scroll-row-derived", break_row_wrap_constant),
             ("completion-at-14", break_completion_row),
@@ -16704,8 +18656,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("area-wrap-16-7", break_wrap_target),
             ("checkpoint-window", break_checkpoint_low),
             ("checkpoint-window", break_checkpoint_high),
-            ("checkpoint-window", break_checkpoint_projection),
-            ("checkpoint-window", break_checkpoint_completion),
+            ("checkpoint-window", break_checkpoint_reads_progress),
             ("checkpoint-reads-frozen-row", break_checkpoint_frozen_row),
         ]
         for label, corrupt in cases:
@@ -17962,6 +19913,109 @@ class ScratchProjectTests(unittest.TestCase):
             if name not in label_switch_names:
                 failures.add(f"label-switch-missing:{name}")
 
+        # Slice 21 (#31): the prompts' timing. INSERT COIN shows while bit 4 of the frame counter is set
+        # (display_insert_coin_flashing, xevious_main.68k 857-877) — 16 frames each way, 8 port ticks — on the title
+        # (its clock `title tick`) and in the demo (the walk's `tick`, its own clone); PUSH START BUTTON is drawn
+        # once and stays (display_push_start_button 815-826). The flash is
+        # if_else(<floor(clock / 8) mod 2 = 1>) [show] [hide].
+        def refs_var(spec, var_id: str) -> bool:
+            return (
+                isinstance(spec, list)
+                and len(spec) >= 2
+                and isinstance(spec[1], list)
+                and len(spec[1]) >= 3
+                and spec[1][0] == 12
+                and spec[1][2] == var_id
+            )
+
+        def shows_then_hides(branch: dict) -> bool:
+            then = branch["inputs"].get("SUBSTACK") or [None, None]
+            other = branch["inputs"].get("SUBSTACK2") or [None, None]
+            return (blocks.get(then[1]) or {}).get("opcode") == "looks_show" and (
+                blocks.get(other[1]) or {}
+            ).get("opcode") == "looks_hide"
+
+        def flashes_on(clock_id: str) -> bool:
+            for div in blocks.values():
+                if not (
+                    div["opcode"] == "operator_divide"
+                    and refs_var(div["inputs"].get("NUM1"), clock_id)
+                    and div["inputs"].get("NUM2") == [1, [4, director.ATTRACT_INSERT_COIN_HALF_TICKS]]
+                ):
+                    continue
+                floor = blocks.get(div.get("parent")) or {}
+                mod = blocks.get(floor.get("parent")) or {}
+                eq = blocks.get(mod.get("parent")) or {}
+                branch = blocks.get(eq.get("parent")) or {}
+                if (
+                    floor.get("opcode") == "operator_mathop"
+                    and mod.get("opcode") == "operator_mod"
+                    and mod["inputs"].get("NUM2") == [1, [4, 2]]
+                    and eq.get("opcode") == "operator_equals"
+                    and eq["inputs"].get("OPERAND2") == [1, [4, 1]]
+                    and branch.get("opcode") == "control_if_else"
+                    and shows_then_hides(branch)
+                ):
+                    return True
+            return False
+
+        # roadmap-evidence: PRES-02 success  (PRES-02.hud-yellow: INSERT COIN flashes on the 16-frame clock on the title and in the demo; PUSH START is steady; the best five blanks leading zeros)
+        if not flashes_on(director.TITLE_TICK_ID) or director.ATTRACT_INSERT_COIN_HALF_TICKS != 8:
+            failures.add("insert-coin-title-flash")
+        if not (role_dispatch(director.ATTRACT_ROLE_DEMO_INSERT_COIN) and flashes_on(director.TICK_ID)):
+            failures.add("insert-coin-demo-flash")
+        steady = False
+        for b in blocks.values():
+            sub = b["inputs"].get("SUBSTACK") if b["opcode"] == "control_if" else None
+            if not (isinstance(sub, list) and len(sub) > 1 and isinstance(sub[1], str)):
+                continue
+            chain, cursor = [], sub[1]
+            while cursor:
+                chain.append(blocks[cursor])
+                cursor = blocks[cursor]["next"]
+            menus = {
+                (blocks.get((n["inputs"].get("COSTUME") or [None, None])[1]) or {})
+                .get("fields", {})
+                .get("COSTUME", [None])[0]
+                for n in chain
+                if n["opcode"] == "looks_switchcostumeto"
+            }
+            if "push-start" in menus:
+                opcodes = {n["opcode"] for n in chain}
+                steady = "looks_show" in opcodes and "looks_hide" not in opcodes
+        if not steady:
+            failures.add("push-start-steady")
+
+        # The best-five score cells blank their leading zeros like the HUD (display_high_score_table 1475-1542
+        # writes each score with display_score): if_else(<place < 2> or <not <table[row] < divisor>>) [show] [hide].
+        table_blank = False
+        for lt in blocks.values():
+            operand = (lt["inputs"].get("OPERAND1") or [None, None])[1] if lt["opcode"] == "operator_lt" else None
+            item = blocks.get(operand) if isinstance(operand, str) else None
+            if not (
+                item is not None
+                and item["opcode"] == "data_itemoflist"
+                and item["fields"].get("LIST", [None, None])[1] == director.HIGH_SCORE_TABLE_ID
+                and refs_var(lt["inputs"].get("OPERAND2"), director.ATTRACT_DISPLAY_DIVISOR_ID)
+            ):
+                continue
+            neg = blocks.get(lt.get("parent")) or {}
+            either = blocks.get(neg.get("parent")) or {}
+            branch = blocks.get(either.get("parent")) or {}
+            place = blocks.get((either.get("inputs", {}).get("OPERAND1") or [None, None])[1]) or {}
+            if (
+                neg.get("opcode") == "operator_not"
+                and either.get("opcode") == "operator_or"
+                and place.get("opcode") == "operator_lt"
+                and refs_var(place["inputs"].get("OPERAND1"), director.ATTRACT_DISPLAY_PLACE_ID)
+                and place["inputs"].get("OPERAND2") == [1, [4, 2]]
+                and branch.get("opcode") == "control_if_else"
+                and shows_then_hides(branch)
+            ):
+                table_blank = True
+        if not table_blank:
+            failures.add("table-score-leading-zeros")
+
         return failures
 
     def test_attract_display_wiring_present(self) -> None:
@@ -18042,6 +20096,40 @@ class ScratchProjectTests(unittest.TestCase):
             ss = next(t for t in p["targets"] if t.get("name") == "start_screen")
             ss["costumes"] = [c for c in ss["costumes"] if c["name"] != "glyph/A"]
 
+        def refs_var(spec, var_id: str) -> bool:
+            return isinstance(spec, list) and isinstance(spec[1], list) and spec[1][-1] == var_id
+
+        def slow_flash(clock_id: str):
+            # The INSERT COIN flash back on the old project-defined 15-tick hold.
+            def corrupt(p: dict) -> None:
+                for b in ss_blocks(p).values():
+                    if b["opcode"] == "operator_divide" and refs_var(b["inputs"].get("NUM1"), clock_id):
+                        b["inputs"]["NUM2"] = [1, [4, 15]]
+
+            return corrupt
+
+        def flash_push_start(p: dict) -> None:
+            # PUSH START hides again (the old flashing prompt).
+            blocks = ss_blocks(p)
+            for b in blocks.values():
+                if b["opcode"] == "looks_costume" and b["fields"].get("COSTUME", [None])[0] == "push-start":
+                    switch = blocks[b["parent"]]
+                    cursor = switch["next"]
+                    while cursor:
+                        if blocks[cursor]["opcode"] == "looks_show":
+                            blocks[cursor]["opcode"] = "looks_hide"
+                        cursor = blocks[cursor]["next"]
+
+        def table_leading_zeros(p: dict) -> None:
+            # Every best-five place counts as "always shown" (place < 7), so the leading zeros come back.
+            for b in ss_blocks(p).values():
+                if (
+                    b["opcode"] == "operator_lt"
+                    and refs_var(b["inputs"].get("OPERAND1"), director.ATTRACT_DISPLAY_PLACE_ID)
+                    and b["inputs"].get("OPERAND2") == [1, [4, 2]]
+                ):
+                    b["inputs"]["OPERAND2"] = [1, [4, 7]]
+
         for label, mutate_fn in (
             ("attract-spawns-clones", break_spawn),
             ("attract-clone-handler", break_handler),
@@ -18049,6 +20137,11 @@ class ScratchProjectTests(unittest.TestCase):
             ("credit-digit-costume-expr", break_digit_expr),
             ("table-name-glyph-expr", break_glyph_expr),
             ("costume-missing:glyph/A", drop_glyph_costume),
+            # roadmap-evidence: PRES-02 failure  (PRES-02.hud-yellow: INSERT COIN off the 16-frame clock on the title or in the demo, a flashing PUSH START, or best-five leading zeros drawn)
+            ("insert-coin-title-flash", slow_flash(director.TITLE_TICK_ID)),
+            ("insert-coin-demo-flash", slow_flash(director.TICK_ID)),
+            ("push-start-steady", flash_push_start),
+            ("table-score-leading-zeros", table_leading_zeros),
         ):
             project = load_source(scratch.SOURCE_DIR)
             mutate_fn(project)
@@ -18240,6 +20333,66 @@ class ScratchProjectTests(unittest.TestCase):
         if not state_gate():
             failures.add("entry-state-gate")
 
+        # CAB-04 (slice 21 audit): holding the bomb button picks the lowercase letter — at the Space commit (the
+        # stored letter, `append_char` xevious_main.68k 1747) and on the active cell (the drawn letter, 1717), via
+        # `check_lowercase` (1784-1792). Each is an if/else on `key b pressed` whose then-branch sets the variable
+        # from the lowercase ring and whose else-branch from ENTRY_RING. The lowercase ring is read nowhere else:
+        # a timed-out entry keeps the base letter inc/dec stored, so the in-flight finish stays uppercase.
+        def rings_under(blocks: dict, top: str) -> list:
+            rings, stack = [], [top]
+            while stack:
+                b = blocks.get(stack.pop())
+                if b is None:
+                    continue
+                if b["opcode"] == "operator_letter_of":
+                    st = b["inputs"].get("STRING")
+                    if isinstance(st, list) and isinstance(st[1], list):
+                        rings.append(st[1][1])
+                for value in b["inputs"].values():
+                    if isinstance(value, list) and len(value) >= 2 and isinstance(value[1], str):
+                        stack.append(value[1])
+            return rings
+
+        def sets_from(blocks: dict, top: Any, var_id: str, ring: str) -> bool:
+            b = blocks.get(top) if isinstance(top, str) else None
+            return (
+                b is not None
+                and b["opcode"] == "data_setvariableto"
+                and b.get("fields", {}).get("VARIABLE", [None, None])[1] == var_id
+                and rings_under(blocks, top) == [ring]
+            )
+
+        def lowercase_branch(blocks: dict, var_id: str) -> bool:
+            for b in blocks.values():
+                if b["opcode"] != "control_if_else":
+                    continue
+                cond = blocks.get((b["inputs"].get("CONDITION") or [None, None])[1])
+                if cond is None or cond["opcode"] != "sensing_keypressed":
+                    continue
+                menu = blocks.get((cond["inputs"].get("KEY_OPTION") or [None, None])[1])
+                if menu is None or menu.get("fields", {}).get("KEY_OPTION", [None])[0] != "b":
+                    continue
+                then = (b["inputs"].get("SUBSTACK") or [None, None])[1]
+                otherwise = (b["inputs"].get("SUBSTACK2") or [None, None])[1]
+                if sets_from(blocks, then, var_id, director.ENTRY_RING_LOWER) and sets_from(
+                    blocks, otherwise, var_id, director.ENTRY_RING
+                ):
+                    return True
+            return False
+
+        if not lowercase_branch(sb, director.ENTRY_NAME_BUFFER_ID):
+            failures.add("entry-lowercase-commit")
+        if not lowercase_branch(ss_blocks, director.ATTRACT_DISPLAY_CHAR_ID):
+            failures.add("entry-lowercase-active")
+        lower_reads = sum(
+            rings_under(blocks, block_id).count(director.ENTRY_RING_LOWER)
+            for blocks in (sb, ss_blocks)
+            for block_id, b in blocks.items()
+            if b["opcode"] == "operator_letter_of"
+        )
+        if lower_reads != 2:
+            failures.add("entry-lowercase-only-held")
+
         return failures
 
     def test_high_score_entry_present(self) -> None:
@@ -18346,6 +20499,49 @@ class ScratchProjectTests(unittest.TestCase):
                         except (TypeError, ValueError):
                             pass
 
+        def lowercase_key(p: dict) -> dict:
+            # The `b` key menu feeding the commit's if/else on the stage (the stage reads `b` elsewhere too).
+            sb = stage_of(p)["blocks"]
+            for b in sb.values():
+                if b["opcode"] != "control_if_else":
+                    continue
+                cond = sb.get(b["inputs"].get("CONDITION", [None, None])[1])
+                if cond is not None and cond["opcode"] == "sensing_keypressed":
+                    menu = sb[cond["inputs"]["KEY_OPTION"][1]]
+                    if menu["fields"]["KEY_OPTION"][0] == "b":
+                        return menu
+            raise AssertionError("no key-b if/else on the stage")
+
+        def break_lowercase_key(p: dict) -> None:
+            # Held fire (space) instead of the bomb button: the commit branch no longer reads the bomb key.
+            lowercase_key(p)["fields"]["KEY_OPTION"][0] = "space"
+
+        def swap_active_branches(p: dict) -> None:
+            # The active cell shows lowercase when the bomb button is NOT held.
+            for b in ss_of(p)["blocks"].values():
+                if b["opcode"] == "control_if_else" and "SUBSTACK2" in b["inputs"]:
+                    cond = ss_of(p)["blocks"].get(b["inputs"]["CONDITION"][1])
+                    if cond is not None and cond["opcode"] == "sensing_keypressed":
+                        b["inputs"]["SUBSTACK"], b["inputs"]["SUBSTACK2"] = (
+                            b["inputs"]["SUBSTACK2"],
+                            b["inputs"]["SUBSTACK"],
+                        )
+
+        def lowercase_on_timeout(p: dict) -> None:
+            # The timed-out finish appends a lowercase letter (the arcade keeps the stored base letter).
+            sb = stage_of(p)["blocks"]
+            for b in sb.values():
+                if b["opcode"] != "operator_letter_of":
+                    continue
+                st = b["inputs"].get("STRING")
+                if isinstance(st, list) and isinstance(st[1], list) and st[1][1] == director.ENTRY_RING:
+                    parent = sb.get(b.get("parent"))
+                    grand = sb.get(parent.get("parent")) if parent else None
+                    top = sb.get(grand.get("parent")) if grand else None
+                    # the commit's else-branch set sits directly under its if/else; the in-flight one does not
+                    if top is not None and top["opcode"] != "control_if_else":
+                        st[1][1] = director.ENTRY_RING_LOWER
+
         for label, mutate_fn in (
             (f"costume-missing:{director.ATTRACT_COSTUME_ENTRY_HEADER}", drop_header_costume),
             ("entry-name-role-dispatch", break_name_role_dispatch),
@@ -18353,6 +20549,9 @@ class ScratchProjectTests(unittest.TestCase):
             ("entry-commit-ring", break_commit_ring),
             ("entry-finish-names-write", break_finish_write),
             ("entry-timer-countdown", break_timer_countdown),
+            ("entry-lowercase-commit", break_lowercase_key),
+            ("entry-lowercase-active", swap_active_branches),
+            ("entry-lowercase-only-held", lowercase_on_timeout),
         ):
             project = load_source(scratch.SOURCE_DIR)
             mutate_fn(project)
@@ -19361,38 +21560,148 @@ class ScratchProjectTests(unittest.TestCase):
             ):
                 fails.add(f"B3-wall-clock-{strip}")
 
-        # B4 — the title glides in.
-        if not has("start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy"):
-            fails.add("B4-glide")
+        # B4 — the title keeps the arcade's clock. Slice 21: the logo no longer glides in (the arcade draws it in
+        # place, display_xevious_logo_flashing xevious_main.68k 891-1019); the Stage's title hold counts its ticks
+        # into `title tick`, one a frame, and the outline's flash and the sparkle read that count (1217-1290).
+        # roadmap-evidence: CAB-01 success  (CAB-01.title-sparkle: the B4 title clock — a 370-tick title hold counting `title tick` one a frame, no glide — and PRES01-attract-grid placing the in-place logo, the sparkle's start and end and the START SPACE KEY hint; harness title-logo-sparkle-and-flash follows the sparkle and the outline flash on the arcade schedule, title-logo-holds-red-with-credit clears the sparkle and holds the red on a coin)
+        # roadmap-evidence: CAB-01 failure  (CAB-01.title-sparkle: reglide_title / double_title_clock / lengthen_title and logo_at_old_rest / hint_off_row / sparkle_moves_low / logo_at_text_size negatives bite; the harness negatives shift the flash colour and lift the coined-up exit)
+        def counts_title(b):
+            if b["opcode"] != "control_repeat" or num(b["inputs"].get("TIMES")) != director.ATTRACT_TITLE_HOLD_TICKS:
+                return False
+            body, link = [], (b["inputs"].get("SUBSTACK") or [None, None])[1]
+            while link:
+                body.append(blocks["Stage"][link])
+                link = blocks["Stage"][link]["next"]
+            return (
+                [step["opcode"] for step in body] == ["control_wait", "data_changevariableby"]
+                and num(body[0]["inputs"].get("DURATION")) == 0
+                and body[1]["fields"]["VARIABLE"][1] == director.TITLE_TICK_ID
+                and num(body[1]["inputs"].get("VALUE")) == 1
+            )
 
-        # B5/B10 — the tick-counted explosion then the post-death pause; no waits. CAB-05: the explosion is ONE
-        # repeat of exactly its 7 x 4 ticks that picks a costume every tick, and the craft is hidden (straight
-        # after it) for the pause — `finish_solvalou_exploding` clears its STATE (xevious_main.68k 2079-2090).
+        if has("start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy") or not has("Stage", counts_title):
+            fails.add("B4-title-clock")
+
+        # B4 — the title and the logo-and-best-five page draw on black (slice 21, CAB-01): the arcade runs
+        # clear_bg_to_black (xevious_main.68k 633-646) before the flashing logo on the title (1217-1222) and on
+        # flash_logo_and_high_score_table (1465-1468), so the logo's opaque black tiles sit on a black screen. On
+        # entering either state the Stage hides both terrain strips and redraws them, before the title hold. The
+        # demo and the initials entry keep the forest (fill_bg_with_forest, 1316 and 1471-1473).
+        stage_blocks = blocks["Stage"]
+
+        def literals(root):
+            out, stack = set(), [root]
+            while stack:
+                b = stage_blocks.get(stack.pop()) if stack else None
+                for spec in (b or {}).get("inputs", {}).values():
+                    if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str):
+                        stack.append(spec[1])
+                    elif isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], list):
+                        out.add(spec[1][1])
+            return out - {"game state"}
+
+        def below(root):
+            seen, stack = set(), [root]
+            while stack:
+                bid = stack.pop()
+                if not isinstance(bid, str) or bid in seen or bid not in stage_blocks:
+                    continue
+                seen.add(bid)
+                stack.append(stage_blocks[bid].get("next"))
+                for spec in stage_blocks[bid].get("inputs", {}).values():
+                    if isinstance(spec, list) and len(spec) > 1 and isinstance(spec[1], str):
+                        stack.append(spec[1])
+            return seen
+
+        def blacks_title(b):
+            if b["opcode"] != "control_if":
+                return False
+            if literals(b["inputs"]["CONDITION"][1]) != {"title", director.ATTRACT_SCORES_STATE}:
+                return False
+            body, link = [], (b["inputs"].get("SUBSTACK") or [None, None])[1]
+            while link:
+                body.append(stage_blocks[link])
+                link = stage_blocks[link]["next"]
+            hidden = {
+                step["fields"]["VARIABLE"][1]
+                for step in body
+                if step["opcode"] == "data_setvariableto" and num(step["inputs"].get("VALUE")) == 0
+            }
+            strips = {director.TERRAIN_STRIP_VARS[parity]["shown"][1] for parity in ("even", "odd")}
+            redrawn = bool(body) and body[-1]["opcode"] == "event_broadcast" and (
+                body[-1]["inputs"]["BROADCAST_INPUT"][1][1] == "terrain draw"
+            )
+            then_title = any(counts_title(stage_blocks[x]) for x in below(b.get("next")))
+            return strips <= hidden and redrawn and then_title
+
+        if not has("Stage", blacks_title):
+            fails.add("B4-title-black")
+
+        # B5/B10 — the tick-counted explosion then the post-death pause; no waits. #158 (slice 21): the walk owns
+        # the 44-tick window, so the explosion keeps no clock of its own. Each tick the walk sends `death draw`;
+        # the renderer's ONE receiver draws while `dying tick < 28` (the 7 x 4-tick explosion, a costume picked
+        # every tick) and hides otherwise — the 16-tick pause after `finish_solvalou_exploding` clears the craft's
+        # STATE (xevious_main.68k 2079-2090). The window ends at `dying tick > 43` on the Stage.
         death = blocks["solv_death"]
-        explosion_loops = [
-            b
+        stage = next(t["blocks"] for t in project["targets"] if t["isStage"])
+
+        def var_operand(inp):
+            val = (inp or [None, None])[1]
+            return val[2] if isinstance(val, list) and len(val) > 2 else None
+
+        draw_ifs = [
+            death.get(b["next"])
             for b in death.values()
-            if b["opcode"] == "control_repeat"
-            and num(b["inputs"].get("TIMES")) == director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS
+            if b["opcode"] == "event_whenbroadcastreceived"
+            and b["fields"].get("BROADCAST_OPTION", [None])[0] == "death draw"
         ]
-        if len(explosion_loops) != 1 or death.get(
-            (explosion_loops[0]["inputs"].get("SUBSTACK") or [None, None])[1], {}
-        ).get("opcode") != "looks_switchcostumeto":
+        draw_if = draw_ifs[0] if len(draw_ifs) == 1 else None
+        if draw_if is None or draw_if["opcode"] != "control_if_else":
             fails.add("B5B10-explosion")
         else:
-            after = death.get(explosion_loops[0]["next"])
-            pause = death.get(after["next"]) if after else None
+            cond = death.get((draw_if["inputs"].get("CONDITION") or [None, None])[1], {})
+            drawn = []
+            bid = (draw_if["inputs"].get("SUBSTACK") or [None, None])[1]
+            while bid in death:
+                drawn.append(death[bid]["opcode"])
+                bid = death[bid]["next"]
             if (
-                after is None
-                or after["opcode"] != "looks_hide"
-                or pause is None
-                or pause["opcode"] != "control_repeat"
-                or num(pause["inputs"].get("TIMES")) != director.POST_DEATH_PAUSE_TICKS
+                cond.get("opcode") != "operator_lt"
+                or var_operand(cond["inputs"].get("OPERAND1")) != director.DYING_TICK_ID
+                or num(cond["inputs"].get("OPERAND2")) != director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS
+                or "looks_switchcostumeto" not in drawn
+                or "looks_show" not in drawn
             ):
+                fails.add("B5B10-explosion")
+            hidden = death.get((draw_if["inputs"].get("SUBSTACK2") or [None, None])[1], {})
+            if hidden.get("opcode") != "looks_hide":
                 fails.add("CAB05-death-hidden-pause")
-        if count("solv_death", "control_repeat", director.POST_DEATH_PAUSE_TICKS) != 1:
+        window_ends = [
+            b
+            for b in stage.values()
+            if b["opcode"] == "operator_gt" and var_operand(b["inputs"].get("OPERAND1")) == director.DYING_TICK_ID
+        ]
+        if (
+            len(window_ends) != 1
+            or num(window_ends[0]["inputs"].get("OPERAND2"))
+            != director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS + director.POST_DEATH_PAUSE_TICKS - 1
+        ):
             fails.add("B5B10-pause")
-        if count("solv_death", "control_wait") != 0:
+        if any(
+            count("solv_death", "control_repeat", times)
+            for times in (director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS, director.POST_DEATH_PAUSE_TICKS)
+        ):
+            fails.add("B5B10-pause")
+        # No wall-clock wait times the death. The one wait allowed is the final forest hold's `wait 0` (one paced
+        # frame per iteration, PLY-02.forest-wait), inside its FOREST_WAIT_TICKS repeat.
+        death_blocks_ = blocks["solv_death"]
+        if any(
+            num(b["inputs"].get("DURATION")) != 0
+            or death_blocks_.get(b.get("parent"), {}).get("opcode") != "control_repeat"
+            or num(death_blocks_[b["parent"]]["inputs"].get("TIMES")) != director.FOREST_WAIT_TICKS
+            for b in death_blocks_.values()
+            if b["opcode"] == "control_wait"
+        ):
             fails.add("B5B10-wall-clock")
 
         # PRES-01 — the craft clamps its own position at the four stop lines (no border sprites to touch):
@@ -19497,11 +21806,19 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertNotIn(
             "sound_playuntildone", {block["opcode"] for block in death.values()}
         )
-        self.assertTrue(
+        # #158: the walk's hit raises the cue (Stage), so the renderer no longer sends it either.
+        self.assertFalse(
             any(
                 block["opcode"] == "event_broadcast"
                 and block["inputs"]["BROADCAST_INPUT"][1][1] == "sfx death"
                 for block in death.values()
+            )
+        )
+        self.assertTrue(
+            any(
+                block["opcode"] == "event_broadcast"
+                and block["inputs"]["BROADCAST_INPUT"][1][1] == "sfx death"
+                for block in next(t for t in targets.values() if t["isStage"])["blocks"].values()
             )
         )
         self.assertTrue(
@@ -19635,20 +21952,34 @@ class ScratchProjectTests(unittest.TestCase):
             b["opcode"] = "motion_changeyby"
             b["inputs"] = {"DY": [1, [4, -1.25]]}
 
-        def break_title_glide(p):  # B4: snap the title into place
-            b = first(
-                p, "start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy"
-            )
-            b["opcode"] = "motion_gotoxy"
+        def reglide_title(p):  # B4: glide the logo in again instead of drawing it in place
+            b = first(p, "start_screen", lambda b: b["opcode"] == "motion_gotoxy")
+            b["opcode"] = "motion_glidesecstoxy"
 
-        def break_death_pause(p):  # B10: remove the post-death pause
+        def double_title_clock(p):  # B4: the title hold counts two a frame, so the flash comes early
+            b = first(
+                p, "Stage",
+                lambda b: b["opcode"] == "data_changevariableby"
+                and b["fields"]["VARIABLE"][1] == director.TITLE_TICK_ID,
+            )
+            b["inputs"]["VALUE"] = [1, [4, "2"]]
+
+        def lengthen_title(p):  # B4: the old 372-tick title hold
+            b = first(
+                p, "Stage",
+                lambda b: b["opcode"] == "control_repeat"
+                and (b["inputs"].get("TIMES") or [None, [None, None]])[1][1:2] == [director.ATTRACT_TITLE_HOLD_TICKS],
+            )
+            b["inputs"]["TIMES"] = [1, [6, "372"]]
+
+        def break_death_pause(p):  # B10: end the walk's window straight after the explosion (no pause)
             b = first(
                 p,
-                "solv_death",
-                lambda b: b["opcode"] == "control_repeat"
-                and num(b["inputs"].get("TIMES")) == director.POST_DEATH_PAUSE_TICKS,
+                "Stage",
+                lambda b: b["opcode"] == "operator_gt"
+                and (b["inputs"].get("OPERAND1") or [None, [None, None, None]])[1][2:3] == [director.DYING_TICK_ID],
             )
-            b["inputs"]["TIMES"] = [1, [4, 1]]
+            b["inputs"]["OPERAND2"] = [1, [4, director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS - 1]]
 
         def break_marker(p):  # B7: re-hide the impact marker
             b = first(p, "target_b", lambda b: b["opcode"] == "looks_show")
@@ -19666,6 +21997,10 @@ class ScratchProjectTests(unittest.TestCase):
             b = first(p, "target_a", lambda b: b["opcode"] == "looks_switchcostumeto")
             b["opcode"] = "looks_show"
 
+        def timed_death_wait(p):  # B5/B10: time the forest hold by the wall clock (wait 0.1 s per frame)
+            b = first(p, "solv_death", lambda b: b["opcode"] == "control_wait")
+            b["inputs"]["DURATION"] = [1, [5, "0.1"]]
+
         def break_drop_receive(p):  # B2: regress the bomb sprite back to a drop-sound receiver
             b = first(p, "bomb", lambda b: b["opcode"] == "event_whenbroadcastreceived")
             b["fields"]["BROADCAST_OPTION"][0] = "bomb"
@@ -19678,19 +22013,26 @@ class ScratchProjectTests(unittest.TestCase):
             b = first(p, "target_b", lambda b: b["opcode"] == "event_whenbroadcastreceived")
             b["fields"]["BROADCAST_OPTION"][0] = "bomb"
 
-        def explosion_loop(p):
-            return first(
+        def death_draw_if(p):
+            death = blocks_of(p, "solv_death")
+            hat = first(
                 p,
                 "solv_death",
-                lambda b: b["opcode"] == "control_repeat"
-                and num(b["inputs"].get("TIMES")) == director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS,
+                lambda b: b["opcode"] == "event_whenbroadcastreceived"
+                and b["fields"].get("BROADCAST_OPTION", [None])[0] == "death draw",
             )
+            return death, death[hat["next"]]
 
         def break_explosion_holds(p):  # B5: lengthen the explosion by a tick
-            explosion_loop(p)["inputs"]["TIMES"] = [1, [4, director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS + 1]]
+            death, draw_if = death_draw_if(p)
+            death[draw_if["inputs"]["CONDITION"][1]]["inputs"]["OPERAND2"] = [
+                1,
+                [4, director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS + 1],
+            ]
 
         def show_through_pause(p):  # CAB-05: leave the last explosion frame drawn over the pause
-            blocks_of(p, "solv_death")[explosion_loop(p)["next"]]["opcode"] = "looks_show"
+            death, draw_if = death_draw_if(p)
+            death[draw_if["inputs"]["SUBSTACK2"][1]]["opcode"] = "looks_show"
 
         def break_bomb_arm(p):  # B2: fail to set the in-flight guard on arm (now Stage-owned)
             b = first(
@@ -19701,6 +22043,31 @@ class ScratchProjectTests(unittest.TestCase):
                 and num(b["inputs"].get("VALUE")) == 1,
             )
             b["inputs"]["VALUE"] = [1, [4, 2]]
+
+        def title_black_blocks(p):
+            stage = blocks_of(p, "Stage")
+            return [
+                b for b in stage.values()
+                if b["opcode"] == "data_setvariableto"
+                and b["fields"]["VARIABLE"][1] in {director.TERRAIN_STRIP_VARS[x]["shown"][1] for x in ("even", "odd")}
+                and num(b["inputs"].get("VALUE")) == 0
+                and stage.get(b["parent"], {}).get("opcode") in ("control_if", "data_setvariableto")
+            ]
+
+        def forest_title(p):  # B4: the title keeps the forest behind the logo (build 1's black blocks)
+            for b in title_black_blocks(p):
+                b["inputs"]["VALUE"] = [1, [10, "1"]]
+
+        def black_demo_not_scores(p):  # B4: the black screen moved from the best-five page to the demo
+            stage = blocks_of(p, "Stage")
+            for b in title_black_blocks(p):
+                guard = stage[b["parent"]]
+                if guard["opcode"] != "control_if":
+                    continue
+                for spec in stage[guard["inputs"]["CONDITION"][1]]["inputs"].values():
+                    literal = stage[spec[1]]["inputs"]["OPERAND2"][1]
+                    if literal[1] == director.ATTRACT_SCORES_STATE:
+                        literal[1] = "attract-demo"
 
         def break_terrain_layer(p):  # B9: stop sending terrain to the back
             for b in blocks_of(p, "area_01a").values():
@@ -19715,10 +22082,15 @@ class ScratchProjectTests(unittest.TestCase):
             ("B2-arm", break_bomb_arm),
             ("B2-no-sprite-sound", break_drop_receive),
             ("B3-wall-clock-area_01a", free_running_terrain),
-            ("B4-glide", break_title_glide),
+            ("B4-title-clock", reglide_title),
+            ("B4-title-clock", double_title_clock),
+            ("B4-title-clock", lengthen_title),
+            ("B4-title-black", forest_title),
+            ("B4-title-black", black_demo_not_scores),
             ("B5B10-explosion", break_explosion_holds),
             ("CAB05-death-hidden-pause", show_through_pause),
             ("B5B10-pause", break_death_pause),
+            ("B5B10-wall-clock", timed_death_wait),
             ("B6-crosshair-costume", break_crosshair_costume),
             ("B6-crosshair-not-receiver", couple_crosshair_to_bomb),
             ("B7-marker-show", break_marker),
@@ -19742,6 +22114,7 @@ class ScratchProjectTests(unittest.TestCase):
             failures = self._regression_contract_failures(project)
             self.assertIn(label, failures, f"corruption '{label}' was not caught")
 
+    # The Giddo Spario is not here: since slice 21 its hit draws its own burst (giddo_spario_hit 5241-5252).
     CAB05_AIR_EXPLOSION_TARGETS = (
         director.TOROID_TARGET,
         director.TERRAZI_TARGET,
@@ -19750,8 +22123,6 @@ class ScratchProjectTests(unittest.TestCase):
         director.ZOSHI_TARGET,
         director.JARA_TARGET,
         director.ZAKATO_TARGET,
-        director.GIDDO_SPARIO_TARGET,
-        director.BRAG_SPARIO_TARGET,
         director.GARU_ZAKATO_TARGET,
     )
 
@@ -19773,12 +22144,15 @@ class ScratchProjectTests(unittest.TestCase):
         air = [f"air-explosion/burst/{phase:02d}/{flip}" for phase in range(1, 6) for flip in flips]
         for target in self.CAB05_AIR_EXPLOSION_TARGETS:
             listed = names(target)
-            if air[0] not in listed or listed[listed.index(air[0]):] != air:
+            # One contiguous run in phase-then-flip order (the Zakato lists its teleport and self-destruct after it).
+            start = listed.index(air[0]) if air[0] in listed else None
+            if start is None or listed[start:start + len(air)] != air:
                 fails.add(f"air-layout-{target}")
+            # The edge gate's move size is not a drawn size: the clone takes its render size before it draws.
             sizes = {
                 num(b["inputs"].get("SIZE"))
                 for b in targets[target]["blocks"].values()
-                if b["opcode"] == "looks_setsizeto"
+                if b["opcode"] == "looks_setsizeto" and num(b["inputs"].get("SIZE")) != director.OFF_EDGE_MOVE_SIZE
             }
             if len(sizes) != 1:
                 fails.add(f"air-one-size-{target}")
@@ -20172,8 +22546,10 @@ class ScratchProjectTests(unittest.TestCase):
             self.assertIn(label, self._cab05_weapon_art_failures(project), f"corruption '{label}' was not caught")
 
     def _pres01_framing_failures(self, project: dict) -> set[str]:
-        """PRES-01 playfield framing as a static contract (docs/mechanics/053): no border sprites; every
-        slot-driven world renderer draws only inside the visible rows [4, 40) and hides whole otherwise;
+        """PRES-01 playfield framing as a static contract (docs/mechanics/053, 056): no border sprites; every
+        slot-driven world renderer draws while any of it can reach the visible rows 4-39 — its slot row within
+        RENDER_VIEW_MARGIN_ROWS of them — and hides otherwise, and it moves at OFF_EDGE_MOVE_SIZE and then
+        takes SPRITE_RENDER_SIZE, so a sprite over the stage edge is clipped there, never fenced back on;
         world renderers never front themselves (so the HUD, fronted once at creation, draws over them while
         the craft still fronts every tick); and the static world band keeps ground under every flyer."""
         targets = {t["name"]: t for t in project["targets"]}
@@ -20181,14 +22557,21 @@ class ScratchProjectTests(unittest.TestCase):
         fails: set[str] = set()
         if set(director.FRAME_TARGETS) & set(targets):
             fails.add("frames-present")
-        view_units = director.RENDER_VIEW_ROWS * director.SLOT_UNITS_PER_CELL
-        first_units = director.RENDER_VIEW_FIRST_ROW * director.SLOT_UNITS_PER_CELL
-        if view_units != 40 * 256:  # row 40 is where check_scroll_offscreen culls (xevious_main.68k 4827-4839)
+        margin = director.RENDER_VIEW_MARGIN_ROWS
+        view_units = (director.RENDER_VIEW_ROWS + margin) * director.SLOT_UNITS_PER_CELL
+        first_units = (director.RENDER_VIEW_FIRST_ROW - margin) * director.SLOT_UNITS_PER_CELL
+        if director.RENDER_VIEW_ROWS != 40:  # row 40 is where check_scroll_offscreen culls (xevious_main.68k 4827-4839)
             fails.add("view-rows")
         # Rows 0-3 sit above the stage top under the 1.25 render scale (docs/mechanics/054): row 4 is the
         # first row whose draw position is inside the window.
-        if first_units != 4 * 256 or director.RENDER_ROW_TOP - 4 * director.RENDER_ROW_STAGE >= 180:
+        if director.RENDER_VIEW_FIRST_ROW != 4 or director.RENDER_ROW_TOP - 4 * director.RENDER_ROW_STAGE >= 180:
             fails.add("view-rows")
+        # The margin is the farthest a world sprite reaches from its slot position: a 2x2 drawn
+        # DOUBLE_TILE_STAGE_OFFSET down of it plus the half of its 16-px tile at the render size. Any less and a
+        # sprite that still overlaps the window pops out whole at the edge; much more only costs hidden clones.
+        reach = director.DOUBLE_TILE_STAGE_OFFSET + 16 * director.SPRITE_RENDER_SIZE / 100
+        if not (reach <= margin * director.RENDER_ROW_STAGE < reach + director.RENDER_ROW_STAGE):
+            fails.add("view-margin")
 
         for name in director.WORLD_RENDER_LAYER_ORDERS:
             target = targets.get(name)
@@ -20238,6 +22621,18 @@ class ScratchProjectTests(unittest.TestCase):
             ]
             if not gates:
                 fails.add(f"no-gate-{name}")
+            for gate in gates:
+                # The gated body opens at OFF_EDGE_MOVE_SIZE (so its move is never fenced onto the stage) and
+                # closes at SPRITE_RENDER_SIZE (the size it draws at).
+                chain, cur = [], blocks[gate]["inputs"]["SUBSTACK"][1]
+                while isinstance(cur, str) and cur in blocks:
+                    chain.append(blocks[cur])
+                    cur = blocks[cur].get("next")
+                sized = lambda b, size: b["opcode"] == "looks_setsizeto" and num(b["inputs"].get("SIZE")) == size
+                if len(chain) < 3 or not sized(chain[0], director.OFF_EDGE_MOVE_SIZE) or not sized(
+                    chain[-1], director.SPRITE_RENDER_SIZE
+                ):
+                    fails.add(f"edge-fence-{name}")
             covered = set()
             for gate in gates:
                 covered |= reach(blocks[gate]["inputs"]["SUBSTACK"][1])
@@ -20322,7 +22717,9 @@ class ScratchProjectTests(unittest.TestCase):
             | run(0x0500, range(3))  # 2UP
             | run(0x1200, [0, 1, 2, 3, 5, 6, 7, 8, 9])  # HIGH SCORE (display_high_score_text 1821-1831)
             | run(0x1118, [0, 1, 2, 3, 5, 6, 7, 8])  # GAME OVER (display_game_over 838-843)
-            | {(cell(0x1118)[0] + 85, cell(0x1118)[1])}  # the 18-char banner's centre, starting on the GAME OVER cell
+            | {(cell(0x1118)[0] + 40, cell(0x1118)[1])}  # the banner's GAME OVER line, centred on its 9-char run
+            # the banner's player line, centred on the arcade's 10-char run (display_game_over_player_1_2 845-855)
+            | {(cell(0x121A)[0] + 45, cell(0x121A)[1])}
         )
 
         def as_num(value):
@@ -20447,8 +22844,8 @@ class ScratchProjectTests(unittest.TestCase):
         # sprite_draw_double_width_and_height (amiga.68k 2529-2544) draws its 32-px picture 8 px right of AND 8 px
         # below a 16-px sprite at the same position, so the ground pool places a SLOT_GARU_BASE slot 10 units right
         # (+x) and 10 down (-y) of the shared map — and only the base, of both families. The 1x1 node is seeded one
-        # cell below and one right of its base (node `_X` MSB 1, `_Y` = base `_Y` - 0x100) at all four Garu spawn
-        # sites (schedule + debug key, both families), which centres the top on the base at the arcade's place.
+        # cell below and one right of its base (node `_X` MSB 1, `_Y` = base `_Y` - 0x100) at both Garu spawn
+        # schedule sites (both families), which centres the top on the base at the arcade's place.
         ground = next(t for t in project["targets"] if t["name"] == director.GROUND_RENDER_TARGET)["blocks"]
         shifted_bases = 0
         for bid, b in ground.items():
@@ -20500,7 +22897,7 @@ class ScratchProjectTests(unittest.TestCase):
             director.DOUBLE_TILE_STAGE_OFFSET != 8 * scale
             or (director.GARU_NODE_SLOT_X, director.GARU_NODE_SLOT_Y_DELTA) != (256, -256)
             or shifted_bases != 2
-            or (node_x_seeds, node_y_seeds) != (4, 4)
+            or (node_x_seeds, node_y_seeds) != (2, 2)
         ):
             fails.add("PRES01-garu-double-tile")
         # PRES01-sol-double-tile — the Sol Tower rise frames (tools/sol_tower_render.py) are 32x32 cells laid from
@@ -20559,6 +22956,11 @@ class ScratchProjectTests(unittest.TestCase):
         # arcade's 1P line, so the pair centres under the prompt); the best-five header centred where the arcade's
         # 18-letter run 0x1615 centres; the table's rank/score/name columns two columns right of the arcade's (the
         # 3-letter ordinal at 0x17xx, the score from 0x12xx, the name from 0x09xx); the logo resting above it.
+        # Slice 21: the logo is the arcade's own tile layers (display_xevious_logo_flashing 891-1019), drawn in
+        # place over columns 8..27 and rows 10..17 (its background scrolled one row low, 896), so centred at
+        # (0, 40); the port's START SPACE KEY hint is a 15-letter run on row 20 from column 11; the sparkle starts
+        # at _X 0xD60 / _Y 0x1660 (1223-1226) on the sprite map and ends where it stops moving, 135 frames on at
+        # 1.25 units a frame (1237-1258). Its moving goto reads the title clock, so it has no literal X.
         def run_centre(offset, chars):
             col, row = 31 - (offset >> 8), offset & 0xFF
             return (10 * (col + (chars - 1) / 2) - 175, 175 - 10 * row)
@@ -20566,37 +22968,44 @@ class ScratchProjectTests(unittest.TestCase):
         def cells(offset, n):
             return {run_centre(offset - 0x100 * k, 1) for k in range(n)}
 
-        logo_size = round(100 * 200 / 304, 2)  # the logo body (304 units at 100%) on its 20 arcade columns
-        logo_rest = (0, round(50 - 51.5 * logo_size / 100))
+        logo_rest = (10 * (8 + 19 / 2) - 175, 175 - 10 * (10 + 7 / 2))
+        sparkle_start = (1.25 * (128 - (0x1660 // 32 + 8)), 210 - 1.25 * 0xD60 / 32)
+        sparkle_end = (sparkle_start[0] + 1.25 * 135, sparkle_start[1])
         expected_attract = (
-            {(0, 250), logo_rest, run_centre(0x0923, 6), run_centre(0x0223, 1), run_centre(0x0123, 1)}
+            {logo_rest, run_centre(0x0923, 6), run_centre(0x0223, 1), run_centre(0x0123, 1)}
             | {run_centre(0x1517, 17), run_centre(0x121C, 11), run_centre(0x1119, 8), run_centre(0x111A, 9)}
             | {run_centre(0x1509, 15), run_centre(0x160C, 19), run_centre(0x1112, 8)}
-            | {run_centre(0x1615, 18)}
+            | {run_centre(0x1615, 18), run_centre(0x1414, 15), sparkle_start, sparkle_end}
             | cells(0x1218, 10)
         )
         for row in range(0x18, 0x22, 2):
             expected_attract |= {run_centre(0x1700 | row, 3)} | cells(0x1200 | row, 7) | cells(0x0900 | row, 10)
         start = targets["start_screen"]["blocks"]
-        attract_gotos, glides = set(), set()
+        attract_gotos, moving_gotos, glides = set(), set(), 0
         for b in start.values():
             if isinstance(b, dict) and b["opcode"] in ("motion_gotoxy", "motion_glidesecstoxy"):
                 spot = (as_num(num(b["inputs"].get("X"))), as_num(num(b["inputs"].get("Y"))))
-                (glides if b["opcode"] == "motion_glidesecstoxy" else attract_gotos).add(spot)
-        # The logo body (bitmap rows 154-359, centred 51.5 units above the costume centre at 100%) glides to the
-        # centre of its arcade rows 9..16 (display_xevious_logo_flashing 891-1019): y 50.
-        if attract_gotos != {(float(x), float(y)) for x, y in expected_attract} or glides != {
-            (0.0, float(round(50 - 51.5 * logo_size / 100)))
-        }:
+                glides += b["opcode"] == "motion_glidesecstoxy"
+                (moving_gotos if spot[0] is None else attract_gotos).add(spot)
+        if (
+            attract_gotos != {(float(x), float(y)) for x, y in expected_attract}
+            or moving_gotos != {(None, sparkle_start[1])}
+            or glides
+        ):
             fails.add("PRES01-attract-grid")
         # The text costumes draw at the 10-unit pitch (a 20-px resolution-2 advance at 100%, CAB-05) and the logo
-        # at its arcade width; the text size is set on the clone's own script, so every text clone draws on the grid.
+        # and sparkle at the sprite scale (an 8-px cell = 10 units, SPRITE_RENDER_SIZE): the logo original on the
+        # green flag, the sparkle and outline clones on their own scripts. The text size is set on the clone's own
+        # script, so every text clone draws on the grid.
         text_size = 100.0
-        start_sizes = {
-            as_num(num(b["inputs"].get("SIZE"))): top_of(start, bid)
-            for bid, b in start.items() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
-        }
-        if start_sizes != {logo_size: "event_whenflagclicked", text_size: "control_start_as_clone"}:
+        start_sizes: dict = {}
+        for bid, b in start.items():
+            if isinstance(b, dict) and b["opcode"] == "looks_setsizeto":
+                start_sizes.setdefault(as_num(num(b["inputs"].get("SIZE"))), set()).add(top_of(start, bid))
+        if start_sizes != {
+            float(director.SPRITE_RENDER_SIZE): {"event_whenflagclicked", "control_start_as_clone"},
+            text_size: {"control_start_as_clone"},
+        } or director.SPRITE_RENDER_SIZE != 125:
             fails.add("PRES01-attract-grid")
         # The hidden credit on the arcade's credit rows 33-34 (display_easter_egg 6018-6048: 0x1921 / 0x1722), its
         # 20-character line centred on columns 8..27, its 20-px resolution-2 advance drawn at 100% on the 10-unit pitch.
@@ -20615,9 +23024,9 @@ class ScratchProjectTests(unittest.TestCase):
 
         # PRES01-sprite-size — the baseline sprites (bitmap-resolution-2 art sized for the old 2.25 units per px) keep
         # their committed target size as history and are rescaled on the green flag by 1.25 / 2.25. CAB-05: the
-        # death sprite, crosshair, bomb target and bomb draw only art rendered from the pin (resolution 1), so each
-        # sets the shared sprite scale on the green flag.
-        for name in ("solv_death", "target_a", "target_b", "bomb"):
+        # death sprite, crosshair, bomb target and bomb — and, since slice 21, the shot — draw only art rendered
+        # from the pin (resolution 1), so each sets the shared sprite scale on the green flag.
+        for name in ("solv_death", "target_a", "target_b", "bomb", "blaster"):
             pinned_sizes = [
                 (as_num(num(b["inputs"].get("SIZE"))), top_of(targets[name]["blocks"], bid))
                 for bid, b in targets[name]["blocks"].items()
@@ -20625,7 +23034,7 @@ class ScratchProjectTests(unittest.TestCase):
             ]
             if pinned_sizes != [(director.SPRITE_RENDER_SIZE, "event_whenflagclicked")]:
                 fails.add("PRES01-sprite-size")
-        for name in ("solvalou", "blaster"):
+        for name in ("solvalou",):
             bl = targets[name]["blocks"]
             found = [
                 (as_num(num(b["inputs"].get("SIZE"))), top_of(bl, bid))
@@ -20667,11 +23076,13 @@ class ScratchProjectTests(unittest.TestCase):
             return [blocks[x] for x in seen]
 
         # The exact read: `player slot x/y` set from the craft position with no rounding anywhere in the value.
+        # (#158: the pause's literal-0 write beside it is pinned by the PLY-02 contract.)
         read_body = _proc_body_blocks(stage, director.READ_PLAYER_PROCCODE)
         for var_id in (director.PLAYER_SLOT_X_ID, director.PLAYER_SLOT_Y_ID):
             sets = [
                 b for b in read_body
                 if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == var_id
+                and isinstance((b["inputs"].get("VALUE") or [None, None])[1], str)
             ]
             value = sets[0]["inputs"].get("VALUE") if len(sets) == 1 else None
             value_id = value[1] if isinstance(value, list) and len(value) >= 2 and isinstance(value[1], str) else None
@@ -20735,6 +23146,7 @@ class ScratchProjectTests(unittest.TestCase):
         attract = (
             [(f"digit/{d}", (str(d),)) for d in range(10)]
             + [(f"glyph/{c}", (c,)) for c in hud_glyphs.ATTRACT_NAME_GLYPHS]
+            + [(f"glyph/{c}", (c,)) for c in hud_glyphs.LOWERCASE_GLYPHS]
             + [
                 (name, (text,))
                 for name, text in hud_glyphs.ATTRACT_LABELS
@@ -20879,17 +23291,17 @@ class ScratchProjectTests(unittest.TestCase):
             return next(t for t in p["targets"] if t["name"] == name)
 
         def gate_high_bound(p, name):
-            view_units = director.RENDER_VIEW_ROWS * director.SLOT_UNITS_PER_CELL
+            view_units = (director.RENDER_VIEW_ROWS + director.RENDER_VIEW_MARGIN_ROWS) * director.SLOT_UNITS_PER_CELL
             return next(
                 b for b in target(p, name)["blocks"].values()
                 if b["opcode"] == "operator_lt" and self._numeric(b["inputs"].get("OPERAND2")) == view_units
             )
 
-        def widen_gate(p):  # the toroid's bottom cut moved past row 40 -> no longer the on-field gate
+        def widen_gate(p):  # the toroid's bottom cut moved far past row 43 -> no longer the on-field gate
             gate_high_bound(p, director.TOROID_TARGET)["inputs"]["OPERAND2"] = [1, [4, 99999]]
 
-        def lower_gate_to_row_0(p):  # the kapi's top cut back at row 0 -> drawn fenced at the stage top in rows 0-3
-            first_units = director.RENDER_VIEW_FIRST_ROW * director.SLOT_UNITS_PER_CELL
+        def lower_gate_to_row_0(p):  # the kapi's top cut moved to row 0 -> drawn wholly above the stage top
+            first_units = (director.RENDER_VIEW_FIRST_ROW - director.RENDER_VIEW_MARGIN_ROWS) * director.SLOT_UNITS_PER_CELL
             for b in target(p, director.KAPI_TARGET)["blocks"].values():
                 if b["opcode"] == "operator_lt" and self._numeric(b["inputs"].get("OPERAND2")) == first_units:
                     b["inputs"]["OPERAND2"] = [1, [4, 0]]
@@ -20905,7 +23317,23 @@ class ScratchProjectTests(unittest.TestCase):
 
         def refront_bullet(p):  # an enemy bullet fronting itself every tick again (would cover the HUD)
             blocks = target(p, director.ENEMY_BULLET_TARGET)["blocks"]
-            next(b for b in blocks.values() if b["opcode"] == "looks_setsizeto")["opcode"] = "looks_gotofrontback"
+            next(b for b in blocks.values() if b["opcode"] == "looks_cleargraphiceffects" or b["opcode"] == "looks_show")["opcode"] = "looks_gotofrontback"
+
+        def gate_sizes(p, name):
+            return [
+                b for b in target(p, name)["blocks"].values()
+                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) == director.OFF_EDGE_MOVE_SIZE
+            ]
+
+        def move_at_render_size(p):  # andor's part moves at its render size again -> fenced back onto the stage
+            for b in gate_sizes(p, director.GROUND_RENDER_TARGET):
+                b["inputs"]["SIZE"] = [1, [4, director.SPRITE_RENDER_SIZE]]
+
+        def keep_move_size(p):  # the zakato keeps the move size -> draws at the player's clamp, not 125
+            blocks = target(p, director.ZAKATO_TARGET)["blocks"]
+            for b in blocks.values():
+                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) == director.SPRITE_RENDER_SIZE:
+                    b["inputs"]["SIZE"] = [1, [4, director.OFF_EDGE_MOVE_SIZE]]
 
         def sink_toroid(p):  # a flyer back at its old layer, below the ground band
             target(p, director.TOROID_TARGET)["layerOrder"] = 18
@@ -21044,6 +23472,33 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (100, "100"):
                     b["inputs"]["SIZE"] = [4, [4, 58.82]]
 
+        def logo_at_old_rest(p):  # slice 21: the logo back at the old glide's resting y (16) off its rows
+            for b in target(p, "start_screen")["blocks"].values():
+                if b["opcode"] == "motion_gotoxy" and self._numeric(b["inputs"]["Y"]) in (40, "40"):
+                    b["inputs"]["Y"] = [4, [4, 16]]
+
+        def hint_off_row(p):  # slice 21: the START SPACE KEY hint half a row off its text row
+            for b in target(p, "start_screen")["blocks"].values():
+                if b["opcode"] == "motion_gotoxy" and self._numeric(b["inputs"]["Y"]) in (-25, "-25"):
+                    b["inputs"]["Y"] = [4, [4, -30]]
+
+        def sparkle_moves_low(p):  # slice 21: the moving sparkle a row below the letters' top edge
+            for b in target(p, "start_screen")["blocks"].values():
+                if (
+                    b["opcode"] == "motion_gotoxy"
+                    and self._numeric(b["inputs"]["X"]) is None
+                    and self._numeric(b["inputs"]["Y"]) in (76.25, "76.25")
+                ):
+                    b["inputs"]["Y"] = [4, [4, 66.25]]
+
+        def logo_at_text_size(p):  # slice 21: the logo original drawn at the text size, not the sprite scale
+            for b in target(p, "start_screen")["blocks"].values():
+                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (
+                    director.SPRITE_RENDER_SIZE, str(director.SPRITE_RENDER_SIZE)
+                ):
+                    b["inputs"]["SIZE"] = [4, [4, 100]]
+                    return
+
         def unscale_credit(p):  # the hidden credit back at the old 45.45% run-time downscale
             for b in target(p, director.EASTER_EGG_TARGET)["blocks"].values():
                 if b["opcode"] == "looks_setsizeto":
@@ -21085,6 +23540,10 @@ class ScratchProjectTests(unittest.TestCase):
             ("PRES01-attract-grid", drift_push_start),
             ("PRES01-attract-grid", unscale_attract_text),
             ("PRES01-attract-grid", unscale_credit),
+            ("PRES01-attract-grid", logo_at_old_rest),
+            ("PRES01-attract-grid", hint_off_row),
+            ("PRES01-attract-grid", sparkle_moves_low),
+            ("PRES01-attract-grid", logo_at_text_size),
             ("PRES01-attract-grid", credit_off_grid),
             ("PRES01-attract-grid", unshift_table),
             ("PRES01-attract-grid", selector_from_col_10),
@@ -21101,6 +23560,8 @@ class ScratchProjectTests(unittest.TestCase):
             (f"no-gate-{director.KAPI_TARGET}", lower_gate_to_row_0),
             (f"ungated-show-{director.GROUND_RENDER_TARGET}", ungate_ground),
             (f"world-fronts-{director.ENEMY_BULLET_TARGET}", refront_bullet),
+            (f"edge-fence-{director.GROUND_RENDER_TARGET}", move_at_render_size),
+            (f"edge-fence-{director.ZAKATO_TARGET}", keep_move_size),
             ("world-band", sink_toroid),
             ("frames-present", restore_frame),
         ]
@@ -21108,6 +23569,40 @@ class ScratchProjectTests(unittest.TestCase):
             project = copy.deepcopy(base)
             corrupt(project)
             self.assertIn(label, self._pres01_framing_failures(project), f"corruption '{label}' was not caught")
+
+    def _off_edge_box_failures(self, project: dict, move_size: float) -> list[str]:
+        """Every world costume, moved at `move_size`, has a box tall enough that the stage fence never pulls it
+        in. Scratch keeps min(15, half the box) of a moving sprite on the stage (scratch-render
+        getFencedPositionOfDrawable), and the player clamps a size to a box 1.5 stages across
+        (scratch-vm RenderedTarget.setSize), so the clamped half-height less 15 must reach the farthest drawn
+        position past the stage edge: the last gated row plus a 2x2's offset."""
+        lowest = director.RENDER_ROW_TOP - (
+            director.RENDER_VIEW_ROWS + director.RENDER_VIEW_MARGIN_ROWS - 1
+        ) * director.RENDER_ROW_STAGE
+        highest = director.RENDER_ROW_TOP - (
+            director.RENDER_VIEW_FIRST_ROW - director.RENDER_VIEW_MARGIN_ROWS
+        ) * director.RENDER_ROW_STAGE
+        overhang = max(highest - 180, -(lowest - director.DOUBLE_TILE_STAGE_OFFSET) - 180)
+        fails = []
+        for target in project["targets"]:
+            if target["name"] not in director.WORLD_RENDER_LAYER_ORDERS:
+                continue
+            for costume in target["costumes"]:
+                data = (scratch.SOURCE_DIR / "assets" / costume["md5ext"]).read_bytes()
+                width, height = struct.unpack(">II", data[16:24])
+                width, height = (v / costume.get("bitmapResolution", 1) for v in (width, height))
+                scale = min(move_size / 100, 1.5 * 480 / width, 1.5 * 360 / height)
+                if height * scale / 2 - 15 < overhang:
+                    fails.append(f"{target['name']}/{costume['name']}")
+        return fails
+
+    def test_pres01_world_sprites_clip_at_the_stage_edge(self) -> None:
+        # Slice 21 (docs/mechanics/056): a world sprite over the top or bottom edge is clipped there, as the
+        # arcade's screen clips it, instead of being fenced back onto the stage or hidden whole.
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual([], self._off_edge_box_failures(base, director.OFF_EDGE_MOVE_SIZE))
+        # Negative: moved at the render size, every world sprite would be fenced at the edge.
+        self.assertTrue(self._off_edge_box_failures(base, director.SPRITE_RENDER_SIZE))
 
     # Roadmap closure evidence for leaf `player.ground-targeting` (WPN-03 target-lock, WPN-04 bomb-flight).
     # The crosshair (slot 35) leads the craft by the fixed 96-px forward lead and locks the bomb target
@@ -21143,10 +23638,9 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(
             set(), sensed & arrow_keys, "the Stage walk must not steer the bomb sight by arrow keys"
         )
-        # Only the bomb-arm 'b' poll, the debug-spawn 't' poll, the debug-ground 'g' poll, the
-        # debug-pause 'p' poll, and the CAB-02 coin 'c' poll are expected Stage key reads ('t'/'g'/'p'
-        # are temporary dev tools tracked for removal, #119; 'c' is the permanent coin key — slice 17).
-        self.assertLessEqual(sensed, {"b", "t", "g", "p", "c"}, sensed)
+        # Only the bomb-arm 'b' poll and the CAB-02 coin 'c' poll are expected Stage key reads (the
+        # T/G/P playtest keys were removed in slice 21, #119; 'c' is the permanent coin key — slice 17).
+        self.assertLessEqual(sensed, {"b", "c"}, sensed)
 
         # Negative: re-add an arrow-key branch (an arrow-key poll on the Stage) → the guard fires.
         corrupt = copy.deepcopy(project)
@@ -21464,13 +23958,13 @@ class ScratchProjectTests(unittest.TestCase):
                 SPRITE_SHEET_HASHES[name],
                 hashlib.sha256(assets[asset]).hexdigest(),
             )
-            if name in ("Bonus Flag", "Andor Genesis", "Sol Tower", "Effects"):
+            if name in ("Bonus Flag", "Andor Genesis", "Sol Tower", "Effects", "Reference Art"):
                 # The reference-decoded sheets — credited to the pinned arcade reference (jotd666), not
                 # Spriters Resource: no Spriters Resource sheet isolates the Special Flag sprite (SEC-02),
                 # the Andor rip only shows assembled octagons that cannot be sliced into separable
                 # part tiles (BOSS-01), the Sol Tower crops lack the tower's shadow, and the effects rows
-                # (CAB-05) need the reference's own codes at each colour step, so all four are rendered
-                # from the pin.
+                # (CAB-05) and the slice-21 reference art need the reference's own codes at each colour step
+                # and flip, so all five are rendered from the pin.
                 self.assertIn("jotd666/xevious", provenance[asset]["origin"])
             else:
                 self.assertIn(
@@ -21505,7 +23999,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "612ff06a0c03fa17fc5619d7f2ca3973dda48f7a94b07b73f18255e6e675b3f6",
+            "84f055a2902d03ed96d5398466be074e8fc4619656481fe2f4eb0c8d90036e0f",
             build_hash,
         )
 
