@@ -26,6 +26,9 @@ CONTACT_SHEET_PATH = ROOT / "docs" / "images" / "sprite-extraction-proof.png"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 GENERATOR_VERSION = 1
 GENERATED_TARGET = "toroid_sprite_proof"
+# #23: the proof target's draw layer is pinned, so it never depends on which targets another generator has
+# already added (game_director pins its own the same way: the HUD at 16 just below, the world band above).
+GENERATED_LAYER_ORDER = 17
 MANAGED_TARGETS = {"solvalou", GENERATED_TARGET}
 FRAME_NAME = re.compile(r"^[a-z0-9]+(?:[/-][a-z0-9]+)*$")
 # A frame may carry an optional `flips` list: each token emits one costume that is a deterministic
@@ -811,19 +814,10 @@ def expected_project(
         derivative.frame["name"]
         for derivative in derivatives
     } | (prior_frame_names or set())
-    # Preserve the generated target's existing draw layer if it is already in the project, so a
-    # SIBLING target another generator adds (e.g. game_director's gameplay targets) cannot shift it
-    # — otherwise recomputing max(existing)+1 makes the two generators disagree over this one field
-    # and neither reaches a fixpoint (order-independence, arch review 3a). Only when the target is
-    # absent (a first extraction) is a fresh top layer assigned.
-    prior_layer = next(
-        (
-            target.get("layerOrder")
-            for target in project["targets"]
-            if target.get("name") == GENERATED_TARGET and isinstance(target.get("layerOrder"), int)
-        ),
-        None,
-    )
+    # The generated target's draw layer is the pinned GENERATED_LAYER_ORDER, never recomputed from the
+    # targets already present, so a SIBLING target another generator adds (e.g. game_director's gameplay
+    # targets) cannot shift it and a first extraction lands on the same layer as a re-extraction (#23;
+    # order-independence, arch review 3a).
     project["targets"] = [
         target
         for target in project["targets"]
@@ -846,15 +840,7 @@ def expected_project(
             _costume(derivative)
         )
     solvalou["costumes"].extend(by_target.get("solvalou", []))
-    existing_orders = [
-        target.get("layerOrder")
-        for target in project["targets"]
-        if isinstance(target.get("layerOrder"), int)
-    ]
-    generated = _generated_target(
-        by_target.get(GENERATED_TARGET, []),
-        prior_layer if prior_layer is not None else max(existing_orders, default=-1) + 1,
-    )
+    generated = _generated_target(by_target.get(GENERATED_TARGET, []), GENERATED_LAYER_ORDER)
     insertion = next(
         (
             index

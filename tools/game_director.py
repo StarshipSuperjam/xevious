@@ -14832,6 +14832,15 @@ WORLD_RENDER_LAYER_ORDERS = {
     ENEMY_BULLET_TARGET: 40,
 }
 
+# #23: the two other targets this generator creates keep fixed layers too. Each used to take
+# `max(existing) + 1` once, at creation, so its number depended on which targets another generator had
+# already added — regenerating in a different order renumbered them. These are the values the committed
+# project already holds, so pinning them changes no draw order: the HUD sits above the base targets and
+# the sprite-extraction proof (17, sprite_extractor.GENERATED_LAYER_ORDER) sits just above the HUD, and
+# the SEC-03 overlay tops everything, above the bezel (BEZEL_LAYER_ORDER).
+HUD_LAYER_ORDER = 16
+EASTER_EGG_LAYER_ORDER = 42
+
 # PRES-01: the four baseline border sprites are retired — the play area is the whole stage. They were
 # 15-unit opaque bands (top/bottom) and 1-unit strips (sides) that fronted themselves every frame, so they
 # covered the HUD; nothing reads them any more (the craft clamps positionally, the shot expires by row).
@@ -16855,6 +16864,10 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     for _world_target in result["targets"]:
         if _world_target.get("name") in WORLD_RENDER_LAYER_ORDERS:
             _world_target["layerOrder"] = WORLD_RENDER_LAYER_ORDERS[_world_target["name"]]
+        elif _world_target.get("name") == HUD_TARGET:
+            _world_target["layerOrder"] = HUD_LAYER_ORDER  # #23: pinned, not max+1 at creation
+        elif _world_target.get("name") == EASTER_EGG_TARGET:
+            _world_target["layerOrder"] = EASTER_EGG_LAYER_ORDER
         elif _world_target.get("name") == BEZEL_TARGET:
             # Static and framing the stage even in the editor, before the green flag.
             _world_target.update(

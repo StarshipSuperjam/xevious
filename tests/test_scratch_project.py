@@ -1203,6 +1203,70 @@ class ScratchProjectTests(unittest.TestCase):
             director.project_bytes(director.expected_project(project)),
         )
 
+    def test_layer_order_independent_of_generation_order(self) -> None:
+        # #23: the committed draw layers are the same whichever order the generators run in, and from a
+        # project that has lost the generated targets entirely (a first generation). Only game_director and
+        # sprite_extractor write `layerOrder`; hud_glyphs, bezel_panels and terrain_render only fill
+        # costumes into targets that already exist, so they cannot reorder anything.
+        import sprite_extractor
+
+        committed = load_source(scratch.SOURCE_DIR)
+
+        def layers(project):
+            return {t["name"]: t.get("layerOrder") for t in project["targets"]}
+
+        def run_director(p):
+            return director.expected_project(p)
+
+        proof_costumes = next(t for t in committed["targets"] if t["name"] == sprite_extractor.GENERATED_TARGET)[
+            "costumes"
+        ]
+
+        def run_extractor(p):
+            # Only the layers are under test, so skip re-rendering every frame: an empty derivative list still
+            # (re)inserts the target, which then gets the committed costumes game_director mirrors from it.
+            p = sprite_extractor.expected_project(p, [])
+            next(t for t in p["targets"] if t["name"] == sprite_extractor.GENERATED_TARGET)["costumes"] = (
+                copy.deepcopy(proof_costumes)
+            )
+            return p
+
+        expected = layers(committed)
+        self.assertEqual(len(set(expected.values())), len(expected), "every target holds its own layer")
+        self.assertEqual(expected[director.HUD_TARGET], director.HUD_LAYER_ORDER)
+        self.assertEqual(expected[director.EASTER_EGG_TARGET], director.EASTER_EGG_LAYER_ORDER)
+        self.assertEqual(expected[sprite_extractor.GENERATED_TARGET], sprite_extractor.GENERATED_LAYER_ORDER)
+
+        generated = {director.HUD_TARGET, director.EASTER_EGG_TARGET, director.BEZEL_TARGET,
+                     sprite_extractor.GENERATED_TARGET, *director.WORLD_RENDER_LAYER_ORDERS}
+
+        def stripped():
+            # A first generation: every generated target gone, so each is created afresh.
+            p = copy.deepcopy(committed)
+            p["targets"] = [t for t in p["targets"] if t["name"] not in generated]
+            return p
+
+        def scrambled():
+            # The generated targets present but on other layers (a stale or hand-edited project).
+            p = copy.deepcopy(committed)
+            for t in p["targets"]:
+                if t["name"] in generated:
+                    t["layerOrder"] += 100
+            return p
+
+        for start_name, start in (("committed", lambda: copy.deepcopy(committed)), ("stripped", stripped),
+                                  ("scrambled", scrambled)):
+            self.assertTrue(start_name == "committed" or layers(start()) != expected, start_name)
+            for order_name, order in (("director-first", (run_director, run_extractor)),
+                                      ("extractor-first", (run_extractor, run_director))):
+                with self.subTest(start=start_name, order=order_name):
+                    p = start()
+                    for _ in range(2):  # twice: each generator sees the other's targets
+                        for generator in order:
+                            p = generator(p)
+                    got = {name: layer for name, layer in layers(p).items() if name in expected}
+                    self.assertEqual(got, expected)
+
     def test_runtime_identifier_manifest_is_current(self) -> None:
         # The committed manifest the JS harness reads must equal what the generator
         # emits from the current project, so a variable rename cannot leave the harness
