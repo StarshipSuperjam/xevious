@@ -16059,6 +16059,32 @@ class ScratchProjectTests(unittest.TestCase):
 
             if branch_transitions("SUBSTACK") < 1 or branch_transitions("SUBSTACK2") < 1:
                 failures.add("lives-driven-decision")
+
+        # #158: in the 16-tick pause the craft object is inactive and the shadow update zeroes its _X/_Y
+        # (finish_solvalou_exploding 2081; amiga.68k 1659-1668, neogeo.68k 896-904), so `read player` reports
+        # position 0 (slot and cell) while `dying tick` >= EXPLOSION_TICKS instead of reading the hidden sprite.
+        pause_at_zero = False
+        for b in _proc_body_blocks(stage, director.READ_PLAYER_PROCCODE):
+            if b["opcode"] != "control_if_else":
+                continue
+            cond = blocks.get((b["inputs"].get("CONDITION") or [None, None])[1], {})
+            inner = blocks.get((cond.get("inputs", {}).get("OPERAND") or [None, None])[1], {})
+            if (
+                cond.get("opcode") != "operator_not"
+                or inner.get("opcode") != "operator_lt"
+                or inner["inputs"].get("OPERAND1", [None, [None]])[1][2:3] != [director.DYING_TICK_ID]
+                or _num_operand(inner["inputs"].get("OPERAND2")) != director.EXPLOSION_TICKS
+            ):
+                continue
+            zeroed = {
+                blocks[x]["fields"]["VARIABLE"][1]
+                for x in reachable((b["inputs"].get("SUBSTACK") or [None, None])[1])
+                if blocks[x]["opcode"] == "data_setvariableto" and _num_operand(blocks[x]["inputs"].get("VALUE")) == 0
+            }
+            if zeroed >= {director.PLAYER_SLOT_X_ID, director.PLAYER_SLOT_Y_ID, director.PLAYER_ROW_ID, director.PLAYER_COL_ID}:
+                pause_at_zero = True
+        if not pause_at_zero:
+            failures.add("death-pause-craft-at-zero")
         return failures
 
     def test_death_decision_is_lives_driven(self) -> None:
@@ -16198,7 +16224,21 @@ class ScratchProjectTests(unittest.TestCase):
             cond = blocks[decision["inputs"]["CONDITION"][1]]
             cond["inputs"]["OPERAND1"][1][2] = director.SCORE_ID  # decide from score, not craft
 
+        def break_pause_zero(p):
+            # The pause keeps the craft's depth where it died (its literal-0 `player slot x` write reads 5).
+            s = next(t for t in p["targets"] if t["isStage"])
+            for b in _proc_body_blocks(s, director.READ_PLAYER_PROCCODE):
+                if (
+                    b["opcode"] == "data_setvariableto"
+                    and b["fields"]["VARIABLE"][1] == director.PLAYER_SLOT_X_ID
+                    and _num_operand(b["inputs"].get("VALUE")) == 0
+                ):
+                    b["inputs"]["VALUE"] = [1, [4, 5]]
+                    return
+            raise AssertionError("no `set player slot x to 0` in read player to break")
+
         cases = [
+            ("death-pause-craft-at-zero", break_pause_zero),
             ("flying-raises-player-hit", break_flying_hit),
             ("bullet-raises-player-hit", break_bullet_hit),
             ("death-gated-on-hit-and-invuln", break_death_gate),
@@ -20776,11 +20816,13 @@ class ScratchProjectTests(unittest.TestCase):
             return [blocks[x] for x in seen]
 
         # The exact read: `player slot x/y` set from the craft position with no rounding anywhere in the value.
+        # (#158: the pause's literal-0 write beside it is pinned by the PLY-02 contract.)
         read_body = _proc_body_blocks(stage, director.READ_PLAYER_PROCCODE)
         for var_id in (director.PLAYER_SLOT_X_ID, director.PLAYER_SLOT_Y_ID):
             sets = [
                 b for b in read_body
                 if b["opcode"] == "data_setvariableto" and b["fields"]["VARIABLE"][1] == var_id
+                and isinstance((b["inputs"].get("VALUE") or [None, None])[1], str)
             ]
             value = sets[0]["inputs"].get("VALUE") if len(sets) == 1 else None
             value_id = value[1] if isinstance(value, list) and len(value) >= 2 and isinstance(value[1], str) else None
@@ -21614,7 +21656,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "4887a1da369ff34216545494ffd50e0edbd0e5ac14869199c0b424b9cf18a1cc",
+            "c2d1a2ad4c59dd8a497edd525a819d9668a6f6117c7e36a4fbd370509b07df37",
             build_hash,
         )
 

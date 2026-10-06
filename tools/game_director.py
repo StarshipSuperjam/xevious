@@ -4520,7 +4520,8 @@ def _craft_drawn_reporter(blocks: Blocks) -> str:
     window (`dying tick` < EXPLOSION_TICKS; `dying tick` is held at 0 outside the window). The flag collection
     `check_flag_collected` (3178-3188) reads only the sprite shadows and never tests `solvalou_exploding`, so the
     exploding craft can still fly over the flag; once `finish_solvalou_exploding` clears the craft's `_STATE`
-    (2081) its shadow is parked off-screen and the pause cannot collect it."""
+    (2081) the Amiga layer parks its shadow off-screen (amiga.68k 1659-1668), so the pause cannot collect it.
+    (The Neo Geo layer leaves the shadow stale instead, neogeo.68k 896-910; the port follows the Amiga.)"""
     return blocks.op_lt(variable("dying tick", DYING_TICK_ID), number(EXPLOSION_TICKS))
 
 
@@ -4709,7 +4710,27 @@ def install_read_player_cell(blocks: Blocks) -> None:
             number(SLOT_UNITS_PER_CELL),
         ),
     )
-    blocks.chain(definition, [set_col, set_row, set_slot_x, set_slot_y])
+    # #158: in the pause after the explosion the craft object is inactive, and the next shadow update zeroes its
+    # _X/_Y (`finish_solvalou_exploding` clears _STATE, 2081; amiga.68k 1659-1668, neogeo.68k 896-904), so for
+    # those 16 ticks every aim, homer and spawn draw that reads the craft's position reads 0, not the place it
+    # died. The craft sprite stays where it died (hidden), so the position is reported, not read.
+    at_zero = [
+        blocks.set_var("player col", PLAYER_COL_ID, number(0)),
+        blocks.set_var("player row", PLAYER_ROW_ID, number(0)),
+        blocks.set_var("player slot x", PLAYER_SLOT_X_ID, number(0)),
+        blocks.set_var("player slot y", PLAYER_SLOT_Y_ID, number(0)),
+    ]
+    blocks.chain(
+        definition,
+        [
+            _if_else(
+                blocks,
+                blocks.op_not(_craft_drawn_reporter(blocks)),
+                at_zero,
+                [set_col, set_row, set_slot_x, set_slot_y],
+            )
+        ],
+    )
 
 
 def _draw_spawn_column(blocks: Blocks, exclude_craft: bool = True, col_offset: int = 0) -> tuple[list, str]:
