@@ -17681,6 +17681,155 @@ class ScratchProjectTests(unittest.TestCase):
                 mutate(project)
                 self.assertIn(expected, self._ship_number_failures(project))
 
+    @staticmethod
+    def _ai_death_drop_failures(project: dict) -> set:
+        """DIF-01 (slice 21 review fix): each real-game death lowers `ai level` by the difficulty setting's death
+        decrement (`enemy_AI_dec_value` xevious_main.68k 1204-1205, applied at 522-533) — 0x10 at the port's
+        index 0 — and clears it on a borrow. It runs in the `death complete` receiver (only a real game sends it),
+        before the two-player swap, so the dying player's level drops."""
+        failures = set()
+        blocks = next(t for t in project["targets"] if t["isStage"])["blocks"]
+
+        def chain(start):
+            out = []
+            while isinstance(start, str) and start in blocks:
+                out.append(start)
+                start = blocks[start].get("next")
+            return out
+
+        def subtree(bid):
+            # bid and everything nested in its inputs — not the blocks that follow it
+            root = blocks[bid]
+            seen = {bid}
+            stack = [
+                v[1] for v in root["inputs"].values()
+                if isinstance(v, list) and len(v) > 1 and isinstance(v[1], str)
+            ]
+            while stack:
+                cur = stack.pop()
+                if not isinstance(cur, str) or cur in seen or cur not in blocks:
+                    continue
+                seen.add(cur)
+                b = blocks[cur]
+                stack.append(b.get("next"))
+                for val in b["inputs"].values():
+                    if isinstance(val, list) and len(val) > 1 and isinstance(val[1], str):
+                        stack.append(val[1])
+            return seen
+
+        receiver = next(
+            (
+                bid
+                for bid, b in blocks.items()
+                if b["opcode"] == "event_whenbroadcastreceived"
+                and b["fields"].get("BROADCAST_OPTION", [None])[0] == "death complete"
+            ),
+            None,
+        )
+        gate = next(
+            (bid for bid in chain(blocks[receiver]["next"]) if blocks[bid]["opcode"] == "control_if"),
+            None,
+        ) if receiver else None
+        body = chain((blocks[gate]["inputs"].get("SUBSTACK") or [None, None])[1]) if gate else []
+
+        def is_drop(bid):
+            b = blocks[bid]
+            return (
+                b["opcode"] == "data_changevariableby"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.AI_LEVEL_ID
+                and _num_operand(b["inputs"].get("VALUE")) == -director.AI_DEATH_DROP
+            )
+
+        def is_floor(bid):
+            b = blocks[bid]
+            if b["opcode"] != "control_if":
+                return False
+            cond = blocks.get((b["inputs"].get("CONDITION") or [None, None])[1])
+            inner = chain((b["inputs"].get("SUBSTACK") or [None, None])[1])
+            return (
+                cond is not None
+                and cond["opcode"] == "operator_lt"
+                and len(inner) == 1
+                and blocks[inner[0]]["opcode"] == "data_setvariableto"
+                and blocks[inner[0]]["fields"].get("VARIABLE", [None, None])[1] == director.AI_LEVEL_ID
+                and _num_operand(blocks[inner[0]]["inputs"].get("VALUE")) == 0
+            )
+
+        def swaps(bid):
+            return any(
+                blocks[x]["opcode"] == "procedures_call"
+                and blocks[x].get("mutation", {}).get("proccode") == director.SWAP_PLAYERS_PROCCODE
+                for x in subtree(bid)
+            )
+
+        drops = [i for i, bid in enumerate(body) if is_drop(bid)]
+        swap_at = next((i for i, bid in enumerate(body) if swaps(bid)), None)
+        if len(drops) != 1:
+            failures.add("ai-death-drop")
+        elif not (drops[0] + 1 < len(body) and is_floor(body[drops[0] + 1])):
+            failures.add("ai-death-drop-floored")
+        if drops and (swap_at is None or drops[0] > swap_at):
+            failures.add("ai-death-drop-before-swap")
+        return failures
+
+    def test_ai_level_drops_on_death(self) -> None:
+        # roadmap-evidence: DIF-01 success  (each death lowers the AI level by the death decrement, floored at 0,
+        #   before the two-player swap; harness ai-level-drops-on-death drives 40 -> 24, 10 -> 0 and the dying
+        #   player's level in two-player)
+        self.assertEqual(director.AI_DEATH_DROP, 0x10)
+        self.assertEqual(set(), self._ai_death_drop_failures(load_source(scratch.SOURCE_DIR)))
+
+    def test_ai_level_drops_on_death_negative_fixtures(self) -> None:
+        # roadmap-evidence: DIF-01 failure  (a missing or mis-sized drop, a missing floor, or a drop after the
+        #   swap each bite)
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._ai_death_drop_failures(base))
+
+        def stage_blocks(p):
+            return next(t for t in p["targets"] if t["isStage"])["blocks"]
+
+        def drop_ids(p):
+            return [
+                bid for bid, b in stage_blocks(p).items()
+                if b["opcode"] == "data_changevariableby"
+                and b["fields"].get("VARIABLE", [None, None])[1] == director.AI_LEVEL_ID
+                and _num_operand(b["inputs"].get("VALUE")) == -director.AI_DEATH_DROP
+            ]
+
+        def resize(p):
+            for bid in drop_ids(p):
+                stage_blocks(p)[bid]["inputs"]["VALUE"] = [1, [4, "-8"]]
+
+        def unfloor(p):
+            blocks = stage_blocks(p)
+            for bid in drop_ids(p):
+                floor = blocks[bid]["next"]
+                blocks[bid]["next"] = blocks[floor]["next"]
+                blocks[blocks[floor]["next"]]["parent"] = bid
+
+        def after_swap(p):
+            # Move the drop and its floor to after the alternate/solo decision.
+            blocks = stage_blocks(p)
+            for bid in drop_ids(p):
+                floor = blocks[bid]["next"]
+                alt = blocks[floor]["next"]
+                prev = blocks[bid]["parent"]
+                blocks[prev]["next"] = alt
+                blocks[alt]["parent"] = prev
+                blocks[alt]["next"] = bid
+                blocks[bid]["parent"] = alt
+                blocks[floor]["next"] = None
+
+        for expected, mutate in (
+            ("ai-death-drop", resize),
+            ("ai-death-drop-floored", unfloor),
+            ("ai-death-drop-before-swap", after_swap),
+        ):
+            with self.subTest(expected=expected, mutate=mutate.__name__):
+                project = copy.deepcopy(base)
+                mutate(project)
+                self.assertIn(expected, self._ai_death_drop_failures(project))
+
     def test_death_decision_is_lives_driven(self) -> None:
         project = load_source(scratch.SOURCE_DIR)
         self.assertEqual(set(), self._ply02_failures(project))
@@ -23850,7 +23999,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "e17c47c5c1f21b386ef97129647599f4b91c20efb2830201e6ea8e85247b0431",
+            "a926bdaa417fc99cef813ec1c25531a1572ff406d67afe9801914833c96d2460",
             build_hash,
         )
 

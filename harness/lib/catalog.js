@@ -2995,6 +2995,59 @@ export const SCENARIOS = [
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'formation count', 3),
   },
   {
+    // DIF-01 (slice 21 review fix): each real-game death lowers the AI level by `enemy_AI_dec_value[difficulty]`
+    // (xevious_main.68k 522-533, table 1204-1205) — 0x10 at the port's difficulty index 0 — clearing it on a
+    // borrow. It runs at the death decision (`death complete`), before a two-player swap, so it lowers the level
+    // of the player who died. Driven at the director receiver (an injected `player-dead` + the broadcast), with a
+    // trap recording every `ai level` write until play resumes, so a raise the walk makes after the respawn
+    // cannot hide the drop.
+    key: 'ai-level-drops-on-death',
+    behavior:
+      'DIF-01: each death lowers the AI level by 16 (never below 0); in two-player it lowers the level of the '
+      + 'player who died, not the one taking over',
+    playtestStep: 4,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 2); // boot to the title and arm the director receivers
+      const die = (ai, { twoPlayer = 0, otherAi = 0 } = {}) => {
+        writeVar(vm, 'cabinet-two-player', twoPlayer);
+        writeVar(vm, 'cabinet-curr-player', 0);
+        writeVar(vm, 'eco-craft', 2); // a craft left: the death respawns
+        writeVar(vm, 'other-craft', twoPlayer ? 2 : 0);
+        writeVar(vm, 'difficulty-ai-level', ai);
+        writeVar(vm, 'other-ai-level', otherAi);
+        writeVar(vm, 'game-director-state', 'player-dead');
+        const writes = [];
+        const untrap = trapStageVar(vm, 'difficulty-ai-level', (x) => {
+          if (state(vm) !== 'playing') writes.push(Number(x));
+        });
+        fireBroadcast(vm, 'death complete');
+        const respawned = stepUntil(vm, (v) => state(v) === 'playing', 400);
+        untrap();
+        return {
+          respawned,
+          settled: writes.length ? writes[writes.length - 1] : null,
+          other: Number(readVar(vm, 'other-ai-level')),
+        };
+      };
+      return {
+        drop: die(40),
+        floor: die(10),
+        twoPlayer: die(40, { twoPlayer: 1, otherAi: 70 }),
+      };
+    },
+    assert(obs) {
+      assert.ok(obs.drop.respawned && obs.floor.respawned && obs.twoPlayer.respawned, 'every death respawns');
+      assert.equal(obs.drop.settled, 24, 'a death lowers the AI level by 16 (40 -> 24)');
+      assert.equal(obs.floor.settled, 0, 'the drop never takes the AI level below 0 (10 -> 0)');
+      assert.equal(obs.twoPlayer.other, 24, "in two-player the drop lands on the dying player's level (40 -> 24)");
+      assert.equal(obs.twoPlayer.settled, 70, "the incoming player's level is swapped in untouched (70)");
+    },
+    // Zero the drop: the death leaves the level where it was, so 40 stays 40 and the dying player keeps 40.
+    // roadmap-evidence: DIF-01 failure  (without the per-death drop the AI level persists through a death)
+    negativeMutation: (p) => mutate.changeVariableChangeBy(p, 'Stage', 'ai level', -16, 0),
+  },
+  {
     key: 'live-pressure-adaptive',
     behavior:
       'DIF-02 (.play): a heavy score with craft in reserve re-tunes the AI level past the raise-only fold ceiling (the score adjust is NOT folded, unlike raises)',

@@ -73,7 +73,10 @@ is specified in that family's document ([Aerial enemies](aerial-enemies.md), [Gr
 [Andor Genesis](andor-genesis.md)).
 
 **What resets.** The AI level, formation state, and masks belong to the per-player game state: they persist
-across death and respawn within a game, and reset for a new game. In two-player alternation each player
+across death and respawn within a game, and reset for a new game. Each death in a real game lowers the AI
+level once, as the forest fills: `main_gameplay_loop` (`xevious_main.68k` 522–533) subtracts
+`enemy_AI_dec_value` (1204–1205: 16, 24, 8 or 0, indexed by the same difficulty switch the raise reads) and
+clears the level on a borrow, so it never goes below 0. A demo ends before this path and never drops it. In two-player alternation each player
 carries their own difficulty state ([Cabinet flow](cabinet-flow.md)).
 
 ## Acceptance criteria

@@ -837,6 +837,14 @@ FIRE_MASK_DOMOGRAM_ID = next(i for s, n, i in FIRE_MASK_FAMILIES if s == "domogr
 # observable AI-level growth), so its growth RATE is placeholder-driven and is NOT a
 # fidelity claim — only the growth MECHANISM is. Recorded in docs/mechanics/019.
 DIFFICULTY_DIP_INDEX = 0
+# DIF-01 (slice 21 review fix): each real-game death lowers the AI level. As the forest fills at a death
+# (`main_gameplay_loop` xevious_main.68k 522-533) the arcade reads the same two `dswb` bits the raise reads
+# (`not.b; rol.b #3; and #3`, sub 318-321 — the source comment calls them "starting lives", but the bits and the
+# inversion are the difficulty switch's), subtracts `enemy_AI_dec_value[index]` (1204-1205) from `enemy_AI_level`
+# with `sub.b`, and clears it on a borrow (`jcc 3f; clr.b d1`). The table is indexed by the same placeholder
+# DIP index as the raise, so the port's drop is 0x10 a death, floored at 0.
+AI_DEATH_DROP_TABLE = (0x10, 0x18, 8, 0)
+AI_DEATH_DROP = AI_DEATH_DROP_TABLE[DIFFICULTY_DIP_INDEX]
 AI_LEVEL_FOLD_THRESHOLD = 0x80  # a raise reaching >= 128 folds back (never clamps)
 AI_LEVEL_FOLD_SUBTRACT = 0x40  # ... by subtracting 64 once
 FORMATION_MIN_INDEX = -32  # formations.json domain lower bound (bytes before the label)
@@ -9110,6 +9118,21 @@ def _area_checkpoint(blocks: Blocks) -> list[str]:
     return [blocks.if_reporter(near_end, [_advance_area_number(blocks)])]
 
 
+def _ai_death_drop(blocks: Blocks) -> list[str]:
+    # DIF-01 (slice 21 review fix): the per-death AI drop (xevious_main.68k 522-533): `ai level` less
+    # AI_DEATH_DROP, floored at 0 (`sub.b` then `clr.b` on the borrow). The arcade runs it once per real-game
+    # death, the last included, on the scroll-disabled path a demo never reaches (the demo ends as scroll is
+    # disabled, 1326-1334) — so the port runs it from `death complete`, which only a real game sends. It lowers the
+    # level of the player who died: in two-player the swap (`next_player` 674) comes after it. Returns statements.
+    return [
+        blocks.change_var("ai level", AI_LEVEL_ID, -AI_DEATH_DROP),
+        blocks.if_reporter(
+            blocks.op_lt(variable("ai level", AI_LEVEL_ID), number(0)),
+            [blocks.set_var("ai level", AI_LEVEL_ID, number(0))],
+        ),
+    ]
+
+
 def _set_scroll_row(blocks: Blocks) -> str:
     return blocks.set_var_expr(
         "scroll row", SCROLL_ROW_ID, _row_of(blocks, "area progress", AREA_PROGRESS_ID)
@@ -11190,7 +11213,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # 535-536, before the next life's theme at 498). The transition consumes the keep; any later stop-all (the
     # respawning -> playing edge) is held off only while the cue is still playing (DEATH_CUE_PLAYING_ID).
     keep = blocks.set_var("keep sounds", KEEP_SOUNDS_ID, number(1))
-    blocks.chain(death, [blocks.if_state("player-dead", [keep, alt])])
+    blocks.chain(death, [blocks.if_state("player-dead", [keep, *_ai_death_drop(blocks), alt])])
 
     game_over = blocks.receive("game over complete")
     # ECO-04 (slice 19): the GAME OVER hold is now TERMINAL. The best-five check and the initials routing run
