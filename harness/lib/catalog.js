@@ -26,6 +26,7 @@ import {
   constants,
   variable,
   trapStageVar,
+  paceLikeTheEditor,
 } from './harness.js';
 import { reachPlaying, reachPlaying2P, stateOf, insertCoin, loadArtifact } from './build.js';
 import * as mutate from './mutate.js';
@@ -133,6 +134,14 @@ function titleClones(vm) {
     sparkle: !sp ? 'gone' : sp.visible ? `${name(sp)} ${sp.x}` : 'hidden',
     outline: ol ? name(ol) : 'none',
   };
+}
+
+// After a green flag, step until the title is up and its clock has counted once. The Stage still holds the saved
+// state ('title') before the first pump, and the reset passes through 'resetting' before the title draws its
+// clones, so neither "state is title" nor a single pump is a safe start for sampling the title's schedule.
+function reachTitleClock(vm) {
+  step(vm, 1);
+  return stepUntil(vm, (v) => state(v) === 'title' && Number(readVar(v, 'cabinet-title-tick')) >= 1, 200);
 }
 
 function reachDemo(vm) {
@@ -835,11 +844,14 @@ export const SCENARIOS = [
       'The title logo sparkle appears, sweeps right along the letters and fades, then the outline flashes through its colours',
     playtestStep: 1,
     async drive(vm) {
+      // Paced one frame a pump, and the title reached before sampling: unpaced, a slow CI runner can still be
+      // booting after one pump (no samples) and a fast one can jump the clock past a phase.
+      paceLikeTheEditor(vm);
       vm.greenFlag();
-      step(vm, 1);
+      reachTitleClock(vm);
       const samples = [];
       let t = 0;
-      while (state(vm) === 'title' && t < 400) {
+      while (state(vm) === 'title' && t < 2000) {
         const n = Number(readVar(vm, 'cabinet-title-tick'));
         if (n > 150) break;
         const clones = titleClones(vm);
@@ -2050,7 +2062,9 @@ export const SCENARIOS = [
         let forest = true;
         let progress = null;
         let progressKept = true;
-        for (let t = 0; t < 240 && !(epoch(vm) > epoch0 && movedOn(state(vm))); t += 1) {
+        // The bound is a backstop only: the loop ends on the outcome, and a slow runner needs many pumps to play
+        // the 44-tick window (a pump is a wall-clock budget, not a tick).
+        for (let t = 0; t < 4000 && !(epoch(vm) > epoch0 && movedOn(state(vm))); t += 1) {
           step(vm, 1);
           if (state(vm) !== 'player-dead') continue;
           pumps += 1;
@@ -2893,7 +2907,10 @@ export const SCENARIOS = [
         'fire-mask-boza-logram',
         'fire-mask-domogram',
       ];
-      for (let i = 0; i < 260; i += 1) {
+      // Slice 21: bounded by the outcome, not a pump count. A pump is a wall-clock budget, so a slow CI runner
+      // plays fewer ticks a pump and a fixed 260-pump window could end before area 4 (a red run on CI); the
+      // loop stops once all four are seen, and the bound is a backstop only.
+      for (let i = 0; i < 800 && !(logramSet && otherMaskSet && andorSet && groundStopSet); i += 1) {
         step(vm, 1);
         if (readVar(vm, 'fire-mask-logram') > 0) logramSet = true;
         if (readVar(vm, 'fire-mask-andor-genesis') > 0) andorSet = true;
@@ -3295,7 +3312,9 @@ export const SCENARIOS = [
       writeVar(vm, 'rng-state', seed);
       let prev = readVar(vm, 'rng-out');
       const observed = [];
-      for (let i = 0; i < 8; i += 1) {
+      // Slice 21: stop at four observed draws rather than after a fixed eight pumps — on a slow CI runner eight
+      // pumps can hold fewer than three draws (a red run); stopping early also keeps the stream inside the fixture.
+      for (let i = 0; i < 200 && observed.length < 4; i += 1) {
         step(vm, 1);
         const out = readVar(vm, 'rng-out');
         if (out !== prev) {
@@ -10574,8 +10593,10 @@ export const SCENARIOS = [
           (t) => !t.isOriginal && t.sprite && t.sprite.name === 'start_screen' && roleOf(t) === role,
         );
       const look = (c) => (c ? { costume: c.sprite.costumes[c.currentCostume].name, visible: c.visible } : null);
+      // Paced one frame a pump, and the title reached before sampling (see title-logo-sparkle-and-flash).
+      paceLikeTheEditor(vm);
       vm.greenFlag();
-      step(vm, 1);
+      reachTitleClock(vm);
       writeVar(vm, 'invuln', 1); // the demo craft must live long enough for its INSERT COIN to be sampled
       const title = [];
       while (state(vm) === 'title' && title.length < 60) {
@@ -10583,7 +10604,7 @@ export const SCENARIOS = [
         title.push({ n: Number(readVar(vm, 'cabinet-title-tick')), ...look(clone(3)) });
       }
       let t = 0;
-      while (!(state(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1) && t < 600) {
+      while (!(state(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1) && t < 3000) {
         step(vm, 1);
         t += 1;
       }

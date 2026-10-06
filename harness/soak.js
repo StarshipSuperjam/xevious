@@ -35,6 +35,7 @@ import {
   keyUp,
   recordSounds,
   trapStageVar,
+  paceLikeTheEditor,
 } from './lib/harness.js';
 import { reachPlaying, reachPlaying2P, loadMutatedSource } from './lib/build.js';
 
@@ -46,18 +47,6 @@ const CAMPAIGN_TICKS = 40000; // the campaign is 2033 + 15 * 2048 = 32753 ticks;
 const PUMP_CEILING = 100000; // a backstop only: a paced pump is one frame, one tick of play
 const REACH_PUMPS = 2000; // the title to playing: a credit, the start, and the READY hold, in frames
 const TITLE_PUMPS = 100; // a green flag reaches the title in two frames
-
-// One pass of every thread per pump, as the editor runs a project whose stage changes every frame: any thread
-// stepping stands for the redraw request a renderer would make.
-function paceLikeTheEditor(vm) {
-  const { sequencer } = vm.runtime;
-  const stepThread = sequencer.stepThread.bind(sequencer);
-  sequencer.stepThread = (thread) => {
-    stepThread(thread);
-    vm.runtime.redrawRequested = true;
-  };
-  return vm;
-}
 
 const load = async () => paceLikeTheEditor(await loadBuild());
 
