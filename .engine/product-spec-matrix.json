@@ -36,7 +36,7 @@
       "criterion": "Sheonites cannot be killed and track the craft in the recorded pincer-and-dock pattern",
       "digest": "sha256:8a1731e28a20e35ba929b89dd0295b72a06be7c05ea5fc6d422ccc7e104e5563",
       "doc": "docs/spec/aerial-enemies.md",
-      "how_verified": "Play the area-9 Sheonite spawn (or the T-key debug spawn) in the built `.sb3`",
+      "how_verified": "Play the area-9 Sheonite spawn in the built `.sb3`",
       "position": 4,
       "who": "operator"
     },
@@ -209,8 +209,8 @@
       "who": "operator"
     },
     {
-      "criterion": "The arcade screen draws at one 1.25 scale in a centred 280×360 window between the bezel panels; the craft stops at the arcade clamp, shots retire at row 0, world objects show only on rows 4–39, and the HUD sits on the arcade text cells inside the window",
-      "digest": "sha256:0cdbc573540154c323b6feced6c5d1aadf4e0b6fba0d9b3aa0203f15d9faca9b",
+      "criterion": "The arcade screen draws at one 1.25 scale in a centred 280×360 window between the bezel panels; the craft stops at the arcade clamp, shots retire at row 0, world objects are drawn while any part reaches rows 4–39 and are cut at the stage edge, and the HUD sits on the arcade text cells inside the window",
+      "digest": "sha256:be4b8fb735475cd25fd9254ca78e1124a662435b5be0a37b57ff939ed3d25d5c",
       "doc": "docs/spec/audio-and-presentation.md",
       "how_verified": "Headless scenarios drive the craft into each clamp, a shot past row 0, and an object across the cut line; structural fixtures pin the render map, the bezel target and its layer, the in-view gate, the HUD text grid, and the layer order",
       "position": 4,
@@ -385,10 +385,10 @@
       "who": "engine"
     },
     {
-      "criterion": "A model fixture over representative score/lives pairs computes the re-tune rule (score per reserve craft, capped at 16); the build's in-game re-tune is confirmed in play (a runtime-harness candidate once the lives slice ships)",
-      "digest": "sha256:b059eed6d92b14ddef794ebc6e7ff90730b4886e4676d00e7c13220abf5000bc",
+      "criterion": "A model fixture computes the re-tune rule (the score's BCD thousands divided by the ship number, capped at 16 by a signed compare, added as a byte) and proves its division equals the arcade's bit-serial loop for every divisor; the build's re-tune and the ship number's count are confirmed on the built blocks",
+      "digest": "sha256:70cde31e3882042316c9734131330417975ee1b4a53e9ce05c0976aadadf5012",
       "doc": "docs/spec/difficulty-and-formations.md",
-      "how_verified": "Python fixture implementing the documented rule; operator play for the in-game half",
+      "how_verified": "Python fixture over the documented rule; the runtime harness on the built project",
       "position": 3,
       "who": "engine"
     },
