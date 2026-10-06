@@ -35,8 +35,11 @@ class SpriteExtractorTests(unittest.TestCase):
         # plus the slice-15 additions — the 17 Andor Genesis composite derivatives (BOSS-01; 9 armor plates +
         # 4 gun ports + the core, which the extractor flip-expands into its 4 _ATTR orientations none/x/y/xy),
         # plus the slice-16 additions — the 4 Bragza fly frames (BOSS-03; the destroyed core's fly-up form,
-        # handle_Bragza codes 0xb8..0xbb at CLUT 0x15).
-        self.assertEqual(110, count)
+        # handle_Bragza codes 0xb8..0xbb at CLUT 0x15), plus the slice-20 CAB-05 effects — 74 derivatives
+        # rendered from the pin (7 player-explosion and 5 air-explosion frames each flip-expanded x4, 7
+        # ground-explosion frames, 2 crater, 4 crosshair colours, 1 bomb target, 3 bomb codes x 4 colours),
+        # less the 2 retired rip crater crops (CAB-05: the crater now draws from the pinned render).
+        self.assertEqual(182, count)
         self.assertEqual(64, len(contact_hash))
 
     def test_rendering_is_byte_deterministic(self) -> None:
@@ -200,7 +203,6 @@ class SpriteExtractorTests(unittest.TestCase):
             # the shared explosion burst + crater, so it adds no proof crops of its own.
             + [f"sol-tower/rise/{index:02d}" for index in range(1, 8)]
             + [f"logram/open/{index:02d}" for index in range(1, 5)]
-            + [f"crater/idle/{index:02d}" for index in range(1, 3)]
             # GND-06 (slice 13) ground.grobda: the 12 variants share one tank tread set (4 frames).
             + [f"grobda/roll/{index:02d}" for index in range(1, 5)]
             + [f"garu/base/{index:02d}" for index in range(1, 3)]
@@ -226,7 +228,30 @@ class SpriteExtractorTests(unittest.TestCase):
             + [f"andor-core/core/01/{token}" for token in ("none", "x", "y", "xy")]
             # BOSS-03 (slice 16) andor.core-destruction: the destroyed core's fly-up Bragza — a 4-frame
             # animation (handle_Bragza codes 0xb8..0xbb) rendered at the Bragza colour cycle's base CLUT 0x15.
-            + [f"andor-bragza/fly/{index:02d}" for index in range(1, 5)],
+            + [f"andor-bragza/fly/{index:02d}" for index in range(1, 5)]
+            # CAB-05 (slice 20 PR-4): the arcade's own effects, rendered from the pin by
+            # tools/effects_sprite_render.py. The player and air explosions flip every frame, so the extractor
+            # flip-expands each into its 4 orientations; the ground explosion, crater, crosshair colours, bomb
+            # target and bomb (3 codes x 4 colours) do not flip.
+            + [
+                f"player-explosion/burst/{index:02d}/{token}"
+                for index in range(1, 8)
+                for token in ("none", "x", "y", "xy")
+            ]
+            + [
+                f"air-explosion/burst/{index:02d}/{token}"
+                for index in range(1, 6)
+                for token in ("none", "x", "y", "xy")
+            ]
+            + [f"ground-explosion/burst/{index:02d}" for index in range(1, 8)]
+            + [f"ground-crater/flicker/{index:02d}" for index in range(1, 3)]
+            + [f"crosshair/aim/{label}" for label in ("idle", "bombing", "idle-lit", "bombing-lit")]
+            + ["bomb-target/mark/01"]
+            + [
+                f"bomb/fall/{code:02d}/c{clut:02x}"
+                for code in range(1, 4)
+                for clut in range(0x25, 0x29)
+            ],
             [costume["name"] for costume in toroid["costumes"]],
         )
         self.assertFalse(toroid["visible"])
@@ -243,6 +268,8 @@ class SpriteExtractorTests(unittest.TestCase):
                 or costume["name"].startswith("garu-derota/")
                 or costume["name"].startswith("andor-armor/")
                 or costume["name"].startswith("sol-tower/")  # 32x32 rise cells (tools/sol_tower_render.py)
+                # CAB-05: 32x32 explosion cells, every frame centred (tools/effects_sprite_render.py)
+                or costume["name"].startswith(("player-explosion/", "air-explosion/", "ground-explosion/"))
             ):
                 expected_center = (16, 16)
             elif costume["name"].startswith("bacura/"):

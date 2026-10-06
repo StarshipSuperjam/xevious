@@ -34,10 +34,14 @@ OUTCOME_ID = "game-director-death-outcome"
 ALLOWED_ID = "game-director-allowed-transitions"
 SOLVALOU_EPOCH_ID = "solvalou-director-entry-epoch"
 DEATH_EPOCH_ID = "solv-death-director-entry-epoch"
+# CAB-05: the death sprite's own count of ticks into the player explosion (it picks the frame and the flip).
+DEATH_EXPLOSION_TICK_ID = "solv-death-explosion-tick"
 # Weapon state cleared by the reset scopes (never director `game state`). The bomb
 # guard is a Stage variable so the one-bomb poller and the in-flight bomb — which may
 # run on different threads — share it; the reload counter is blaster-local.
 BOMB_INFLIGHT_ID = "weapon-bomb-in-flight"
+# CAB-05: the crosshair's on-target flash (check_targeted_ground_object), worked out by `track crosshair`.
+CROSSHAIR_LIT_ID = "weapon-crosshair-lit"
 # The in-flight bomb's accelerating scroll-axis velocity (init_bombing $188C `_dX`). A Stage
 # variable for the same reason as the guard: the walk thread writes it and the bomb renderer reads
 # it (to pick its falling frame). Cleared to 0 on every reset scope alongside the guard.
@@ -51,7 +55,15 @@ RELOAD_TICKS = 10  # arcade 20-frame blaster reload (player-craft WPN-01)
 EXPLOSION_STEPS = 7  # 7 costume cycles ...
 EXPLOSION_HOLD_TICKS = 4  # ... of 8 arcade frames each = 56 frames = 28 ticks (PLY-02)
 POST_DEATH_PAUSE_TICKS = 16  # arcade 32-frame post-explosion pause (PLY-02)
-READY_HOLD_TICKS = 30  # project-defined READY beat (no reference basis; core-game-systems)
+# CAB-05 player explosion (`explode_solvalou` xevious_main.68k 2034-2075): solv_death's costumes after its
+# historical explode_01..08 are player-explosion/burst/01..07, four flip costumes each (none, x, y, xy). The
+# flip is `countup & 0x0C`, which steps every 4 frames = every 2 ticks.
+PLAYER_EXPLOSION_BASE_ORDINAL = 9
+PLAYER_EXPLOSION_FLIP_COSTUMES = 4
+PLAYER_EXPLOSION_FLIP_TICKS = 2
+READY_HOLD_TICKS = 32  # port READY beat, sized to the arcade's 64-frame post-death forest wait (511, 535-536;
+# CAB-05). The arcade runs that wait only after a death (scroll is off only then, 2087) and draws no craft in it;
+# the port keeps its READY hold on the first life too and shows the craft, a port reading recorded in 055.
 GAME_OVER_HOLD_TICKS = 64  # arcade 128-frame GAME OVER hold (`game_over` 549-591; ECO-04)
 
 # SYS-04 shared pseudo-random stream. The update rule and its golden fixtures are the
@@ -396,12 +408,16 @@ HUD_LIFE_SPACING = HUD_TEXT_PITCH
 # right bezel panel and cost a clone for nothing). The true `craft` count is unaffected — only the icon DISPLAY is
 # bounded.
 HUD_LIFE_MAX = 28
-# Glyph sizes for the 10-unit pitch: the 25-px bitmap-resolution-2 HUD glyphs (12.5 units at 100%), the 16-px
-# resolution-1 life icon, and the two-player banner set in the 17-px-advance small text cell (tools/hud_glyphs.py
-# SMALL_TEXT_GEOM).
-HUD_GLYPH_SIZE = 80
+# Glyph sizes for the 10-unit pitch. CAB-05 (docs/mechanics 054 deviation 16): tools/hud_glyphs.py renders every
+# text costume — the HUD glyphs (manifest downscale 5), the two-player banner and the attract text
+# (SMALL_TEXT_GEOM), the hidden credit — at its drawn size, one 20-px column at bitmap resolution 2 =
+# TEXT_COSTUME_COLUMN_UNITS, so text draws at 100% and is resampled only once. The size is still set, as a
+# clone inherits its parent's (start_screen's parent draws the logo at ATTRACT_LOGO_SIZE). The 16-px
+# resolution-1 life icon is art, not text, and keeps its run-time scale.
+TEXT_COSTUME_COLUMN_UNITS = 10
+HUD_GLYPH_SIZE = round(100 * HUD_TEXT_PITCH / TEXT_COSTUME_COLUMN_UNITS)
 HUD_LIFE_SIZE = 62.5
-HUD_BANNER_SIZE = round(100 * HUD_TEXT_PITCH / 17, 2)
+HUD_BANNER_SIZE = HUD_GLYPH_SIZE
 HUD_1UP_FLASH_HOLD_TICKS = 15  # project-defined flash cadence, no reference basis
 # (glyph costume, slot) pairs — slot spacing leaves a gap for the untyped space in "HIGH SCORE".
 HUD_1UP_LABEL = (("digit/1", 0), ("glyph/U", 1), ("glyph/P", 2))
@@ -493,9 +509,9 @@ REPEAT_BONUS_5 = [70000, 50000, 50000, 60000, 80000, 100000, 80000, BONUS_DISABL
 
 # ECO-04 game over (docs/spec/scoring-lives-and-game-over.md `check_for_high_score` 1618-1672;
 # docs/spec/data/scores.json high_score_defaults). Losing the last craft first runs the best-five
-# check: `qualified` records whether the final score beats fifth place — a VERDICT ONLY. The
-# initials-entry screen a qualifying score would show (cabinet-flow.md) is DEFERRED to slice 19;
-# both a qualifying and a non-qualifying score still show GAME OVER and return to title here.
+# check: `qualified` records whether the final score beats fifth place. A qualifying score opens
+# the initials-entry screen (CAB-04, cabinet-flow.md; docs/mechanics/052-cabinet-high-scores.md);
+# a non-qualifying one goes straight to GAME OVER.
 QUALIFIED_ID = "eco-qualified"
 HIGH_SCORE_TABLE_ID = "eco-high-score-table"
 HIGH_SCORE_DEFAULTS = [40_000, 35_000, 30_000, 25_000, 20_000]  # high_score_defaults.scores
@@ -1145,6 +1161,38 @@ CREDIT_CAP = 99  # decimal display of the arcade's BCD 0x99 credit ceiling
 CREDITS_ID = "cabinet-credits"  # 0..99 credit bank; +1 per coin, -1 per 1P start; cleared only at power-on
 COIN_KEY_HELD_ID = "cabinet-coin-key-held"  # previous-tick C sample, for a rising-edge (tap) coin insert
 COIN_EDGE_ID = "cabinet-coin-edge"  # 1 on the tick a coin was inserted (rising edge), else 0 — drives the coin-abort
+# CAB-05 (presentation.audio-animation, slice 20): the audio state surface. Every game sound is Stage-owned
+# (attached by tools/hud_glyphs.py), so the Stage's volume is the one mute and its stop-all the one cut.
+# * `coin sound` — 1 on the tick a coin actually banked a credit (below the cap, sub_fn_4__handle_credits_and_start
+#   xevious_sub.68k:171-181, which skips both the add and COIN_SND at 0x99). The warp coin poll raises it; the
+#   non-warp coin loop plays `credit` AFTER any coin-abort transition, whose stop-all would otherwise cut it.
+# * `audio muted` — the last applied attract mute (1 muted, 0 open, -1 not yet applied). The arcade mutes every
+#   sound on entering attract (main_thread_main_loop xevious_main.68k:356 osd_sound_mute) and unmutes at coined_up
+#   (380); the coin sound alone breaks through (amiga.68k:728-733). The port mutes the Stage while `attract`==1
+#   and `credits`==0, applied only on change (a Scratch volume set yields the thread for a tick).
+# * `keep sounds` — set by the death-complete handler so the ONE transition it runs (respawn, initials entry or
+#   GAME OVER) skips every stop-all-sounds, letting the 1.81 s death cue finish (update_solvalou 2030; the arcade
+#   stops only the flight tune at 2026 and the cue then plays out through the forest wait, 511/535-536). The
+#   transition clears it after its stop phase, so it covers exactly one transition.
+# * `death cue playing` — 1 while the Stage's death-cue thread is inside its play-until-done, so every stop-all is
+#   also skipped until the cue has actually ended. The keep alone counts transitions, not time: the post-death pause
+#   and the READY hold are collapsing `hold_ticks`, so in a browser with nothing else redrawing the respawning ->
+#   playing stop-all can land ~1 s after the cue starts and cut it. The arcade's gap is ~2.5 s (explosion 56 +
+#   pause 32 + forest wait 64 frames), so the cue never meets a stop there; this latch keeps that outcome whatever
+#   the browser's pacing (operator decision, 2026-10-05). The cost, recorded in 055: when the gap is short, the
+#   cue's tail can overlap the next life's start theme or the entry tune.
+# * `andor drone timer` — the Andor Genesis drone's restart countdown (ANDOR_DRONE_TICKS; see there).
+COIN_SOUND_ID = "audio-coin-sound"
+AUDIO_MUTED_ID = "audio-muted"
+KEEP_SOUNDS_ID = "audio-keep-sounds"
+DEATH_CUE_PLAYING_ID = "audio-death-cue-playing"
+ANDOR_DRONE_TIMER_ID = "audio-andor-drone-timer"
+# CAB-05: the arcade requests ANDOR_GENESIS_SND every frame while the boss descends, hovers or leaves
+# (handle_4B_Andor_Genesis_obj_15 xevious_main.68k:5392/5404, andor_genesis_leave 5436). Scratch cannot ask whether
+# a sound is still playing, and replaying one restarts it, so the port restarts the drone on a fixed period: the
+# sample's own length, round(1.773 s x 30 ticks/s) = 53 ticks, giving a back-to-back hum (operator decision,
+# 2026-10-04). The reference's Amiga layer instead restarts it every 51 calls (amiga.68k:752-760) — platform tuning.
+ANDOR_DRONE_TICKS = 53
 # CAB-01 (cabinet.attract-credits, slice 17): the attract-cycle state surface. The demo reuses the
 # `playing` state under the `attract` flag (a distinct state would touch ~40 `playing` gate sites; the
 # flag touches ~4). `attract` == 1 means "the cabinet is idling through its attract cycle" and holds
@@ -1197,10 +1245,10 @@ ATTRACT_ROLE_TABLE_NAME = 8  # one best-five name letter (letter `place` of name
 ATTRACT_ROLE_TABLE_SCORE = 9  # one best-five score digit (digit `place` of table[row])
 ATTRACT_CREDIT_PLACES = 2  # credits cap at 99 -> two decimal digits (leading-zero preserving)
 # PRES-01 (docs/mechanics/054): the attract text sits on the arcade text layer like the HUD (text_cell_x/y), drawn
-# at the 10-unit pitch — every start_screen text costume is the hud_glyphs SMALL_TEXT_GEOM cell (17-px advance,
-# bitmap resolution 1), so its clones draw at ATTRACT_TEXT_SIZE. A whole-string costume is placed by its centre:
-# text_run_x(first column, character count).
-ATTRACT_TEXT_SIZE = round(100 * HUD_TEXT_PITCH / 17, 2)
+# at the 10-unit pitch — every start_screen text costume is the hud_glyphs SMALL_TEXT_GEOM cell (20-px advance,
+# bitmap resolution 2 since CAB-05), so its clones draw at ATTRACT_TEXT_SIZE (100%). A whole-string costume is
+# placed by its centre: text_run_x(first column, character count).
+ATTRACT_TEXT_SIZE = HUD_GLYPH_SIZE
 
 
 def text_run_x(first_col: int, chars: int) -> float:
@@ -2189,7 +2237,7 @@ EASTER_EGG_CREDIT_COSTUME = "credit"
 # longest line is 20 characters on the 10-unit pitch, so centring it at x 0 puts every glyph on a column (8..27).
 EASTER_EGG_CREDIT_X = 0
 EASTER_EGG_CREDIT_Y = text_cell_y(33.5)
-EASTER_EGG_CREDIT_SIZE = round(100 * HUD_TEXT_PITCH / 22, 2)  # the costume's 22-px glyph advance on the text pitch
+EASTER_EGG_CREDIT_SIZE = HUD_GLYPH_SIZE  # CAB-05: the costume's 20-px resolution-2 advance is one column at 100%
 
 # GND (ground.barra #70) Garu node death (explode_and_remove_object $3216): a bombed Garu node plays the
 # SHORTER explode-and-remove burst and then VANISHES (no crater), unlike the Barra. The arcade advances
@@ -2510,19 +2558,36 @@ CRAFT_DIAGONAL_LATERAL_STEP = 2.5  # 2 px/tick * 1.25
 # The player shot moves 6 px/frame up (move_shot 2419-2424) = 12 px/tick = 15 stage units/tick.
 SHOT_STEP = 15
 # Sprite sizes. A 16-px (bitmap resolution 1) costume at ARCADE_STAGE_PER_PX is drawn at 125%. The baseline
-# sprites (craft, shot, crosshair, bomb target, bomb, craft explosion — bitmap resolution 2 art) were sized for
-# the old 2.25 stage-units-per-pixel look; each keeps its proportions and is rescaled by 1.25 / 2.25.
+# sprites (craft, shot — bitmap resolution 2 art) were sized for the old 2.25 stage-units-per-pixel look; each
+# keeps its proportions and is rescaled by 1.25 / 2.25. The craft explosion, crosshair, bomb target and bomb
+# left this table in CAB-05: each now draws only art rendered from the pin (resolution 1), so it takes
+# SPRITE_RENDER_SIZE like every other arcade-rendered sprite.
 SPRITE_RENDER_SIZE = 100 * ARCADE_STAGE_PER_PX
 assert SHEONITE_RENDER_SIZE == SPRITE_RENDER_SIZE, "Sheonite (defined earlier) must use the shared sprite scale"
 BASELINE_RESCALE = ARCADE_STAGE_PER_PX / 2.25
 BASELINE_SPRITE_SIZES = {
     "solvalou": round(150 * BASELINE_RESCALE, 2),
     "blaster": round(200 * BASELINE_RESCALE, 2),
-    "target_a": round(150 * BASELINE_RESCALE, 2),
-    "target_b": round(150 * BASELINE_RESCALE, 2),
-    "bomb": round(150 * BASELINE_RESCALE, 2),
-    "solv_death": round(100 * BASELINE_RESCALE, 2),
 }
+# CAB-05 bomb, crosshair, bomb-target and enemy-bullet art, rendered from the pin's second graphics bank
+# (tools/effects_sprite_render.py; `_ATTR` 0x80 selects it). The crosshair, bomb target and bomb append it
+# after their preserved baseline costumes, which no block selects any more.
+# The bomb (init_bombing and the bomb-active block, xevious_main.68k 2445-2489): code 1C, then 1D at frame 8
+# and 1E at frame 16, holding there (`_TIMER1` stops at 2), coloured 0x25 + ((TIMER >> 2) & 3) — a new colour
+# every 4 frames. bomb/fall/<code>/c25..c28 is colour-minor, so the ordinal is base + 4 * code + colour.
+BOMB_ART_BASE_ORDINAL = 6  # after the 5 preserved bomb_01..05
+BOMB_CODE_STEP_FRAMES = 8
+BOMB_CODE_STEPS = 3
+BOMB_COLOUR_STEP_FRAMES = 4
+BOMB_COLOURS = 4
+# The crosshair (handle_crosshairs 2239-2272): colour 32 idle, 33 while the bomb object is active, plus 9 on
+# the frames where countup & 4 is set AND an active ground object 2..15 sits in the crosshair's box
+# (check_targeted_ground_object 2282-2295 — the bomb's own 20 x 20 px box, HIT_WINDOW_BOMB_GROUND).
+# crosshair/aim/{idle, bombing, idle-lit, bombing-lit}: the ordinal is base + bombing + 2 * lit.
+CROSSHAIR_ART_BASE_ORDINAL = 4  # after the 3 preserved target_01, target_02, target_04
+CROSSHAIR_LIT_TICK_DIVISOR = 2  # countup & 4 at 2 frames a tick: floor(tick / 2) is odd
+CROSSHAIR_CHECK_OBJECTS = (2, 15)  # the 14 ground objects 0x02..0x0F the arcade sweeps (moveq #14-1)
+BOMB_TARGET_ART_COSTUME = "bomb-target/mark/01"  # code 0x14 (bank 1), colour 0x22 (init_bombing 2469)
 # --- BOSS-01 C3 geometry: the Andor Genesis lifecycle positions + composite offsets (all source-verified at the
 # pin). Placed here so the slot-unit / frame / render-stage primitives above are already defined; the matching ID
 # strings live up by the other Andor constants. ------------------------------------------------------------------
@@ -2618,21 +2683,29 @@ def _andor_part_offset_tables() -> tuple[list[int], list[int]]:
 ANDOR_PART_DEPTH_OFFSETS, ANDOR_PART_LATERAL_OFFSETS = _andor_part_offset_tables()
 TOROID_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
 # WPN-02 hit/explosion state (`flying_enemy_hit` 4865–4902): a struck flying enemy explodes over 20
-# arcade frames = 10 ticks, five 4-frame phases, still drifting on its velocity; at arcade frame 8 the
-# sprite doubles (2x) with a one-cell recentre; then the slot is freed. While exploding it neither hits
-# nor is hit. The explosion sprite reuses the verified solv_death frames as a recorded stand-in (record
-# 025) — the mechanic (explode → score → gone) is exact; dedicated Toroid-burst crops are deferred.
+# arcade frames = 10 ticks, five 4-frame phases, still drifting on its velocity; then the slot is freed.
+# While exploding it neither hits nor is hit. CAB-05: the burst is the arcade's own air explosion
+# (codes 70 71 74 78 7C at colour 7, rendered from the pin by tools/effects_sprite_render.py): phases 2-4
+# are 2x2 sprites, so the picture is double size from arcade frame 8 to the end, and the one-cell recentre
+# at frame 8 (4872-4875) is built into the art (every frame is centred in one 32-px cell), so the clone
+# draws every phase at the shared scale with no size change. The flips cycle every frame from TIMER&3
+# (4884-4887); each phase is four costumes (none/x/y/xy).
 TOROID_HIT_DURATION_FRAMES = 20
 TOROID_EXPLOSION_PHASE_FRAMES = 4  # 20 / 4 = five phases
 TOROID_EXPLOSION_PHASES = 5
 TOROID_TURN_FRAME_COUNT = 7  # turn costumes precede the referenced explosion costumes on the target
-TOROID_BIG_PHASE = 2  # the 2x phase (arcade frame 8): size doubles, sprite recentres one cell
-TOROID_EXPLODE_SIZE = 2 * TOROID_RENDER_SIZE  # the big phase doubles the sprite
-# AIR-12 enemy-bullet renderer: one persistent clone per bullet slot (40-58), a small stand-in sprite
-# (dedicated bullet crops + the reference's 4-colour pulse deferred with the other art, record 026).
+AIR_EXPLOSION_FLIP_COSTUMES = 4  # air-explosion/burst/NN/{none,x,y,xy}: the sprite_extractor flip states
+# AIR-12 enemy-bullet renderer: one persistent clone per bullet slot (40-58). CAB-05: the bullet is code
+# 0x11E (the bomb's last frame), every bullet coloured 0x25 + ((countup >> 1) & 3)
+# (sub_fn_5__handle_pulsing_colours, xevious_sub.68k 208-218) — a new colour every tick at 2 frames a tick.
+# The arcade skips the pulse while scroll is disabled (209-210), which is only set outside play (attract,
+# coin-up, and the forest wait after a death, set at the end of the pause, 2087); the port's bullets draw only while playing, so the tick-driven pulse
+# matches. bomb/fall/03/c25..c28 by `tick mod 4`, at the shared sprite scale.
 ENEMY_BULLET_TARGET = "enemy_bullet"
 ENEMY_BULLET_CLONE_SLOT_ID = "enemy-bullet-clone-slot"
-ENEMY_BULLET_RENDER_SIZE = 90 * BASELINE_RESCALE  # 50: the stand-in dot, kept at its old proportion to enemies
+ENEMY_BULLET_ART_FAMILY = "bomb/fall/03/"
+ENEMY_BULLET_PULSE_COLOURS = 4
+ENEMY_BULLET_RENDER_SIZE = SPRITE_RENDER_SIZE
 
 # AIR-06 Terrazi renderer: one persistent clone per flying slot (59-64), gated on the Terrazi type,
 # costumed by the 7-frame roll cycle extracted onto the shared sprite-extraction proof (record 002's
@@ -2693,18 +2766,17 @@ JARA_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px spr
 # AIR-07 Zakato renderer constants. One persistent clone per flying slot, keyed on the slot's phase in
 # `slot state`, which the update machine sequences (SLOT_TELEPORT -> SLOT_ACTIVE -> SLOT_SELF_EXPLODE, or
 # SLOT_ACTIVE -> SLOT_HIT). Costume ordinals: 1 = the single active body (arcade code 0x11); 2.. = the
-# shared solv_death burst (the recorded cosmetic stand-in every flying family appends, records 025/031).
-# The Zakato's own teleport/self-destruct sprites (arcade codes 4,5,6,7,8,0xC — zakato_teleport_sprite_tbl
-# / zakato_exploding_sprite_tbl) are a DEFERRED cosmetic like the other families' bursts: all three of the
-# Zakato's animated phases render from the shared burst — the teleport-in sparkle plays it REVERSED (the
-# arcade's sparkle is that same six-frame set run backwards, 3986-3992), the self-destruct and the shot
-# kill play it FORWARD. The self-destruct stays at normal scale (a small pop) while the shot kill grows at
-# the big phase like every other flying kill, keeping the two visually distinct.
+# shared air explosion (five phases x four flip costumes). The shot kill IS that explosion
+# (`flying_enemy_hit`, CAB-05). The Zakato's own teleport/self-destruct sprites (bank-1 codes 4,5,6,7,8,0xC —
+# zakato_teleport_sprite_tbl / zakato_exploding_sprite_tbl) remain a DEFERRED cosmetic: the teleport-in
+# sparkle plays the air explosion's unflipped phases REVERSED (the arcade's sparkle runs its own set
+# backwards, 3986-3992) and the self-destruct plays them FORWARD, unflipped (zakato_explode never stores
+# its flip bits, 3949-3952).
 ZAKATO_TARGET = "zakato"
 ZAKATO_CLONE_SLOT_ID = "zakato-clone-slot"  # sprite-local: which flying slot this clone renders
 ZAKATO_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
 ZAKATO_BODY_ORDINAL = 1  # costume 1: the active body (arcade code 0x11)
-ZAKATO_BURST_ORDINAL_BASE = ZAKATO_BODY_ORDINAL + 1  # 2: first shared solv_death burst frame
+ZAKATO_BURST_ORDINAL_BASE = ZAKATO_BODY_ORDINAL + 1  # 2: first air-explosion costume
 
 # AIR-10 Spario renderer constants (shared shape for Giddo and Brag). One persistent clone per flying slot,
 # drawn when its slot holds the family's type, hidden otherwise; the clone writes no state. IMPORTANT: the
@@ -2712,13 +2784,13 @@ ZAKATO_BURST_ORDINAL_BASE = ZAKATO_BODY_ORDINAL + 1  # 2: first shared solv_deat
 # Zakato/Brag-Zakato/Sheonite/Bacura/Shooting-Star only), so a distinct Spario costume cannot be sourced or
 # operator-pixel-verified. Both families therefore stand in the Zakato body frame (a small dark blob — and
 # the Sparios are the payload a Zakato releases, so the stand-in reads sensibly) as a DEFERRED cosmetic with
-# its reason recorded, exactly as every family defers its own burst to the shared solv_death frames. The
-# Giddo's 4-frame flight loop (arcade CODE 0..3, 5229-5233) and short 4-code burst (codes 4..7), and the
-# Brag's ATTR flip mirror (3116-3119), are all deferred with it; the mechanically-meaningful distinctions
-# (aim-once flyby vs accelerating homer, and the Giddo's SHORT 8-frame burst duration) live in the handlers.
-# Costume layout on each target: ordinal 1 = the Zakato body stand-in, ordinals 2.. = the shared burst.
+# its reason recorded. The Giddo's 4-frame flight loop (arcade CODE 0..3, 5229-5233) and short 4-code
+# burst (codes 4..7, which the air explosion's unflipped phases stand in for), and the Brag's ATTR flip
+# mirror (3116-3119), are all deferred with it; the mechanically-meaningful distinctions (aim-once flyby vs
+# accelerating homer, and the Giddo's SHORT 8-frame burst duration) live in the handlers. Costume layout on
+# each target: ordinal 1 = the Zakato body stand-in, ordinals 2.. = the shared air explosion.
 SPARIO_BODY_ORDINAL = 1  # costume 1: the Zakato body stand-in
-SPARIO_BURST_ORDINAL_BASE = SPARIO_BODY_ORDINAL + 1  # 2: first shared solv_death burst frame
+SPARIO_BURST_ORDINAL_BASE = SPARIO_BODY_ORDINAL + 1  # 2: first air-explosion costume
 SPARIO_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px sprite at 1.25 stage units/px)
 
 GIDDO_SPARIO_TARGET = "giddo-spario"
@@ -2776,8 +2848,8 @@ GARU_NODE_SLOT_Y_DELTA = -SLOT_UNITS_PER_CELL  # -256
 # GND (ground.barra #70) Barra renderer constants. Unlike a flying family (one clone per flying slot), a
 # ground family draws one persistent clone per GROUND slot (1..16), each a pure per-tick function of its
 # slot's live state: the single Barra idle pyramid (code 0x17) while ACTIVE, then — once bombed (HIT) —
-# the shared bomb-explosion burst for the first GROUND_CRATER_START_FRAMES, then the flickering crater.
-# Costume ordinals on the barra target: 1 = barra/idle, 2.. = the shared solv_death explosion burst,
+# the ground explosion for the first GROUND_CRATER_START_FRAMES, then the flickering crater.
+# Costume ordinals on the barra target: 1 = barra/idle, 2..8 = the ground explosion,
 # then the two crater frames appended last (see expected_project's mirror). The clone writes no state.
 BARRA_TARGET = "barra"
 BARRA_CLONE_SLOT_ID = "barra-clone-slot"  # sprite-local: which ground slot this clone renders
@@ -2790,15 +2862,20 @@ GROUND_RENDER_SIZE = SPRITE_RENDER_SIZE  # the shared on-screen scale (a 16-px s
 # size% yields the arcade 2:1 plate/port ratio for free.) A larger size was the "big mess" overlap: the parts drew
 # larger than their spacing. Under PRES-01's isotropic map this is exactly SPRITE_RENDER_SIZE (125).
 ANDOR_RENDER_SIZE = 100 * SLOT_UNITS_PER_PIXEL * abs(RENDER_COL_STAGE) / SLOT_UNITS_PER_CELL  # = 125.0
-EXPLODE_COSTUME_COUNT = 8  # the shared solv_death burst is 8 costumes (explode_01..08)
+# CAB-05: every ground family's burst is the arcade's own ground explosion, codes 60 61 64 68 6C 62 63 at
+# colour 0x0C (handle_bomb_explosion 4904-4951; explode_and_remove_object 4963-4994; gun_port_explosion
+# 5715-5750, its own table gun_port_explosion_sprite_tbl with the same codes), rendered from the pin by tools/effects_sprite_render.py as the seven
+# ground-explosion/burst costumes, every frame centred in one 32-px cell (the 2x2 recentres at steps 2 and 5,
+# 4919-4923, are built into the art). The crater is codes A6/A7 at colour 0x0D (4931-4941), the two
+# ground-crater/flicker costumes. Ground explosions carry no flip bits.
 BARRA_IDLE_ORDINAL = 1  # costume 1: the Barra idle pyramid (barra/idle/01)
-BARRA_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the shared explosion burst (explode_01..)
-BARRA_CRATER_BASE_ORDINAL = BARRA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 10: crater frames follow
+BARRA_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the ground explosion
+BARRA_CRATER_BASE_ORDINAL = BARRA_EXPLODE_BASE_ORDINAL + GROUND_EXPLOSION_FRAME_COUNT  # 9: crater frames follow
 
 # SEC-01 (ground.sol-tower #90) renderer constants. Like every ground family, one persistent clone per GROUND
 # slot (1..16), a pure per-tick function of its slot state. Costume ordinals on the sol-tower target: 1..7 =
 # the 7 rise frames (sol-tower/rise/01..07, arcade sol_tower_animation_tbl A8,A9,AA,AB,AE,B2,B6), 8.. = the
-# shared solv_death explosion burst, then the two shared crater frames appended last (see expected_project's
+# ground explosion, then the two shared crater frames appended last (see expected_project's
 # mirror). Costume by phase (`slot flag`) + state: HIDDEN ACTIVE -> hidden; RISING (HIT) -> rise[step]; RISEN
 # ACTIVE -> the final rise frame (the risen citadel); RISEN HIT -> the shared burst->crater clock, identical
 # to the Barra. RENDERING NOTE (operator-verified at playtest): the "Sol Citadel (no shadow)" sheet draws the
@@ -2810,8 +2887,8 @@ SOL_TOWER_CLONE_SLOT_ID = "sol-tower-clone-slot"  # sprite-local: which ground s
 SOL_TOWER_RISE_FRAME_COUNT = 7  # costumes 1..7: the 7 rise frames (sol-tower/rise/01..07)
 SOL_TOWER_RISE_BASE_ORDINAL = 1  # costume 1: rise step 0 (rise ordinal = base + step)
 SOL_TOWER_RISEN_ORDINAL = SOL_TOWER_RISE_FRAME_COUNT  # costume 7: the fully-risen citadel (rise step 6)
-SOL_TOWER_EXPLODE_BASE_ORDINAL = SOL_TOWER_RISE_FRAME_COUNT + 1  # 8..: the shared explosion burst
-SOL_TOWER_CRATER_BASE_ORDINAL = SOL_TOWER_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 16: crater frames follow
+SOL_TOWER_EXPLODE_BASE_ORDINAL = SOL_TOWER_RISE_FRAME_COUNT + 1  # 8..: the ground explosion
+SOL_TOWER_CRATER_BASE_ORDINAL = SOL_TOWER_EXPLODE_BASE_ORDINAL + GROUND_EXPLOSION_FRAME_COUNT  # 15: crater frames follow
 
 # SEC-02 (secrets.bonus-flag #91) renderer constants. Like every ground family, one persistent clone per GROUND
 # slot (1..16), a pure per-tick function of its slot state. A Bonus Flag has NO explosion or crater: bombing it
@@ -2825,13 +2902,13 @@ BONUS_FLAG_ORDINAL = 1  # costume 1: the revealed flag (bonus-flag/flag/01)
 
 # GND-02 (ground.zolbak #85) renderer constants. A Zolbak renders EXACTLY like a Barra — an idle dome
 # that craters on a bomb hit — so its costume layout mirrors the Barra target: 1 = the idle dome
-# (zolbak/idle/01), 2.. = the shared solv_death explosion burst, then the two crater frames last. The
+# (zolbak/idle/01), 2.. = the ground explosion, then the two crater frames last. The
 # AI-level side-effect lives in `update zolbak`, not here; the renderer is a pure function of slot state.
 ZOLBAK_TARGET = "zolbak"
 ZOLBAK_CLONE_SLOT_ID = "zolbak-clone-slot"  # sprite-local: which ground slot this clone renders
 ZOLBAK_IDLE_ORDINAL = 1  # costume 1: the Zolbak idle dome (zolbak/idle/01)
-ZOLBAK_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the shared explosion burst (explode_01..)
-ZOLBAK_CRATER_BASE_ORDINAL = ZOLBAK_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 10: crater frames follow
+ZOLBAK_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the ground explosion
+ZOLBAK_CRATER_BASE_ORDINAL = ZOLBAK_EXPLODE_BASE_ORDINAL + GROUND_EXPLOSION_FRAME_COUNT  # 9: crater frames follow
 
 # GND (ground.barra #70) Garu Barra renderer constants. The Garu is TWO objects in adjacent ground slots
 # sharing one type (GARU_BARRA_TYPE): a 2x2 indestructible base (state SLOT_GARU_BASE) and a 1x1
@@ -2843,40 +2920,40 @@ ZOLBAK_CRATER_BASE_ORDINAL = ZOLBAK_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT
 #         flashes the whole base) and the crop-only sheet has no red-off cell, so the pulse is a recorded
 #         port necessity (operator decision 2026-09-24). Frame 01 is retained as a crop but not rendered;
 #   3     the node idle pyramid (garu/node reuses the Barra pyramid, mirrored from barra/idle);
-#   4..11 the shared solv_death burst the node's explode-and-remove plays before it vanishes.
+#   4..10 the ground explosion the node's explode-and-remove plays before it vanishes.
 # The base is drawn TWICE the linear size of the node (arcade _ATTR=3, 2x2) — its costume is a 32-px
 # canvas vs the node's 16-px, so the SAME GROUND_RENDER_SIZE yields ~2x on screen (no extra scaling).
 GARU_TARGET = "garu"
 GARU_CLONE_SLOT_ID = "garu-clone-slot"  # sprite-local: which ground slot this clone renders
 GARU_BASE_EXPOSED_COSTUME = "garu/base/02"  # the exposed base holds the red-socket frame (02); no pulse (port necessity)
 GARU_NODE_IDLE_ORDINAL = 3  # costume 3: the node idle pyramid (garu/node, mirrored from barra/idle)
-GARU_EXPLODE_BASE_ORDINAL = 4  # costumes 4..: the shared explosion burst the node plays before removal
+GARU_EXPLODE_BASE_ORDINAL = 4  # costumes 4..: the ground explosion the node plays before removal
 
 # GND (ground.logram #71) Logram renderer constants. One persistent clone per GROUND slot (1..16), the
 # same terrain-band pool as the Barra/Garu, each a pure per-tick function of its slot's live state. While
 # ACTIVE the dome shows the open/close frame `update logram` wrote into `slot code` (ordinals 1..4 =
 # logram/open/01..04, arcade codes 0x2C..0x2F); once bombed (HIT) it craters IDENTICALLY to the Barra
-# (handle_bomb_explosion): the shared solv_death burst, then the flickering crater. Costume layout:
+# (handle_bomb_explosion): the ground explosion, then the flickering crater. Costume layout:
 #   1..4   logram/open/01..04 (the dome open/close frames; `slot code` indexes them directly);
-#   5..12  the shared solv_death explosion burst (the ground bomb-burst is a deferred cosmetic stand-in);
-#   13..14 the two crater frames the HIT renderer flickers between once the burst finishes.
+#   5..11  the ground explosion;
+#   12..13 the two crater frames the HIT renderer flickers between once the burst finishes.
 LOGRAM_TARGET = "logram"
 LOGRAM_CLONE_SLOT_ID = "logram-clone-slot"  # sprite-local: which ground slot this clone renders
 LOGRAM_OPEN_FRAME_COUNT = 4  # logram/open/01..04 (the dome open/close cycle, arcade codes 0x2C..0x2F)
 LOGRAM_CLOSED_ORDINAL = 1  # costume 1: the closed dome (0x2C), the spawn + wait-phase frame
-LOGRAM_EXPLODE_BASE_ORDINAL = LOGRAM_OPEN_FRAME_COUNT + 1  # 5: shared explosion burst follows the dome frames
-LOGRAM_CRATER_BASE_ORDINAL = LOGRAM_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 13: crater frames last
+LOGRAM_EXPLODE_BASE_ORDINAL = LOGRAM_OPEN_FRAME_COUNT + 1  # 5: the ground explosion follows the dome frames
+LOGRAM_CRATER_BASE_ORDINAL = LOGRAM_EXPLODE_BASE_ORDINAL + GROUND_EXPLOSION_FRAME_COUNT  # 12: crater frames last
 
 # GND-04 (ground.derota #86) Derota renderer constants. A Derota renders like a Barra — one idle turret
 # frame that craters on a bomb hit (handle_1B_Derota craters via handle_bomb_explosion, NOT the Garu
 # node's explode-and-remove) — so its costume layout mirrors the Barra target: 1 = the idle turret
-# (derota/idle/01), 2.. = the shared solv_death burst, then the two crater frames. The firing is in
+# (derota/idle/01), 2.. = the ground explosion, then the two crater frames. The firing is in
 # `update derota`; the renderer is a pure function of slot state.
 DEROTA_TARGET = "derota"
 DEROTA_CLONE_SLOT_ID = "derota-clone-slot"  # sprite-local: which ground slot this clone renders
 DEROTA_IDLE_ORDINAL = 1  # costume 1: the Derota idle turret (derota/idle/01)
-DEROTA_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the shared explosion burst (explode_01..)
-DEROTA_CRATER_BASE_ORDINAL = DEROTA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 10: crater frames follow
+DEROTA_EXPLODE_BASE_ORDINAL = 2  # costume 2..: the ground explosion
+DEROTA_CRATER_BASE_ORDINAL = DEROTA_EXPLODE_BASE_ORDINAL + GROUND_EXPLOSION_FRAME_COUNT  # 9: crater frames follow
 
 # GND-04 (ground.derota #86) Garu Derota renderer constants. Like the Garu Barra it is TWO slots sharing
 # one type (GARU_DEROTA_TYPE): a 2x2 indestructible base (state SLOT_GARU_BASE) and a 1x1 FIRING
@@ -2886,7 +2963,7 @@ DEROTA_CRATER_BASE_ORDINAL = DEROTA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT
 #         recorded port necessity (Scratch cannot pulse the red alone; the crop-only sheet has no red-off
 #         cell; operator decision 2026-09-24). Frame 01 is retained as a crop but not rendered;
 #   3     the node turret (garu-derota/node reuses the single Derota turret, derota/idle);
-#   4..11 the shared solv_death burst the node's explode-and-remove plays before it vanishes.
+#   4..10 the ground explosion the node's explode-and-remove plays before it vanishes.
 # The base is a 32-px canvas vs the node's 16-px, so the SAME GROUND_RENDER_SIZE yields the arcade's 2x2
 # base over the 1x1 node with no extra scaling. PORT NOTE (recorded in mechanics 041): the sheet has no
 # separate small Garu-Derota node bitmap, so the node reuses the Derota turret — faithful, since the arcade
@@ -2895,7 +2972,7 @@ GARU_DEROTA_TARGET = "garu derota"
 GARU_DEROTA_CLONE_SLOT_ID = "garu-derota-clone-slot"  # sprite-local: which ground slot this clone renders
 GARU_DEROTA_BASE_EXPOSED_COSTUME = "garu-derota/base/02"  # exposed base holds the red firing-centre frame (02); no pulse (port necessity)
 GARU_DEROTA_NODE_IDLE_ORDINAL = 3  # costume 3: the node turret (garu-derota/node, mirrored from derota/idle)
-GARU_DEROTA_EXPLODE_BASE_ORDINAL = 4  # costumes 4..: the shared burst the node plays before removal
+GARU_DEROTA_EXPLODE_BASE_ORDINAL = 4  # costumes 4..: the ground explosion the node plays before removal
 
 # GND-05 (ground.boza-logram #87) renderer constants. One `boza` target's clone pool covers the ground band
 # (1..16); each clone branches on its slot's `slot link` — an OUTER (link > 0) renders the open/close dome
@@ -2904,20 +2981,19 @@ GARU_DEROTA_EXPLODE_BASE_ORDINAL = 4  # costumes 4..: the shared burst the node 
 # once HIT (handle_bomb_explosion). Costume layout:
 #   1..4   logram/open/01..04 (the outer dome open/close frames; an outer's `slot code` indexes them directly);
 #   5      boza-centre/core/01 (the centre's red/black bullseye, arcade code 0x3a — the one new crop);
-#   6..13  the shared solv_death explosion burst (the ground bomb-burst is the deferred cosmetic stand-in);
-#   14..15 the two crater frames the HIT renderer flickers between once the burst finishes.
+#   6..12  the ground explosion;
+#   13..14 the two crater frames the HIT renderer flickers between once the burst finishes.
 # The four outer domes reuse the Logram crops by ref; only the centre is a new sheet crop.
 BOZA_TARGET = "boza"
 BOZA_CLONE_SLOT_ID = "boza-clone-slot"  # sprite-local: which ground slot this clone renders
 BOZA_OUTER_CLOSED_ORDINAL = 1  # costume 1: the closed outer dome (0x2C), the spawn + wait-phase frame
 BOZA_CENTRE_ORDINAL = 5  # costume 5: the centre bullseye (boza-centre/core/01)
-BOZA_EXPLODE_BASE_ORDINAL = BOZA_CENTRE_ORDINAL + 1  # 6: shared explosion burst follows the dome + centre
-BOZA_CRATER_BASE_ORDINAL = BOZA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 14: crater frames last
+BOZA_EXPLODE_BASE_ORDINAL = BOZA_CENTRE_ORDINAL + 1  # 6: the ground explosion follows the dome + centre
+BOZA_CRATER_BASE_ORDINAL = BOZA_EXPLODE_BASE_ORDINAL + GROUND_EXPLOSION_FRAME_COUNT  # 13: crater frames last
 
 # GND-06 (ground.grobda #88) tank/stingray renderer. All 12 variants share ONE target and ONE costume set:
-# the four tank/roll frames (ordinals 1..4; the arcade rolls _CODE through 0x4c..0x4f), then the shared
-# solv_death burst (ordinals 5..12 — the ground bomb-burst is the deferred cosmetic stand-in every ground
-# family uses), then the two crater frames (ordinals 13..14) a LAND variant flickers between once the burst
+# the four tank/roll frames (ordinals 1..4; the arcade rolls _CODE through 0x4c..0x4f), then the ground
+# explosion (ordinals 5..11), then the two crater frames (ordinals 12..13) a LAND variant flickers between once the burst
 # finishes. A WATER variant's explode-and-remove burst draws the same ordinals 5.. and is culled before it
 # reaches a crater. The roll frame is a RENDER-ONLY function of the global tick + `slot dx` (the walk writes no
 # `slot code`), like the Terrazi roll: stopped (dx 8) holds frame 0, forward (14) cycles, back (2) reverses,
@@ -2925,23 +3001,23 @@ BOZA_CRATER_BASE_ORDINAL = BOZA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 
 GROBDA_TARGET = "grobda"
 GROBDA_CLONE_SLOT_ID = "grobda-clone-slot"  # sprite-local: which ground slot this clone renders
 GROBDA_ROLL_FRAME_COUNT = 4  # tank/roll/01..04 (ordinals 1..4)
-GROBDA_EXPLODE_BASE_ORDINAL = GROBDA_ROLL_FRAME_COUNT + 1  # 5: shared explosion burst follows the roll frames
-GROBDA_CRATER_BASE_ORDINAL = GROBDA_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 13: crater frames last
+GROBDA_EXPLODE_BASE_ORDINAL = GROBDA_ROLL_FRAME_COUNT + 1  # 5: the ground explosion follows the roll frames
+GROBDA_CRATER_BASE_ORDINAL = GROBDA_EXPLODE_BASE_ORDINAL + GROUND_EXPLOSION_FRAME_COUNT  # 12: crater frames last
 GROBDA_STOPPED_DX = 8  # raw dx that reads as "stopped" (scroll-matched) — holds roll frame 0, no animation
 GROBDA_DART_DX = 22  # raw dx of a dart — the fast-forward animation cadence
 GROBDA_ROLL_PERIOD = 2  # ticks per tread frame while rolling (full 4-frame cycle every 8 ticks)
 GROBDA_ROLL_PERIOD_FAST = 1  # a darting Grobda rolls its tread one frame per tick
 
 # GND-07 (ground.domogram #89) renderer. ONE target, one costume set: the four idle/animation frames
-# (domogram/idle/01..04, ordinals 1..4 — the codes 0x3C..0x3F the sprite cycles), then the shared solv_death
-# burst (ordinals 5..12), then the two crater frames (ordinals 13..14) a bombed LAND Domogram flickers between.
+# (domogram/idle/01..04, ordinals 1..4 — the codes 0x3C..0x3F the sprite cycles), then the ground
+# explosion (ordinals 5..11), then the two crater frames (ordinals 12..13) a bombed LAND Domogram flickers between.
 # The animation frame is a RENDER-ONLY function of the anim timer (`slot fire timer` = _TYPE); the walk maintains
 # the timer and the renderer maps it to a costume, like the Grobda roll (no `slot code` write).
 DOMOGRAM_TARGET = "domogram"
 DOMOGRAM_CLONE_SLOT_ID = "domogram-clone-slot"  # sprite-local: which ground slot this clone renders
 DOMOGRAM_ANIM_FRAME_COUNT = 4  # domogram/idle/01..04 (ordinals 1..4)
-DOMOGRAM_EXPLODE_BASE_ORDINAL = DOMOGRAM_ANIM_FRAME_COUNT + 1  # 5: shared explosion burst follows the anim frames
-DOMOGRAM_CRATER_BASE_ORDINAL = DOMOGRAM_EXPLODE_BASE_ORDINAL + EXPLODE_COSTUME_COUNT  # 13: crater frames last
+DOMOGRAM_EXPLODE_BASE_ORDINAL = DOMOGRAM_ANIM_FRAME_COUNT + 1  # 5: the ground explosion follows the anim frames
+DOMOGRAM_CRATER_BASE_ORDINAL = DOMOGRAM_EXPLODE_BASE_ORDINAL + GROUND_EXPLOSION_FRAME_COUNT  # 12: crater frames last
 DOMOGRAM_FRAME_ORD_ID = "domogram-frame-ord"  # read-only render lookup: anim index (0..7) -> costume ordinal
 # GND-07 shared runtime tables (read-only). The 32-entry vector table (dx = scroll/depth axis, dy = lateral),
 # and the flattened per-step path columns walked by the follower (duration + vector index per step). Their
@@ -3178,15 +3254,17 @@ MESSAGES = {
     "death complete": "broadcastMsgId-death-complete",
     "game over complete": "broadcastMsgId-game-over-complete",
     "craft changed": "broadcastMsgId-craft-changed",
-    # WPN-04: the walk thread owns the bomb logic and fires these two purely for the bomb renderer's
-    # sounds — `bomb` on arm (drop), `bomb landed` on finish (explosion). The retired arrow-key target
-    # sprite's bounds broadcasts (target-bounds-*) are gone: the crosshair is a pure renderer now.
-    "bomb": "broadcastMsgId-bomb-release",
-    "bomb landed": "broadcastMsgId-bomb-landed",
-    # AUDIO: the shot×Bacura bounce runs on a blaster clone, which cannot play a Stage-owned
-    # sound directly; it broadcasts this and the Stage plays BACURA_HIT_SND (src deactivate_shot
-    # xevious_main.68k:2559). All other arcade SFX play from Stage-thread procs directly.
+    # (CAB-05, slice 20: the WPN-04 `bomb` / `bomb landed` renderer-sound broadcasts are retired — the arcade has
+    # ONE bomb sound, BOMB_SND at init_bombing xevious_main.68k:2463, which the Stage's bomb arm now plays itself.
+    # The retired arrow-key target sprite's bounds broadcasts (target-bounds-*) are gone too.)
+    # AUDIO: sprite-side cues relay to the Stage, which owns every game sound (CAB-05). The shot×Bacura bounce
+    # runs on a blaster clone and broadcasts `sfx bacura` (BACURA_HIT_SND, src deactivate_shot
+    # xevious_main.68k:2559); a fired shot broadcasts `sfx shot` (SHOT_SND, main_fn_30_shot_fn 2366); the craft's
+    # death broadcasts `sfx death` (SOLVALOU_EXPLOSION_SND, update_solvalou 2030). All other arcade SFX play from
+    # Stage-thread procs directly.
     "sfx bacura": "broadcastMsgId-sfx-bacura",
+    "sfx shot": "broadcastMsgId-sfx-shot",
+    "sfx death": "broadcastMsgId-sfx-death",
     # AREA-01 (slice 20): the Stage has just computed the terrain strips' state (`update terrain`) — at the
     # end of each walk tick and of each re-top; each strip draws itself from it, in the same frame.
     "terrain draw": "broadcastMsgId-terrain-draw",
@@ -3619,6 +3697,29 @@ class Blocks:
         self.blocks[menu]["parent"] = block_id
         return block_id
 
+    def play_sound_until_done(self, sound: str) -> str:
+        menu = self.add(
+            "sound_sounds_menu", fields={"SOUND_MENU": [sound, None]}, shadow=True
+        )
+        block_id = self.add("sound_playuntildone", inputs={"SOUND_MENU": [1, menu]})
+        self.blocks[menu]["parent"] = block_id
+        return block_id
+
+    def stop_all_sounds_unless_kept(self) -> str:
+        # CAB-05: every stop-all-sounds in the project goes through here, so the death-cue keep (KEEP_SOUNDS_ID)
+        # and the cue's own playing latch (DEATH_CUE_PLAYING_ID) reach all of them — the transition's own stop and
+        # every sprite's director-stop (common_stop).
+        return self.if_reporter(
+            self.op_and(
+                self.op_eq(variable("keep sounds", KEEP_SOUNDS_ID), number(0)),
+                self.op_eq(variable("death cue playing", DEATH_CUE_PLAYING_ID), number(0)),
+            ),
+            [self.add("sound_stopallsounds")],
+        )
+
+    def set_volume(self, value: int) -> str:
+        return self.add("sound_setvolumeto", inputs={"VOLUME": number(value)})
+
     def greater(self, parent: str, name: str, variable_id: str, value: int) -> str:
         block_id = self.add(
             "operator_gt",
@@ -3884,7 +3985,11 @@ def install_transition_procedure(blocks: Blocks) -> None:
     increment = blocks.change_var("state epoch", EPOCH_ID, 1)
     resetting = blocks.set_var("game state", STATE_ID, text("resetting"))
     stop = blocks.send("director stop", wait=True)
-    stop_sounds = blocks.add("sound_stopallsounds")
+    # CAB-05: the stop-all is skipped while `keep sounds` is set (the death-complete handler's one transition, so
+    # the death cue plays out), then the keep is consumed — after `director stop` has returned, so every sprite's
+    # common_stop has already read it.
+    stop_sounds = blocks.stop_all_sounds_unless_kept()
+    clear_keep = blocks.set_var("keep sounds", KEEP_SOUNDS_ID, number(0))
     set_scope = blocks.set_var("reset scope", SCOPE_ID, text(""))
     scope_reporter = blocks.add(
         "argument_reporter_string_number",
@@ -3945,6 +4050,7 @@ def install_transition_procedure(blocks: Blocks) -> None:
             resetting,
             stop,
             stop_sounds,
+            clear_keep,
             set_scope,
             clear_outcome,
             reset,
@@ -4055,8 +4161,8 @@ def install_clear_slots(blocks: Blocks) -> None:
 def install_advance_slots(blocks: Blocks) -> None:
     # SYS-04 centralized ordered update: one atomic (warp) pass over the 64 slots in ascending
     # index order, advancing the tick clock and dispatching each occupied slot by its type. The
-    # Toroid (types 0x0A / 0x0B) is the first live occupant (slice 8); other occupant types keep
-    # the empty seam their slices fill. Empty slots are skipped first (the cheap fast path).
+    # Toroid (types 0x0A / 0x0B) was the first live occupant (slice 8); each later family slice added
+    # its own branch. Empty slots are skipped first (the cheap fast path).
     definition = _install_warp_proc(blocks, ADVANCE_SLOTS_PROCCODE)
 
     cursor = lambda: variable("slot index", SLOT_INDEX_ID)
@@ -4069,9 +4175,8 @@ def install_advance_slots(blocks: Blocks) -> None:
     occupied = blocks.add("operator_not")
     blocks.blocks[occupied]["inputs"] = {"OPERAND": [2, is_empty]}
     blocks.blocks[is_empty]["parent"] = occupied
-    # ENGINE-TODO: the other flying/ground/boss families append their per-type branches to this
-    # walk dispatch as their slices build them (the occupant's type is read once into `walk type`
-    # first, then dispatched — Toroid and enemy-bullet branches are wired this slice).
+    # Every built flying, ground and boss family has its per-type branch in this walk dispatch: the
+    # occupant's type is read once into `walk type` first, then dispatched.
     read_type = blocks.set_var_expr(
         "walk type", WALK_TYPE_ID, blocks.list_item("slot type", SLOT_TYPE_ID, cursor())
     )
@@ -4760,8 +4865,41 @@ def install_track_crosshair(blocks: Blocks) -> None:
     # LEAD, player slot y); the renderer maps that to 120 stage units (96 arcade px) ahead of the ship, moving
     # with it pixel for pixel. PRES-01: it used to read the rounded cell, so it jumped 8 px at a time.
     # The crosshair carries no gameplay state — it is only marked ACTIVE so its renderer shows it while
-    # playing. The reference's on-target colour flash (check_targeted_ground_object) is a deferred cosmetic.
+    # playing. CAB-05: first it works out the on-target flash (handle_crosshairs 2245-2259): on ticks where
+    # countup & 4 is set, sweep ground objects 2..15 and raise `crosshair lit` if an ACTIVE one sits in the
+    # bomb's box around the crosshair (check_targeted_ground_object 2282-2295: byte 0 `crosshair - obj`, so the
+    # lateral delta is obj - crosshair in px, byte 1 `obj - crosshair` in 2-px units). The sweep runs BEFORE
+    # the move, as the arcade reads the crosshair's sprite shadow from the frame before. It only colours the
+    # crosshair; nothing reads it for play.
     definition = _install_warp_proc(blocks, TRACK_CROSSHAIR_PROCCODE)
+    cross_x = lambda: blocks.list_item("slot x", SLOT_X_ID, number(CROSSHAIR_SLOT))
+    cross_y = lambda: blocks.list_item("slot y", SLOT_Y_ID, number(CROSSHAIR_SLOT))
+    lit_checks: list[str] = []
+    for obj in range(CROSSHAIR_CHECK_OBJECTS[0], CROSSHAIR_CHECK_OBJECTS[1] + 1):
+        s = GROUND_SLOTS[0] + obj  # Scratch ground slot = 1 + arcade object slot
+        obj_live = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, number(s)), number(SLOT_ACTIVE))
+        d_lat = lambda s=s: blocks.op_sub(
+            _lateral_shadow(blocks, blocks.list_item("slot y", SLOT_Y_ID, number(s))), _lateral_shadow(blocks, cross_y())
+        )
+        d_dep = lambda s=s: blocks.op_sub(
+            _depth_shadow(blocks, blocks.list_item("slot x", SLOT_X_ID, number(s))), _depth_shadow(blocks, cross_x())
+        )
+        lit_checks.append(
+            blocks.if_reporter(
+                blocks.op_and(obj_live, _shadow_hit(blocks, d_lat, d_dep, HIT_WINDOW_BOMB_GROUND)),
+                [blocks.set_var("crosshair lit", CROSSHAIR_LIT_ID, number(1))],
+            )
+        )
+    lit_frame = blocks.op_eq(
+        blocks.op_mod(
+            blocks.op_floor(blocks.op_div(variable("tick", TICK_ID), number(CROSSHAIR_LIT_TICK_DIVISOR))), number(2)
+        ),
+        number(1),
+    )
+    lit = [
+        blocks.set_var("crosshair lit", CROSSHAIR_LIT_ID, number(0)),
+        blocks.if_reporter(lit_frame, lit_checks),
+    ]
     set_x = blocks.list_replace(
         "slot x",
         SLOT_X_ID,
@@ -4774,7 +4912,7 @@ def install_track_crosshair(blocks: Blocks) -> None:
     set_state = blocks.list_replace(
         "slot state", SLOT_STATE_ID, number(CROSSHAIR_SLOT), number(SLOT_ACTIVE)
     )
-    blocks.chain(definition, [set_x, set_y, set_state])
+    blocks.chain(definition, [*lit, set_x, set_y, set_state])
 
 
 def install_advance_bomb(blocks: Blocks) -> None:
@@ -4821,7 +4959,11 @@ def install_advance_bomb(blocks: Blocks) -> None:
             "slot state", SLOT_STATE_ID, number(BOMB_TARGET_SLOT), number(SLOT_ACTIVE)
         ),
         blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(1)),
-        blocks.send("bomb"),  # drop sound (bomb renderer)
+        # CAB-05: BOMB_SND, the arcade's single bomb sound (init_bombing xevious_main.68k:2463). The game code stops
+        # it on landing (check_bomb_finished 2508-2509), but Scratch has no single-sound stop and a stop-all would
+        # cut every other cue, so it plays out (~0.16 s past a 35-frame flight) — a port reading, which is also what
+        # the reference's Amiga layer does (osd_sound_stop skips BOMB_SND, amiga.68k:804-808).
+        blocks.play_sound("blaster_fire"),
     ]
     blocks.substack(arm_gate, arm_body)
 
@@ -4836,7 +4978,6 @@ def install_advance_bomb(blocks: Blocks) -> None:
         blocks.list_replace("slot state", SLOT_STATE_ID, number(BOMB_SLOT), number(0)),
         blocks.list_replace("slot state", SLOT_STATE_ID, number(BOMB_TARGET_SLOT), number(0)),
         blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(0)),
-        blocks.send("bomb landed"),  # explosion sound (bomb renderer)
     ]
     substep_body = [
         blocks.set_var_expr(
@@ -8258,12 +8399,29 @@ def install_update_andor_master(blocks: Blocks) -> None:
     # Route the whole tick: while alive (destroyed clock 0) run colour/flip + the shell-slot track + the core-death
     # check, then the descend/hold/leave lifecycle only if the check did not just latch a death this tick; once the
     # clock is latched, run only the destroyed departure.
+    # CAB-05 Andor drone: the arcade requests ANDOR_GENESIS_SND every frame the boss descends, holds (5392/5404) or
+    # leaves (andor_genesis_leave 5436) and never while destroyed (5409). A per-frame replay restarts the sample, so
+    # the port replays it once per ANDOR_DRONE_TICKS (the sample's length) for a back-to-back drone — a port
+    # reading of the same intent as the Amiga driver's 51-call restart (amiga.68k:752-760). It rides on the
+    # lifecycle branch, so a core death stops re-arming and the last sample plays out. `_ground_seed_andor` zeroes
+    # the timer so each arrival sounds at once.
+    drone_timer = lambda: variable("andor drone timer", ANDOR_DRONE_TIMER_ID)
+    drone = [
+        blocks.if_reporter(
+            blocks.op_lt(drone_timer(), number(1)),
+            [
+                blocks.play_sound("andor_genesis"),
+                blocks.set_var("andor drone timer", ANDOR_DRONE_TIMER_ID, number(ANDOR_DRONE_TICKS)),
+            ],
+        ),
+        blocks.change_var("andor drone timer", ANDOR_DRONE_TIMER_ID, -1),
+    ]
     alive_body = [
         set_colour,
         set_flip,
         *track_master_slot,
         core_death_check,
-        _ground_if_else(blocks, blocks.op_eq(destroyed_timer(), number(0)), [lifecycle], []),
+        _ground_if_else(blocks, blocks.op_eq(destroyed_timer(), number(0)), [*drone, lifecycle], []),
     ]
     blocks.chain(
         definition,
@@ -8321,8 +8479,9 @@ def install_update_andor_part(blocks: Blocks) -> None:
     # and the composite dispatch does not guarantee the ports resolve on the same tick as the core). A cascaded port
     # stays SLOT_ACTIVE throughout its explosion, exactly like the arcade (only gun_port_explosion_finished at 5738
     # sets _STATE=4) — so a bomb landing on it during the burst still scores its 1,000 through the ACTIVE-gated
-    # detector. Advance the animation clock every tick (F4) so the renderer's floor(slot timer / 8) walks the 8 burst
-    # frames instead of freezing on frame 0. When the burst finishes (floor >= EXPLODE_COSTUME_COUNT), resolve the
+    # detector. Advance the animation clock every tick (F4) so the renderer's floor(slot timer / 4) walks the 7 burst
+    # frames instead of freezing on frame 0 (gun_port_explosion steps every 4 frames, `(TIMER>>2)&7`, and finishes at
+    # frame 7 — 28 frames, 5715-5741). When the burst finishes (floor >= GROUND_EXPLOSION_FRAME_COUNT), resolve the
     # part: a gun port is explode-and-remove (free the slot); the CORE converts in place into the fly-up Bragza
     # (arcade andor_genesis_core_hit waits for its explosion to finish, `_STATE==4`, THEN sets it flying, 5482-5491)
     # — stamped ANDOR_BRAGZA_TYPE + the ANDOR_ARMOR_IMMUNE sentinel (never re-bombable) with its anim clock reset.
@@ -8333,9 +8492,9 @@ def install_update_andor_part(blocks: Blocks) -> None:
     burst_done = blocks.op_not(
         blocks.op_lt(
             blocks.op_floor(
-                blocks.op_div(slot_timer(), number(GROUND_EXPLOSION_PHASE_FRAMES))
+                blocks.op_div(slot_timer(), number(ANDOR_EXPLOSION_PHASE_FRAMES))
             ),
-            number(EXPLODE_COSTUME_COUNT),
+            number(GROUND_EXPLOSION_FRAME_COUNT),
         )
     )
     is_core = blocks.op_eq(slot_type(), number(ANDOR_CORE_TYPE))
@@ -8867,8 +9026,9 @@ def install_coin_poll(blocks: Blocks) -> None:
     # Stage's non-warp coin loop reads it to run the coin-abort transition (a coin during an attract sub-state
     # resets the cabinet to the title, matching arcade `coined_up`). The abort must NOT run here — this proc is
     # warp, and the transition procedure does `broadcast and wait` (director stop/reset/enter), which cannot
-    # safely nest inside a warp thread — so the abort is done from the non-warp loop in `stage_blocks`. The
-    # coin SOUND is still a marked placeholder pending the operator's provenance decision.
+    # safely nest inside a warp thread — so the abort is done from the non-warp loop in `stage_blocks`. CAB-05: the
+    # coin SOUND (COIN_SND, xevious_sub.68k:181) likewise only latches `coin sound` here, on a banked credit only;
+    # the loop plays it after any abort transition, whose stop-all would otherwise cut it at once.
     definition = _install_warp_proc(blocks, COIN_POLL_PROCCODE)
     reset_edge = blocks.set_var("coin edge", COIN_EDGE_ID, number(0))
     gate = blocks.add("control_if_else")
@@ -8886,7 +9046,7 @@ def install_coin_poll(blocks: Blocks) -> None:
                 blocks.op_lt(variable("credits", CREDITS_ID), number(CREDIT_CAP)),
                 [
                     blocks.change_var("credits", CREDITS_ID, 1),
-                    # COIN SOUND goes here once the operator settles the provenance (see slice-17 plan).
+                    blocks.set_var("coin sound", COIN_SOUND_ID, number(1)),
                 ],
             ),
         ],
@@ -9588,6 +9748,8 @@ def _ground_seed_andor(blocks: Blocks, *, base: int, port_fire_mask) -> list[str
         # BOSS-03 (#96): a freshly-armed boss is ALIVE — clear the destroyed-departure clock so a re-summon (or a
         # reused slot band from a prior boss that died) starts the descend/hold lifecycle, not the death animation.
         blocks.set_var("andor destroyed timer", ANDOR_DESTROYED_TIMER_ID, number(0)),
+        # CAB-05: the drone sounds on the boss's first alive tick (see `update andor master`).
+        blocks.set_var("andor drone timer", ANDOR_DRONE_TIMER_ID, number(0)),
     ]
     for n, part_type in enumerate(ANDOR_GENESIS_DATA, start=1):
         slot = base + n
@@ -10732,13 +10894,19 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             blocks.set_var("input right", INPUT_RIGHT_ID, number(0)),
             blocks.set_var("input fire", INPUT_FIRE_ID, number(0)),
             blocks.set_var("pilot dir", PILOT_DIR_ID, number(8)),
+            # CAB-05: no coin sound pending, no stop-all suppressed, and the mute state unknown (-1) so the coin
+            # loop's first pass applies the attract mute whatever volume the previous run left behind.
+            blocks.set_var("coin sound", COIN_SOUND_ID, number(0)),
+            blocks.set_var("keep sounds", KEEP_SOUNDS_ID, number(0)),
+            blocks.set_var("death cue playing", DEATH_CUE_PLAYING_ID, number(0)),
+            blocks.set_var("audio muted", AUDIO_MUTED_ID, number(-1)),
             blocks.call_transition("title", "cold-start"),
         ],
     )
 
     # CAB-02: the always-on coin loop. Coins must register in EVERY state, but the walk only runs while
-    # `playing`, so the coin poll gets its own green-flag `forever` on the Stage. This is the project's
-    # only `forever` — safe here precisely because the Stage never runs `stop_others`: `common_stop`
+    # `playing`, so the coin poll gets its own green-flag `forever` on the Stage. This and the CAB-05 attract-mute
+    # loop below are the project's only `forever`s — safe here precisely because the Stage never runs `stop_others`: `common_stop`
     # (which installs `stop_others`) is called only inside SPRITE builders, and `stop_others` is
     # sprite-local, so no sprite's director-stop can kill this loop. If it ever were killed it would not
     # restart (green-flag-triggered), so keep the Stage free of any script-stop handler.
@@ -10760,11 +10928,59 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         ),
         [blocks.call_transition("title", "cold-start")],
     )
+    # CAB-05 coin sound: after the abort (whose stop-all would cut it) and only once the Stage is unmuted — the
+    # coin sound is the one cue that breaks through the attract mute (amiga.68k:728-733), and the banked credit
+    # it announces is what lifts that mute (the mute loop below). The latch waits for `audio muted` = 0, which
+    # the mute loop writes only after the volume has really been restored.
+    coin_sound = blocks.if_reporter(
+        blocks.op_and(
+            blocks.op_eq(variable("coin sound", COIN_SOUND_ID), number(1)),
+            blocks.op_eq(variable("audio muted", AUDIO_MUTED_ID), number(0)),
+        ),
+        [blocks.set_var("coin sound", COIN_SOUND_ID, number(0)), blocks.play_sound("credit")],
+    )
     blocks.substack(
         coin_loop,
-        [blocks.call_proc(COIN_POLL_PROCCODE, warp=True), coin_abort],
+        [blocks.call_proc(COIN_POLL_PROCCODE, warp=True), coin_abort, coin_sound],
     )
     blocks.chain(coin_flag, [coin_loop])
+
+    # CAB-05 attract mute: the arcade mutes every sound on entering its attract cycle (main_thread_main_loop
+    # xevious_main.68k:355-356, only when no credit is banked) and unmutes at coined_up (379-380). The port's
+    # `attract` flag spans the same cycle, so the Stage (the owner of every game sound) is silent exactly while
+    # `attract`==1 and `credits`==0. Applied only on a change. It runs in its OWN green-flag `forever`, not in the
+    # coin loop: a Scratch volume set waits on a promise (one tick in a browser), and that wait must never hold
+    # up the coin poll. Like the coin loop it is safe on the Stage, which no script-stop handler reaches.
+    mute_flag = blocks.flag()
+    mute_loop = blocks.add("control_forever")
+    should_mute = blocks.op_and(
+        blocks.op_eq(variable("attract", ATTRACT_ID), number(1)),
+        blocks.op_eq(variable("credits", CREDITS_ID), number(0)),
+    )
+    mute_sync = blocks.add("control_if_else")
+    blocks.blocks[should_mute]["parent"] = mute_sync
+    blocks.blocks[mute_sync]["inputs"]["CONDITION"] = [2, should_mute]
+    blocks.substack(
+        mute_sync,
+        [
+            blocks.if_reporter(
+                blocks.op_not(blocks.op_eq(variable("audio muted", AUDIO_MUTED_ID), number(1))),
+                [blocks.set_volume(0), blocks.set_var("audio muted", AUDIO_MUTED_ID, number(1))],
+            )
+        ],
+    )
+    blocks.substack(
+        mute_sync,
+        [
+            blocks.if_reporter(
+                blocks.op_not(blocks.op_eq(variable("audio muted", AUDIO_MUTED_ID), number(0))),
+                [blocks.set_volume(100), blocks.set_var("audio muted", AUDIO_MUTED_ID, number(0))],
+            )
+        ],
+        name="SUBSTACK2",
+    )
+    blocks.substack(mute_loop, [mute_sync])
+    blocks.chain(mute_flag, [mute_loop])
 
     # CAB-02 (slice 18): the title 1P/2P selector. A port necessity — the arcade chose 1P/2P by two
     # dedicated start buttons keyed to credit count; this port has none, so the up/down arrows set the
@@ -10897,6 +11113,42 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # (blaster_blocks) that cannot play a Stage-owned sound directly, so it broadcasts `sfx bacura`
     # and the Stage plays BACURA_HIT_SND here (src deactivate_shot xevious_main.68k:2559).
     blocks.chain(blocks.receive("sfx bacura"), [blocks.play_sound("bacura")])
+    # CAB-05: the same relay for the two other sprite-side cues — SHOT_SND from a blaster clone (main_fn_30_shot_fn
+    # xevious_main.68k:2366) and SOLVALOU_EXPLOSION_SND from the death renderer (update_solvalou 2030).
+    blocks.chain(blocks.receive("sfx shot"), [blocks.play_sound("zapper_fire")])
+    # The death cue runs to its end in its own thread, holding `death cue playing` up meanwhile so no stop-all can
+    # cut it (see DEATH_CUE_PLAYING_ID). A stop-all from outside the gate (the green flag) ends the play, and the
+    # green flag re-zeroes the latch. Re-broadcasting restarts this receiver, which raises the latch again.
+    blocks.chain(
+        blocks.receive("sfx death"),
+        [
+            blocks.set_var("death cue playing", DEATH_CUE_PLAYING_ID, number(1)),
+            blocks.play_sound_until_done("solvalou_explode"),
+            blocks.set_var("death cue playing", DEATH_CUE_PLAYING_ID, number(0)),
+        ],
+    )
+
+    # CAB-05: the initials-entry tune. The arcade plays HIGHEST_SCORE_SND for a new first place (entry index 0) and
+    # HIGH_SCORE_SND otherwise (score_lower_than_entry xevious_main.68k:1707-1711); both are looping tunes stopped at
+    # name_entry_finished (1757-1761), which the entry timeout also reaches (1725-1728). Here the tune loops while
+    # the entry screen is up; every exit from it is a transition whose stop-all ends the sound in flight, and the
+    # loop then sees the state has changed. `entry row` is the 1-based rank the entry was placed at (rank in).
+    def entry_tune(sound: str) -> str:
+        loop = blocks.add("control_repeat_until")
+        condition = blocks.not_state(loop, HIGH_SCORE_ENTRY_STATE)
+        blocks.blocks[loop]["inputs"]["CONDITION"] = [2, condition]
+        blocks.substack(loop, [blocks.play_sound_until_done(sound)])
+        return loop
+
+    tune = blocks.add("control_if_else")
+    first_place = blocks.op_eq(variable("entry row", ENTRY_ROW_ID), number(1))
+    blocks.blocks[first_place]["parent"] = tune
+    blocks.blocks[tune]["inputs"]["CONDITION"] = [2, first_place]
+    blocks.substack(tune, [entry_tune("name_entry_top")])
+    blocks.substack(tune, [entry_tune("name_entry")], name="SUBSTACK2")
+    blocks.chain(
+        blocks.receive("director enter"), [blocks.if_state(HIGH_SCORE_ENTRY_STATE, [tune])]
+    )
 
     # (The D/G debug death keys are retired in slice 8: a real attacker now kills the craft — a flying
     # enemy or an enemy bullet touching the craft's cell raises `player hit`, and the walk thread runs
@@ -10983,8 +11235,9 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # left means respawn; none left means the game is over. This is reached for a one-player game and for the
     # last player of a two-player game (the other already out, so the alternate condition above is false). On
     # the no-craft branch the ECO-04 best-five check + initials routing run HERE, at the death decision, BEFORE
-    # any GAME OVER hold — faithful to the arcade, which calls check_for_high_score the instant the game ends
-    # and reaches the game_over hold only after name entry (xevious_main.68k:546, :1757-1769). `death outcome`
+    # any GAME OVER hold — faithful to the arcade's order, which calls check_for_high_score once the game ends
+    # (after the 64-frame forest wait, 534-536, which the port does not have) and reaches the game_over hold only
+    # after name entry (xevious_main.68k:546, :1757-1769). `death outcome`
     # RECORDS the decision (kept on both branches, not removed, so the transition-cleanup opcode sequence and
     # the reset-scope matrix stay byte-identical) — it is no longer the input.
     decide = blocks.add("control_if_else")
@@ -11003,7 +11256,13 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         name="SUBSTACK2",
     )
     blocks.substack(alt, [decide], name="SUBSTACK2")
-    blocks.chain(death, [blocks.if_state("player-dead", [alt])])
+    # CAB-05: every route out of here runs exactly one transition (respawn, initials entry or GAME OVER); `keep
+    # sounds` makes that transition skip its stop-alls so the death cue (1.81 s, longer than the 44-tick explosion +
+    # pause) is not cut there (update_solvalou xevious_main.68k:2030; in the arcade it ends inside the forest wait,
+    # 535-536, before the next life's theme at 498). The transition consumes the keep; any later stop-all (the
+    # respawning -> playing edge) is held off only while the cue is still playing (DEATH_CUE_PLAYING_ID).
+    keep = blocks.set_var("keep sounds", KEEP_SOUNDS_ID, number(1))
+    blocks.chain(death, [blocks.if_state("player-dead", [keep, alt])])
 
     game_over = blocks.receive("game over complete")
     # ECO-04 (slice 19): the GAME OVER hold is now TERMINAL. The best-five check and the initials routing run
@@ -11035,6 +11294,10 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     # between (a credited start, a coin-abort, the demo's own death) cancels the pending launch. This receiver
     # RESTARTS on every `director enter` (Scratch re-broadcast semantics), so a stale hold is also abandoned.
     # It is never killed by `director stop`: that runs `stop_others` only on sprites, and this is the Stage.
+    # CAB-05: neither hold launches a demo while a credit is banked. The arcade runs the attract cycle only with
+    # no credits (main_thread_main_loop xevious_main.68k:348-357); with a credit it goes to coined_up (377-380),
+    # which unmutes and waits for START without ever running a demo. So after a coin, or after a game that ends
+    # with credits left, the title simply stays up until START — and every demo that does run is a silent one.
     attract_enter = blocks.receive("director enter")
     attract_snapshot = blocks.set_var(
         "attract epoch", ATTRACT_EPOCH_ID, variable("state epoch", EPOCH_ID)
@@ -11044,7 +11307,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.hold_frames(ATTRACT_TITLE_HOLD_TICKS),
             blocks.if_reporter(
-                _attract_epoch_state(blocks, "title"),
+                _attract_demo_launch(blocks, "title"),
                 [
                     # demo 1 (after the title) -> best-five on death.
                     blocks.set_var("attract stage", ATTRACT_STAGE_ID, number(1)),
@@ -11058,7 +11321,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
         [
             blocks.hold_frames(ATTRACT_SCORES_HOLD_TICKS),
             blocks.if_reporter(
-                _attract_epoch_state(blocks, ATTRACT_SCORES_STATE),
+                _attract_demo_launch(blocks, ATTRACT_SCORES_STATE),
                 [
                     # demo 2 (after best-five) -> the title on death.
                     blocks.set_var("attract stage", ATTRACT_STAGE_ID, number(2)),
@@ -11103,35 +11366,23 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     blocks.chain(entry_enter, [blocks.if_state(HIGH_SCORE_ENTRY_STATE, [countdown])])
 
     enter = blocks.receive("director enter")
-    start_sound = blocks.add(
-        "sound_playuntildone",
-        inputs={"SOUND_MENU": [1, blocks.add(
-            "sound_sounds_menu",
-            fields={"SOUND_MENU": ["Game Start.mp3", None]},
-            shadow=True,
-        )]},
-    )
-    sound_menu_id = blocks.blocks[start_sound]["inputs"]["SOUND_MENU"][1]
-    blocks.blocks[sound_menu_id]["parent"] = start_sound
+    start_sound = blocks.play_sound_until_done("start")
     loop = blocks.add("control_repeat_until")
     stop_condition = blocks.not_state(loop, "playing")
     blocks.blocks[loop]["inputs"]["CONDITION"] = [2, stop_condition]
-    bgm_menu = blocks.add(
-        "sound_sounds_menu",
-        fields={"SOUND_MENU": ["BGM.mp3", None]},
-        shadow=True,
-    )
-    bgm = blocks.add("sound_playuntildone", inputs={"SOUND_MENU": [1, bgm_menu]})
-    blocks.blocks[bgm_menu]["parent"] = bgm
-    blocks.substack(loop, [bgm])
-    # CAB-01: the "Game Start" fanfare is the cue that a game just began — it must not play when `playing` is
-    # entered as an attract demo (attract==1), only for a credited real start (attract==0). The BGM loop still
-    # runs during the demo: the attract mode is a real gameplay demonstration and plays the same music.
-    fanfare = blocks.if_reporter(
+    blocks.substack(loop, [blocks.play_sound_until_done("bgm")])
+    # CAB-05: on every entry to a real life's play, the main theme (MAIN_THEME_SND, main_gameplay_loop
+    # xevious_main.68k:498), then the looping flight tune (SOLVALOU_SND, main_fn_1__handle_solvalou 2009) until play
+    # ends. Neither plays in an attract demo (attract==1): the arcade skips SOLVALOU_SND in attract (2007-2008) and
+    # mutes the whole attract cycle (356). The theme plays to its end before the loop starts — the order the
+    # reference's Amiga layer gives by locking other sounds while the theme plays (amiga.68k:761-767); the lock
+    # itself (which would also silence every effect) is not adopted. The death transition's stop-all ends the loop
+    # where the arcade stops SOLVALOU_SND (update_solvalou 2026).
+    music = blocks.if_reporter(
         blocks.op_eq(variable("attract", ATTRACT_ID), number(0)),
-        [start_sound],
+        [start_sound, loop],
     )
-    blocks.chain(enter, [blocks.if_state("playing", [fanfare, loop])])
+    blocks.chain(enter, [blocks.if_state("playing", [music])])
 
     # SYS-04 / AREA-01 centralized ordered update: a second `director enter` thread (parallel to the
     # BGM loop above) drives one atomic pass per tick while playing, in the reference's frame order —
@@ -11303,6 +11554,8 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
             # bomb/target/crosshair are already zeroed by `clear slots` above.
             blocks.set_var("bomb in flight", BOMB_INFLIGHT_ID, number(0)),
             blocks.set_var("bomb dx", BOMB_DX_ID, number(0)),
+            # CAB-05: the crosshair's on-target flash starts each scope unlit.
+            blocks.set_var("crosshair lit", CROSSHAIR_LIT_ID, number(0)),
             # SEC-03 (secrets.hidden-credit #93): lower the credit overlay signal on every reset scope, so a
             # credit still holding when a death/transition/new-game clears the field (clear slots above frees the
             # egg's slot without running `update easter egg`) can never linger into the next playing state.
@@ -11431,7 +11684,7 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
 
 def common_stop(blocks: Blocks, *, hide: bool, clones: bool = False) -> None:
     hat = blocks.receive("director stop")
-    commands = [blocks.stop_others(), blocks.add("sound_stopallsounds")]
+    commands = [blocks.stop_others(), blocks.stop_all_sounds_unless_kept()]
     if clones:
         commands.append(blocks.add("control_delete_this_clone"))
     if hide:
@@ -11464,10 +11717,21 @@ def _attract_epoch_state(blocks: Blocks, state: str) -> str:
     return blocks.op_and(epoch, state_ok)
 
 
+def _attract_demo_launch(blocks: Blocks, state: str) -> str:
+    # CAB-05: an attract hold launches its demo only if it is still current (_attract_epoch_state) AND no credit
+    # is banked (`credits` == 0) — with a credit the arcade leaves the attract cycle for coined_up
+    # (main_thread_main_loop xevious_main.68k:348-357), so a demo never runs with a credit in.
+    return blocks.op_and(
+        _attract_epoch_state(blocks, state),
+        blocks.op_eq(variable("credits", CREDITS_ID), number(0)),
+    )
+
+
 def _game_over_route(blocks: Blocks) -> list[str]:
     # ECO-04 (slice 19): the end-of-game best-five check + initials routing, run at the DEATH decision (the last
-    # craft is gone, `game state` is player-dead), BEFORE any GAME OVER hold — faithful to the arcade, which
-    # calls check_for_high_score the instant the game ends and reaches the game_over hold only after name entry
+    # craft is gone, `game state` is player-dead), BEFORE any GAME OVER hold — faithful to the arcade's order,
+    # which calls check_for_high_score once the game ends (after the 64-frame forest wait, 534-536, which the port
+    # does not have) and reaches the game_over hold only after name entry
     # (xevious_main.68k:546 jra check_for_high_score; :1671-1672 a non-qualifier -> game_over; :1757-1769
     # name_entry_finished -> game_over). `qualified` = the final score REACHES-OR-BEATS fifth place in the live
     # table (`>=`, a tie places — the move_high_score_entry_down fall-through, :1653-1656), OR'd over the OTHER
@@ -11699,10 +11963,9 @@ def solvalou_blocks() -> dict[str, dict[str, Any]]:
         variable("state epoch", EPOCH_ID),
     )
     title = blocks.if_state("title", [blocks.hide()])
-    # A1: the invented READY speech bubble is removed, but its 30-tick READY beat is
-    # kept — re-expressed as a tick-counted hold (project-defined placeholder, no
-    # reference basis; core-game-systems). Removing it bare would silently collapse the
-    # recorded READY hold to zero.
+    # A1: the invented READY speech bubble is removed, but the READY beat is kept as a
+    # tick-counted hold: READY_HOLD_TICKS (32, CAB-05), sized to the arcade's post-death forest
+    # wait — see the constant for what is and is not the arcade's here.
     ready_hold = blocks.hold_ticks(READY_HOLD_TICKS)
     ready_body = [
         blocks.go(CRAFT_SPAWN_X, CRAFT_SPAWN_Y),
@@ -12373,7 +12636,9 @@ def title_blocks() -> dict[str, dict[str, Any]]:
 def death_blocks() -> dict[str, dict[str, Any]]:
     blocks = Blocks("solv-death")
     common_stop(blocks, hide=True)
-    install_baseline_size(blocks, "solv_death")
+    # CAB-05: the pinned player explosion is 1 costume px per arcade px, so it draws at the shared sprite scale
+    # (set on the green flag — the committed target size is preserved history, as for the baseline sprites).
+    blocks.chain(blocks.flag(), [blocks.add("looks_setsizeto", inputs={"SIZE": number(SPRITE_RENDER_SIZE)})])
     reset = blocks.receive("director reset")
     blocks.chain(reset, [blocks.hide()])
     enter = blocks.receive("director enter")
@@ -12383,20 +12648,54 @@ def death_blocks() -> dict[str, dict[str, Any]]:
         variable("state epoch", EPOCH_ID),
     )
     # B5/B10: the ~56-frame (28-tick) explosion, then a 32-frame (16-tick) pause before
-    # the respawn transition, so the transition's stop-all-sounds no longer truncates
-    # the death cue (measured 1.361 s < 28+16 ticks = 1.467 s). Holds are flat, empty
-    # repeats — one tick each, so the total is exactly the counted ticks. Arcade frame
-    # counts cite PLY-02; only the tick roundings live here.
-    explosion: list[str] = [blocks.switch_costume("explode_01")]
-    for _ in range(EXPLOSION_STEPS):
-        explosion.append(blocks.hold_ticks(EXPLOSION_HOLD_TICKS))
-        explosion.append(blocks.add("looks_nextcostume"))
+    # the respawn transition. CAB-05: the arcade death cue (solvalou_explode, 1.81 s) is
+    # longer than that 1.467 s window; the death-complete handler sets `keep sounds` so
+    # the transition it runs does not cut it, and `death cue playing` holds off any later
+    # stop-all until the cue has ended (the holds below collapse in a browser). The
+    # explosion is one repeat of exactly its 28 ticks (a non-empty loop yields one walk pass
+    # per iteration, like an empty hold); the pause is a flat, empty repeat.
+    # Arcade frame counts cite PLY-02; only the tick roundings live here.
+    # CAB-05: each tick draws player-explosion/burst/<step>/<flip> — step = tick // 4 (the 7 codes C0 C1 C4 C8
+    # C2 C3 CC, 8 frames each, table 2093-2100), flip from the tick every 2 ticks (`countup & 0x0C`, 2072-2073;
+    # the port counts it from the death, the arcade from its free-running frame counter). The 2x2 steps'
+    # position nudges (2055-2063) are absorbed by the concentric 32-px art.
+    tick = lambda: variable("explosion tick", DEATH_EXPLOSION_TICK_ID)
+    explosion_ordinal = blocks.op_add(
+        blocks.op_add(
+            number(PLAYER_EXPLOSION_BASE_ORDINAL),
+            blocks.op_mul(
+                blocks.op_floor(blocks.op_div(tick(), number(EXPLOSION_HOLD_TICKS))),
+                number(PLAYER_EXPLOSION_FLIP_COSTUMES),
+            ),
+        ),
+        _flip_costume_offset(
+            blocks,
+            lambda: blocks.op_mod(
+                blocks.op_floor(blocks.op_div(tick(), number(PLAYER_EXPLOSION_FLIP_TICKS))),
+                number(PLAYER_EXPLOSION_FLIP_COSTUMES),
+            ),
+        ),
+    )
+    explosion_loop = blocks.add("control_repeat", inputs={"TIMES": number(EXPLOSION_STEPS * EXPLOSION_HOLD_TICKS)})
+    blocks.substack(
+        explosion_loop,
+        [blocks.switch_costume_expr(explosion_ordinal), blocks.change_var("explosion tick", DEATH_EXPLOSION_TICK_ID, 1)],
+    )
+    explosion: list[str] = [blocks.set_var("explosion tick", DEATH_EXPLOSION_TICK_ID, number(0)), explosion_loop]
     death_body = [
         blocks.go_to_sprite("solvalou"),
         blocks.to_front(),  # B9: the explosion renders above the terrain
         blocks.show(),
-        blocks.play_sound("solvalou_death"),
+        # CAB-05: SOLVALOU_EXPLOSION_SND, not in attract (update_solvalou xevious_main.68k:2028-2031), relayed to
+        # the Stage that owns it. The transition into player-dead has just stopped all sounds, which ends the
+        # flight tune exactly where the arcade stops SOLVALOU_SND (2026).
+        blocks.if_reporter(
+            blocks.op_eq(variable("attract", ATTRACT_ID), number(0)),
+            [blocks.send("sfx death")],
+        ),
         *explosion,
+        # CAB-05: the craft is gone for the pause (`finish_solvalou_exploding` clears its STATE, 2079-2090).
+        blocks.hide(),
         blocks.hold_ticks(POST_DEATH_PAUSE_TICKS),
         blocks.if_epoch_state(
             DEATH_EPOCH_ID, "player-dead", [blocks.send("death complete")]
@@ -12409,10 +12708,12 @@ def death_blocks() -> dict[str, dict[str, Any]]:
     # explosion above — the hold itself runs unconditionally, but the epoch check right before
     # the broadcast means a superseding transition (which bumps the epoch) cancels a stale hold,
     # so `game over complete` is never sent outside the guard.
+    # CAB-05: nothing of the craft is drawn over GAME OVER — the arcade object stays cleared after the death
+    # pause — so the sprite only keeps the hold.
     over = blocks.if_state(
         "game-over",
         [
-            blocks.show(),
+            blocks.hide(),
             blocks.hold_ticks(GAME_OVER_HOLD_TICKS),
             blocks.if_epoch_state(
                 DEATH_EPOCH_ID,
@@ -12753,7 +13054,8 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
             blocks.set_var_expr("shot depth", SHOT_DEPTH_ID, blocks.yposition()),
             blocks.to_front(),  # B9: shots render above the terrain
             blocks.show(),
-            blocks.play_sound("blaster"),
+            # CAB-05: SHOT_SND (main_fn_30_shot_fn xevious_main.68k:2366), relayed to the Stage that owns it.
+            blocks.send("sfx shot"),
             travel,
             bounce,
             blocks.list_replace(
@@ -12794,14 +13096,18 @@ def _render_stage_y(blocks: Blocks, slot: int) -> str:
     )
 
 
-def slot_marker_blocks(name: str, slot: int, costume: str) -> dict[str, dict[str, Any]]:
+def slot_marker_blocks(name: str, slot: int, costume: Any) -> dict[str, dict[str, Any]]:
     # WPN-04 pure single-slot renderer for the crosshair (35) and the bomb target (33). Each is one
     # persistent sprite (not a clone pool — there is exactly one of each) that, while playing, shows
     # itself at its slot's mapped stage position when the slot is ACTIVE and hides otherwise. It writes
-    # no state; the walk-thread procs own the slot's position and active flag.
+    # no state; the walk-thread procs own the slot's position and active flag. CAB-05: `costume` is a
+    # costume name, or a builder taking the sprite's Blocks and returning its costume-ordinal reporter (the
+    # crosshair's colours).
     blocks = Blocks(name)
     common_stop(blocks, hide=True)
-    install_baseline_size(blocks, name)
+    # CAB-05: the pinned art is 1 costume px per arcade px, so it draws at the shared sprite scale (set on the
+    # green flag — the committed target size is preserved history).
+    blocks.chain(blocks.flag(), [blocks.add("looks_setsizeto", inputs={"SIZE": number(SPRITE_RENDER_SIZE)})])
     blocks.chain(blocks.receive("director reset"), [blocks.hide()])
 
     enter = blocks.receive("director enter")
@@ -12817,7 +13123,7 @@ def slot_marker_blocks(name: str, slot: int, costume: str) -> dict[str, dict[str
     blocks.substack(
         render,
         [
-            blocks.switch_costume(costume),
+            blocks.switch_costume(costume) if isinstance(costume, str) else blocks.switch_costume_expr(costume(blocks)),
             blocks.go_expr(_render_stage_x(blocks, slot), _render_stage_y(blocks, slot)),
             blocks.to_front(),  # B9: the reticle/target render above the terrain
             blocks.show(),
@@ -12829,18 +13135,26 @@ def slot_marker_blocks(name: str, slot: int, costume: str) -> dict[str, dict[str
     return blocks.blocks
 
 
+def crosshair_ordinal(blocks: Blocks) -> str:
+    """CAB-05: the crosshair's costume ordinal — base + bombing + 2 * lit (handle_crosshairs 2239-2272): a bomb
+    in flight (the port's 0/1 mirror of the bomb object's ACTIVE state) picks colour 33 over 32, and
+    `crosshair lit` the +9 on-target flash."""
+    return blocks.op_add(
+        blocks.op_add(number(CROSSHAIR_ART_BASE_ORDINAL), variable("bomb in flight", BOMB_INFLIGHT_ID)),
+        blocks.op_mul(variable("crosshair lit", CROSSHAIR_LIT_ID), number(2)),
+    )
+
+
 def bomb_blocks() -> dict[str, dict[str, Any]]:
-    # WPN-04 pure renderer for the in-flight bomb (slot 34). Like slot_marker_blocks, but it also
-    # animates through the 5 bomb frames as the bomb accelerates (the falling frame is a render-only
-    # function of the bomb's velocity, kept in range by mod 5) and plays the drop/explosion sounds the
-    # walk thread broadcasts on arm/finish (the sounds live on this sprite). It writes no game state.
+    # WPN-04 pure renderer for the in-flight bomb (slot 34). Like slot_marker_blocks, but it also animates the
+    # bomb as it falls. CAB-05: the arcade's own frames (bomb-active block, xevious_main.68k 2470-2489) — the
+    # code steps every 8 frames and holds on the third, the colour every 4 — keyed on the frames since launch,
+    # which is |bomb dx| / 2 (`_dX` drops by 2 every frame from 0, BOMB_ACCEL_PER_FRAME). It writes no game
+    # state and plays no sound: the Stage's bomb arm plays the single arcade bomb sound.
     blocks = Blocks("bomb")
     common_stop(blocks, hide=True)
-    install_baseline_size(blocks, "bomb")
+    blocks.chain(blocks.flag(), [blocks.add("looks_setsizeto", inputs={"SIZE": number(SPRITE_RENDER_SIZE)})])
     blocks.chain(blocks.receive("director reset"), [blocks.hide()])
-    # Sound-only receivers: the walk thread owns the bomb logic and fires these on arm / landing.
-    blocks.chain(blocks.receive("bomb"), [blocks.play_sound("bomb_drop")])
-    blocks.chain(blocks.receive("bomb landed"), [blocks.play_sound("bomb_explode")])
 
     enter = blocks.receive("director enter")
     loop = blocks.add("control_repeat_until")
@@ -12849,17 +13163,19 @@ def bomb_blocks() -> dict[str, dict[str, Any]]:
     is_active = blocks.op_eq(
         blocks.list_item("slot state", SLOT_STATE_ID, number(BOMB_SLOT)), number(SLOT_ACTIVE)
     )
-    # Falling frame ordinal 1..5 from |bomb dx| (grows as it accelerates); mod 5 keeps it in range.
-    ordinal = blocks.op_add(
-        number(1),
-        blocks.op_mod(
-            blocks.op_floor(
-                blocks.op_div(
-                    blocks.op_abs(variable("bomb dx", BOMB_DX_ID)), number(BOMB_ACCEL_PER_FRAME)
-                )
-            ),
-            number(5),
+    frames = lambda: blocks.op_div(blocks.op_abs(variable("bomb dx", BOMB_DX_ID)), number(BOMB_ACCEL_PER_FRAME))
+    # min(floor(frames / 8), 2) as (a + 2 - |a - 2|) / 2 — Scratch has no min block. `_TIMER1` stops at 2.
+    step = lambda: blocks.op_floor(blocks.op_div(frames(), number(BOMB_CODE_STEP_FRAMES)))
+    code_step = blocks.op_div(
+        blocks.op_sub(
+            blocks.op_add(step(), number(BOMB_CODE_STEPS - 1)),
+            blocks.op_abs(blocks.op_sub(step(), number(BOMB_CODE_STEPS - 1))),
         ),
+        number(2),
+    )
+    colour = blocks.op_mod(blocks.op_floor(blocks.op_div(frames(), number(BOMB_COLOUR_STEP_FRAMES))), number(BOMB_COLOURS))
+    ordinal = blocks.op_add(
+        blocks.op_add(number(BOMB_ART_BASE_ORDINAL), blocks.op_mul(code_step, number(BOMB_COLOURS))), colour
     )
     render = blocks.add("control_if_else")
     blocks.blocks[render]["inputs"]["CONDITION"] = [2, is_active]
@@ -13357,6 +13673,37 @@ def _gate_in_view(blocks: Blocks, slotvar, body: list[str]) -> str:
     return gate
 
 
+def _flip_costume_offset(blocks: Blocks, flip_bits) -> str:
+    # CAB-05: an arcade sprite's two flip bits (_ATTR bits 2-3, here as 0..3) -> the offset of the matching
+    # sprite_extractor flip costume (none/x/y/xy = 0..3). Bit 3 mirrors left-to-right on the upright screen and
+    # bit 2 top-to-bottom (amiga.68k ~2613 tests bit 3 as "X-flip? (Y-flip in spec, but screen is rotated!!)"),
+    # so a value of 1 is "y" (offset 2) and 2 is "x" (offset 1): offset = floor(v/2) + 2*(v mod 2).
+    return blocks.op_add(
+        blocks.op_floor(blocks.op_div(flip_bits(), number(2))),
+        blocks.op_mul(blocks.op_mod(flip_bits(), number(2)), number(2)),
+    )
+
+
+def _air_burst_ordinal(blocks: Blocks, base: int, timer, flipped: bool = True) -> str:
+    # CAB-05: the air-explosion costume for a slot clock (`flying_enemy_hit` 4877-4887): phase = TIMER>>2 picks
+    # the frame (four flip costumes each) and TIMER&3 the flip bits, which cycle every arcade frame. The slot
+    # clock advances 2 frames a tick, so the port draws the even frames (flips none and x) — the arcade's own
+    # formula, sampled once a tick. `flipped=False` draws the unflipped costume of each phase (the Zakato
+    # self-destruct and teleport stand-ins, whose arcade routines store no flip bits).
+    ordinal = blocks.op_add(
+        number(base),
+        blocks.op_mul(
+            blocks.op_floor(blocks.op_div(timer(), number(TOROID_EXPLOSION_PHASE_FRAMES))),
+            number(AIR_EXPLOSION_FLIP_COSTUMES),
+        ),
+    )
+    if not flipped:
+        return ordinal
+    return blocks.op_add(
+        ordinal, _flip_costume_offset(blocks, lambda: blocks.op_mod(timer(), number(TOROID_EXPLOSION_PHASE_FRAMES)))
+    )
+
+
 def toroid_blocks() -> dict[str, dict[str, Any]]:
     # AIR-01 Toroid renderer (game_director owns these blocks; sprite_extractor owns the costumes).
     # One persistent clone per flying slot (59..64), spawned on director enter while playing and
@@ -13403,29 +13750,20 @@ def toroid_blocks() -> dict[str, dict[str, Any]]:
         TOROID_FRAME_ID,
         blocks.op_sub(blocks.list_item("slot code", SLOT_CODE_ID, slotvar()), number(TOROID_INIT_CODE - 1)),
     )
-    # WPN-02 explosion frames: while the slot is HIT, the clock (slot timer) selects an explosion phase,
-    # which maps to the referenced explode costumes appended after the 7 turn frames (ordinal 8..). The
-    # burst doubles size at TOROID_BIG_PHASE (the arcade frame-8 2x). The exact one-cell recentre of the
-    # doubled frame is deferred with dedicated Toroid-burst crops (record 025); the stand-in centres on
-    # the slot.
-    phase_for_costume = blocks.op_floor(
-        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    # WPN-02 explosion frames: while the slot is HIT, the clock (slot timer) selects the air-explosion phase and
+    # flips (CAB-05), from the costumes appended after the 7 turn frames (ordinal 8..). The art is already double
+    # size in its 2x2 phases and centred, so the clone draws every phase at the one shared scale.
+    explode_ordinal = _air_burst_ordinal(
+        blocks, TOROID_TURN_FRAME_COUNT + 1, lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar())
     )
-    explode_ordinal = blocks.op_add(number(TOROID_TURN_FRAME_COUNT + 1), phase_for_costume)
-    phase_for_size = blocks.op_floor(
-        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
-    )
-    size_branch = blocks.add("control_if_else")
-    is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
-    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
-    blocks.blocks[is_big]["parent"] = size_branch
-    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
-    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_RENDER_SIZE)})], name="SUBSTACK2")
     state_render = blocks.add("control_if_else")
     is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
     blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
     blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(
+        state_render,
+        [blocks.switch_costume_expr(explode_ordinal), blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_RENDER_SIZE)})],
+    )
     blocks.substack(
         state_render,
         [
@@ -13498,32 +13836,35 @@ GROUND_RENDER_LEGACY_TARGETS = (
 # are re-asserted at generation time against the actual assembled slices, so a
 # manifest change that shifts a count fails loud instead of silently misindexing.
 GROUND_FAMILY_COSTUME_COUNTS = (
-    ("barra", 11),
-    ("sol-tower", 17),
-    ("garu", 11),
-    ("logram", 14),
-    ("zolbak", 11),
-    ("derota", 11),
-    ("garu derota", 11),
-    ("boza", 15),
-    ("grobda", 14),
-    ("domogram", 14),
+    ("barra", 10),
+    ("sol-tower", 16),
+    ("garu", 10),
+    ("logram", 13),
+    ("zolbak", 10),
+    ("derota", 10),
+    ("garu derota", 10),
+    ("boza", 14),
+    ("grobda", 13),
+    ("domogram", 13),
     # BOSS-01 (andor.lifecycle #94): the Andor Genesis composite renders through the shared ground pool.
     # Nine armor plates (types 0x41..0x49, ordinal = slot type - 64) are indestructible — just the part crops.
     # The four gun ports (0x4F..0x52, ordinal = slot type - 78) and the centre core (four pre-flipped costumes
-    # none/x/y/xy, selected by the flip-phase var) become mortal in slice 16, so each appends the shared
-    # solv_death burst (8 frames) their HIT branch plays: port muzzle 1..4 + burst 5..12; core flips 1..4 +
-    # burst 5..12. The converted core's fly-up Bragza is its own 4-frame family (codes 0xb8..0xbb). No craters
+    # none/x/y/xy, selected by the flip-phase var) become mortal in slice 16, so each appends the ground
+    # explosion (7 frames) their HIT branch plays: port muzzle 1..4 + burst 5..11; core flips 1..4 +
+    # burst 5..11. The converted core's fly-up Bragza is its own 4-frame family (codes 0xb8..0xbb). No craters
     # (a boss part leaves no ground scar — it explodes and is gone / departs with the wreck).
     ("andor-armor", 9),
-    ("andor-port", 4 + EXPLODE_COSTUME_COUNT),
-    ("andor-core", 4 + EXPLODE_COSTUME_COUNT),
+    ("andor-port", 4 + GROUND_EXPLOSION_FRAME_COUNT),
+    ("andor-core", 4 + GROUND_EXPLOSION_FRAME_COUNT),
     ("andor-bragza", 4),
 )
 # BOSS-03 (#96): the first burst ordinal on the port / core slices (1..4 are the muzzle / flip costumes; the
-# shared solv_death burst follows). The HIT render walks base + floor(slot timer / GROUND_EXPLOSION_PHASE_FRAMES).
+# ground explosion follows). The HIT render walks base + floor(slot timer / ANDOR_EXPLOSION_PHASE_FRAMES).
 ANDOR_PORT_EXPLODE_BASE_ORDINAL = 5
 ANDOR_CORE_EXPLODE_BASE_ORDINAL = 5
+# CAB-05: a boss part's burst is gun_port_explosion (5715-5749), which steps every 4 frames (`(TIMER>>2)&7`) over
+# the seven ground-explosion codes and finishes at frame 7 — 28 frames, half the bomb burst's 8-frame step.
+ANDOR_EXPLOSION_PHASE_FRAMES = 4
 
 
 def _ground_family_offsets() -> tuple[dict[str, int], int]:
@@ -14231,22 +14572,22 @@ def ground_renderer_blocks() -> dict[str, dict[str, Any]]:
 
     def andor_mortal_costume(offset_key: str, idle_ordinal_fn, explode_base: int) -> str:
         # BOSS-02/03: a mortal boss part (gun port / core). While idle it shows its idle costume (the port muzzle by
-        # type, or the core's flip-phase costume); while exploding it plays the shared solv_death burst,
-        # floor(slot timer / GROUND_EXPLOSION_PHASE_FRAMES) into ordinals explode_base..+7 — the same explode clock
-        # every ground family uses. The burst shows while the slot is SLOT_HIT (directly bombed) OR its explode clock
+        # type, or the core's flip-phase costume); while exploding it plays the ground explosion,
+        # floor(slot timer / ANDOR_EXPLOSION_PHASE_FRAMES) into ordinals explode_base..+6 — gun_port_explosion's
+        # 4-frame step (5715-5736). The burst shows while the slot is SLOT_HIT (directly bombed) OR its explode clock
         # is running (slot timer > 0): a core-death-cascaded gun port stays SLOT_ACTIVE (bombable for its 1,000)
         # throughout its explosion (DH-2), so keying on SLOT_HIT alone would leave a cascaded port drawing its idle
         # muzzle while it should be bursting. This timer>0 test is confined to this Andor-only helper — the general
         # ground families (Barra/Sol-tower) that advance slot timer while ACTIVE for other reasons never render
         # through here. `update andor part` advances the timer and frees/converts the slot the tick the burst
-        # completes, so the render never overruns the 8 burst frames.
+        # completes, so the render never overruns the 7 burst frames.
         offset = off[offset_key]
         explode_ordinal = blocks.op_add(
             number(explode_base),
             blocks.op_floor(
                 blocks.op_div(
                     blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()),
-                    number(GROUND_EXPLOSION_PHASE_FRAMES),
+                    number(ANDOR_EXPLOSION_PHASE_FRAMES),
                 )
             ),
         )
@@ -14527,7 +14868,7 @@ def terrazi_blocks() -> dict[str, dict[str, Any]]:
     # positioned when its slot holds a Terrazi, hidden otherwise. The clone writes no state. The roll
     # frame is a render-only function of the slot's animation clock (`slot timer`), so the craft rolls
     # through its 7 frames every ~8 arcade frames (the reference's `_ddX` sprite-code advance) without
-    # the walk writing `slot code`. On a hit it plays the shared explosion (the solv_death frames
+    # the walk writing `slot code`. On a hit it plays the CAB-05 air explosion (the costumes
     # appended after the 7 roll frames, ordinals 8..), exactly like the Toroid.
     blocks = Blocks(TERRAZI_TARGET)
     common_stop(blocks, hide=True, clones=True)
@@ -14571,26 +14912,19 @@ def terrazi_blocks() -> dict[str, dict[str, Any]]:
         ),
         number(1),
     )
-    # Shared explosion frames while HIT: the clock selects a phase mapping to the solv_death costumes
-    # appended after the 7 roll frames (ordinal 8..); the burst doubles at the 2x phase (record 025).
-    phase_for_costume = blocks.op_floor(
-        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    # CAB-05 air explosion while HIT: the clock selects the phase and the flips of the air-explosion costumes
+    # appended after the 7 roll frames (ordinal 8..), drawn at the one shared scale.
+    explode_ordinal = _air_burst_ordinal(
+        blocks, TERRAZI_ROLL_FRAMES + 1, lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar())
     )
-    explode_ordinal = blocks.op_add(number(TERRAZI_ROLL_FRAMES + 1), phase_for_costume)
-    phase_for_size = blocks.op_floor(
-        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
-    )
-    size_branch = blocks.add("control_if_else")
-    is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
-    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
-    blocks.blocks[is_big]["parent"] = size_branch
-    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
-    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TERRAZI_RENDER_SIZE)})], name="SUBSTACK2")
     state_render = blocks.add("control_if_else")
     is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
     blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
     blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(
+        state_render,
+        [blocks.switch_costume_expr(explode_ordinal), blocks.add("looks_setsizeto", inputs={"SIZE": number(TERRAZI_RENDER_SIZE)})],
+    )
     blocks.substack(
         state_render,
         [
@@ -14623,7 +14957,7 @@ def kapi_blocks() -> dict[str, dict[str, Any]]:
     # is APPROACHING it holds the static entry frame (silent approach); while DIVING the 7-frame dive
     # animation is derived render-only from the slot's animation clock — an 8-phase cycle whose 8th
     # phase HOLDS the last frame (the reference's `d0 = (TIMER1>>3) & 7`, held at 7 -> loc_2455 3654),
-    # then loops. On a hit it plays the shared explosion (the solv_death frames appended after the 7
+    # then loops. On a hit it plays the CAB-05 air explosion (the costumes appended after the 7
     # dive frames, ordinals 8..), exactly like the Toroid/Terrazi.
     blocks = Blocks(KAPI_TARGET)
     common_stop(blocks, hide=True, clones=True)
@@ -14679,26 +15013,19 @@ def kapi_blocks() -> dict[str, dict[str, Any]]:
     blocks.blocks[is_approach]["parent"] = active_costume
     blocks.substack(active_costume, [blocks.switch_costume("kapi/dive/01")])
     blocks.substack(active_costume, [dive_costume], name="SUBSTACK2")
-    # Shared explosion frames while HIT: the clock selects a phase mapping to the solv_death costumes
-    # appended after the 7 dive frames (ordinal 8..); the burst doubles at the 2x phase (record 025).
-    phase_for_costume = blocks.op_floor(
-        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    # CAB-05 air explosion while HIT: the clock selects the phase and the flips of the air-explosion costumes
+    # appended after the 7 dive frames (ordinal 8..), drawn at the one shared scale.
+    explode_ordinal = _air_burst_ordinal(
+        blocks, KAPI_DIVE_FRAMES + 1, lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar())
     )
-    explode_ordinal = blocks.op_add(number(KAPI_DIVE_FRAMES + 1), phase_for_costume)
-    phase_for_size = blocks.op_floor(
-        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
-    )
-    size_branch = blocks.add("control_if_else")
-    is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
-    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
-    blocks.blocks[is_big]["parent"] = size_branch
-    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
-    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(KAPI_RENDER_SIZE)})], name="SUBSTACK2")
     state_render = blocks.add("control_if_else")
     is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
     blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
     blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(
+        state_render,
+        [blocks.switch_costume_expr(explode_ordinal), blocks.add("looks_setsizeto", inputs={"SIZE": number(KAPI_RENDER_SIZE)})],
+    )
     blocks.substack(
         state_render,
         [
@@ -14732,8 +15059,8 @@ def torkan_blocks() -> dict[str, dict[str, Any]]:
     # entry frame (01); while HOVERING it sweeps the 6 available frames once (one per TORKAN_ANIM_PERIOD
     # ticks-of-frames — the arcade's `(TIMER>>2)&0xf` frame select, torkan_shoot 3383-3390, which steps
     # SEVEN codes 0x10..0x16; the 6-frame rip has no distinct art for the 7th, so it holds frame 06);
-    # while FLEEING it holds the last frame (06). On a hit it plays the shared explosion (the solv_death
-    # frames appended after the roll frames, ordinals 7..), exactly like the Kapi/Terrazi.
+    # while FLEEING it holds the last frame (06). On a hit it plays the CAB-05 air explosion (the
+    # costumes appended after the roll frames, ordinals 7..), exactly like the Kapi/Terrazi.
     blocks = Blocks(TORKAN_TARGET)
     common_stop(blocks, hide=True, clones=True)
     slotvar = lambda: variable("torkan clone slot", TORKAN_CLONE_SLOT_ID)
@@ -14796,26 +15123,19 @@ def torkan_blocks() -> dict[str, dict[str, Any]]:
     blocks.blocks[is_approach]["parent"] = active_costume
     blocks.substack(active_costume, [blocks.switch_costume("torkan/roll/01")])
     blocks.substack(active_costume, [moving_costume], name="SUBSTACK2")
-    # Shared explosion frames while HIT: the clock selects a phase mapping to the solv_death costumes
-    # appended after the 7 roll frames (ordinal 8..); the burst doubles at the 2x phase (record 025).
-    phase_for_costume = blocks.op_floor(
-        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    # CAB-05 air explosion while HIT: the clock selects the phase and the flips of the air-explosion costumes
+    # appended after the 7 roll frames (ordinal 8..), drawn at the one shared scale.
+    explode_ordinal = _air_burst_ordinal(
+        blocks, TORKAN_ANIM_FRAMES + 1, lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar())
     )
-    explode_ordinal = blocks.op_add(number(TORKAN_ANIM_FRAMES + 1), phase_for_costume)
-    phase_for_size = blocks.op_floor(
-        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
-    )
-    size_branch = blocks.add("control_if_else")
-    is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
-    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
-    blocks.blocks[is_big]["parent"] = size_branch
-    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
-    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TORKAN_RENDER_SIZE)})], name="SUBSTACK2")
     state_render = blocks.add("control_if_else")
     is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
     blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
     blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(
+        state_render,
+        [blocks.switch_costume_expr(explode_ordinal), blocks.add("looks_setsizeto", inputs={"SIZE": number(TORKAN_RENDER_SIZE)})],
+    )
     blocks.substack(
         state_render,
         [
@@ -14849,8 +15169,8 @@ def zoshi_blocks() -> dict[str, dict[str, Any]]:
     # phase — it always spins and fires): the update writes `slot code = 0x28 + (tick & 3)` each tick, so
     # the renderer reads that code back to the 1-based costume ordinal `(slot code - 0x28) + 1` (1..4).
     # Driving the frame from `slot code` keeps every Zoshi in lockstep, matching the arcade's global
-    # countup_timer spin (zoshi_0D_main 3452-3455). On a hit it plays the shared explosion (the solv_death
-    # frames appended after the 4 spin frames, ordinals 5..), exactly like the other flying families.
+    # countup_timer spin (zoshi_0D_main 3452-3455). On a hit it plays the CAB-05 air explosion (the
+    # costumes appended after the 4 spin frames, ordinals 5..), exactly like the other flying families.
     blocks = Blocks(ZOSHI_TARGET)
     common_stop(blocks, hide=True, clones=True)
     slotvar = lambda: variable("zoshi clone slot", ZOSHI_CLONE_SLOT_ID)
@@ -14900,26 +15220,19 @@ def zoshi_blocks() -> dict[str, dict[str, Any]]:
             number(1),
         )
     )
-    # Shared explosion frames while HIT: the clock selects a phase mapping to the solv_death costumes
-    # appended after the 4 spin frames (ordinal 5..); the burst doubles at the 2x phase (record 025).
-    phase_for_costume = blocks.op_floor(
-        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    # CAB-05 air explosion while HIT: the clock selects the phase and the flips of the air-explosion costumes
+    # appended after the 4 spin frames (ordinal 5..), drawn at the one shared scale.
+    explode_ordinal = _air_burst_ordinal(
+        blocks, ZOSHI_ANIM_FRAMES + 1, lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar())
     )
-    explode_ordinal = blocks.op_add(number(ZOSHI_ANIM_FRAMES + 1), phase_for_costume)
-    phase_for_size = blocks.op_floor(
-        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
-    )
-    size_branch = blocks.add("control_if_else")
-    is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
-    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
-    blocks.blocks[is_big]["parent"] = size_branch
-    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
-    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(ZOSHI_RENDER_SIZE)})], name="SUBSTACK2")
     state_render = blocks.add("control_if_else")
     is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
     blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
     blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(
+        state_render,
+        [blocks.switch_costume_expr(explode_ordinal), blocks.add("looks_setsizeto", inputs={"SIZE": number(ZOSHI_RENDER_SIZE)})],
+    )
     blocks.substack(
         state_render,
         [
@@ -14954,7 +15267,7 @@ def jara_blocks() -> dict[str, dict[str, Any]]:
     # 6-phase loop (no hold, unlike the Kapi's 8th-phase hold; the arcade cycle wraps at 6, 3521-3528).
     # The frame ORDER follows the turn side: TURN_MINUS uses the FORWARD table (jara/spin/01..06 =
     # 0xA0..0xA5), TURN_PLUS the REVERSED table (06..01 = 0xA5..0xA0) — the arcade's jara_right/left_
-    # sprite_tbl (3571-3575). On a hit it plays the shared explosion (the solv_death frames appended
+    # sprite_tbl (3571-3575). On a hit it plays the CAB-05 air explosion (the costumes appended
     # after the 6 spin frames, ordinals 7..), exactly like the other families.
     blocks = Blocks(JARA_TARGET)
     common_stop(blocks, hide=True, clones=True)
@@ -15013,26 +15326,19 @@ def jara_blocks() -> dict[str, dict[str, Any]]:
     blocks.blocks[is_approach]["parent"] = active_costume
     blocks.substack(active_costume, [blocks.switch_costume("jara/spin/01")])
     blocks.substack(active_costume, [turn_costume], name="SUBSTACK2")
-    # Shared explosion frames while HIT: the clock selects a phase mapping to the solv_death costumes
-    # appended after the 6 spin frames (ordinal 7..); the burst doubles at the 2x phase (record 025).
-    phase_for_costume = blocks.op_floor(
-        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
+    # CAB-05 air explosion while HIT: the clock selects the phase and the flips of the air-explosion costumes
+    # appended after the 6 spin frames (ordinal 7..), drawn at the one shared scale.
+    explode_ordinal = _air_burst_ordinal(
+        blocks, JARA_ANIM_FRAMES + 1, lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar())
     )
-    explode_ordinal = blocks.op_add(number(JARA_ANIM_FRAMES + 1), phase_for_costume)
-    phase_for_size = blocks.op_floor(
-        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
-    )
-    size_branch = blocks.add("control_if_else")
-    is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
-    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
-    blocks.blocks[is_big]["parent"] = size_branch
-    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
-    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(JARA_RENDER_SIZE)})], name="SUBSTACK2")
     state_render = blocks.add("control_if_else")
     is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
     blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
     blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(
+        state_render,
+        [blocks.switch_costume_expr(explode_ordinal), blocks.add("looks_setsizeto", inputs={"SIZE": number(JARA_RENDER_SIZE)})],
+    )
     blocks.substack(
         state_render,
         [
@@ -15065,13 +15371,13 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
     # no state. It draws whichever of the four phases the slot's `slot state` names — the phase sequence the
     # update machine drives:
     #   SLOT_ACTIVE       the single static body (ordinal 1, arcade code 0x11).
-    #   SLOT_TELEPORT     the teleport-in sparkle: the shared burst played REVERSED (the arcade sparkle is
-    #                     the exploding six-frame set run backwards, 3986-3992), from the slot clock.
-    #   SLOT_SELF_EXPLODE the self-destruct: the shared burst FORWARD at normal scale — a small pop.
-    #   SLOT_HIT          the shot kill: the shared burst FORWARD, doubling at the big phase like every
-    #                     other flying kill (so it reads bigger than the self-destruct).
-    # All three animated phases run the same solv_death stand-in (record note in the constants); the
-    # Zakato's own teleport/burst sprites are a deferred cosmetic, as with the other families.
+    #   SLOT_TELEPORT     the teleport-in sparkle: the air explosion's unflipped phases played REVERSED (the
+    #                     arcade sparkle is the exploding six-frame set run backwards, 3986-3992), from the slot clock.
+    #   SLOT_SELF_EXPLODE the self-destruct: the air explosion's unflipped phases FORWARD.
+    #   SLOT_HIT          the shot kill: CAB-05's air explosion with its per-frame flips (`flying_enemy_hit`),
+    #                     exactly like every other flying kill.
+    # The shot kill is the arcade's own; the teleport and self-destruct borrow the air explosion as a stand-in
+    # (record note in the constants) — the Zakato's own teleport/burst sprites are a deferred cosmetic.
     blocks = Blocks(ZAKATO_TARGET)
     common_stop(blocks, hide=True, clones=True)
     slotvar = lambda: variable("zakato clone slot", ZAKATO_CLONE_SLOT_ID)
@@ -15115,14 +15421,14 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
             number(RENDER_ROW_STAGE),
         ),
     )
-    # Burst phase = floor(slot timer / phase-frames) — the arcade `TIMER>>2`. Fresh per read (a reporter
-    # attaches to only one parent). Both the teleport and self-destruct clocks and the shared-hit clock use
-    # the same 4-frame period (ZAKATO_ANIM_PHASE_FRAMES == TOROID_EXPLOSION_PHASE_FRAMES).
-    phase = lambda: blocks.op_floor(
-        blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(ZAKATO_ANIM_PHASE_FRAMES))
-    )
-    # SLOT_SELF_EXPLODE vs SLOT_ACTIVE (the innermost pair): the self-destruct plays the burst forward at
-    # normal scale; the active phase holds the static body.
+    # The slot clock (the arcade `TIMER`), fresh per read (a reporter attaches to only one parent). The
+    # teleport, self-destruct and shared-hit phases all step every 4 frames (ZAKATO_ANIM_PHASE_FRAMES ==
+    # TOROID_EXPLOSION_PHASE_FRAMES, asserted below), so they share _air_burst_ordinal's phase.
+    timer = lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar())
+    assert ZAKATO_ANIM_PHASE_FRAMES == TOROID_EXPLOSION_PHASE_FRAMES
+    phase = lambda: blocks.op_floor(blocks.op_div(timer(), number(ZAKATO_ANIM_PHASE_FRAMES)))
+    # SLOT_SELF_EXPLODE vs SLOT_ACTIVE (the innermost pair): the self-destruct plays the air explosion's
+    # unflipped phases forward (the stand-in for zakato_explode's own codes); the active phase holds the body.
     self_or_active = blocks.add("control_if_else")
     is_self = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_SELF_EXPLODE))
     blocks.blocks[self_or_active]["inputs"]["CONDITION"] = [2, is_self]
@@ -15130,7 +15436,7 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
     blocks.substack(
         self_or_active,
         [
-            blocks.switch_costume_expr(blocks.op_add(number(ZAKATO_BURST_ORDINAL_BASE), phase())),
+            blocks.switch_costume_expr(_air_burst_ordinal(blocks, ZAKATO_BURST_ORDINAL_BASE, timer, flipped=False)),
             blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)}),
         ],
     )
@@ -15144,7 +15450,8 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
         ],
         name="SUBSTACK2",
     )
-    # SLOT_TELEPORT vs the rest: the sparkle plays the burst REVERSED (ordinal base + (PHASES-1 - phase)).
+    # SLOT_TELEPORT vs the rest: the sparkle plays the unflipped phases REVERSED
+    # (ordinal base + 4 * (PHASES-1 - phase)).
     tele_or_rest = blocks.add("control_if_else")
     is_tele = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_TELEPORT))
     blocks.blocks[tele_or_rest]["inputs"]["CONDITION"] = [2, is_tele]
@@ -15153,26 +15460,26 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
         tele_or_rest,
         [
             blocks.switch_costume_expr(
-                blocks.op_sub(number(ZAKATO_BURST_ORDINAL_BASE + ZAKATO_ANIM_PHASES - 1), phase())
+                blocks.op_sub(
+                    number(ZAKATO_BURST_ORDINAL_BASE + AIR_EXPLOSION_FLIP_COSTUMES * (ZAKATO_ANIM_PHASES - 1)),
+                    blocks.op_mul(phase(), number(AIR_EXPLOSION_FLIP_COSTUMES)),
+                )
             ),
             blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)}),
         ],
     )
     blocks.substack(tele_or_rest, [self_or_active], name="SUBSTACK2")
-    # SLOT_HIT (the shared flying explosion): forward burst, doubling at the big phase — exactly the other
+    # SLOT_HIT (`flying_enemy_hit`, CAB-05): the air explosion with its per-frame flips — exactly the other
     # families' hit render.
-    explode_ordinal = blocks.op_add(number(ZAKATO_BURST_ORDINAL_BASE), phase())
-    size_branch = blocks.add("control_if_else")
-    is_big = blocks.op_eq(phase(), number(TOROID_BIG_PHASE))
-    blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
-    blocks.blocks[is_big]["parent"] = size_branch
-    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
-    blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)})], name="SUBSTACK2")
+    explode_ordinal = _air_burst_ordinal(blocks, ZAKATO_BURST_ORDINAL_BASE, timer)
     state_render = blocks.add("control_if_else")
     is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
     blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
     blocks.blocks[is_hit]["parent"] = state_render
-    blocks.substack(state_render, [blocks.switch_costume_expr(explode_ordinal), size_branch])
+    blocks.substack(
+        state_render,
+        [blocks.switch_costume_expr(explode_ordinal), blocks.add("looks_setsizeto", inputs={"SIZE": number(ZAKATO_RENDER_SIZE)})],
+    )
     blocks.substack(state_render, [tele_or_rest], name="SUBSTACK2")
 
     render = blocks.add("control_if_else")
@@ -15192,15 +15499,15 @@ def zakato_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
-def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_code: int, big_phase: bool) -> dict[str, dict[str, Any]]:
+def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_code: int, flipped: bool) -> dict[str, dict[str, Any]]:
     # AIR-10 shared Spario renderer (game_director owns these blocks; the costumes are the Zakato body
-    # stand-in + the shared solv_death burst mirrored on in expected_project). One persistent clone per
+    # stand-in + the shared air explosion mirrored on in expected_project). One persistent clone per
     # flying slot (59..64), the same pool pattern as the Jara/Zakato: shown and positioned when its slot
     # holds `type_code`, hidden otherwise. The clone writes no state. While ACTIVE it holds the static body
-    # stand-in (ordinal 1); on a hit it plays the shared burst FORWARD from the slot clock. `big_phase`
-    # selects the burst scale: the Brag uses the shared ~20-frame flying kill (doubling at the 2x big phase,
-    # like every other family); the Giddo's SHORT 8-frame own-burst (giddo_spario_hit 5241-5252) plays at
-    # normal scale — a small pop, never reaching the big phase (its handler frees it at frame 8).
+    # stand-in (ordinal 1); on a hit it plays the air explosion FORWARD from the slot clock. `flipped`
+    # selects the kill: the Brag and Garu Zakato use the shared ~20-frame flying kill with its per-frame flips
+    # (`flying_enemy_hit`); the Giddo's SHORT 8-frame own-burst (giddo_spario_hit xevious_main.68k 5241-5253, codes 4..7 with
+    # no flip bits) plays the unflipped first phases — a small pop (its handler frees it at frame 8).
     blocks = Blocks(target)
     common_stop(blocks, hide=True, clones=True)
     slotvar = lambda: variable(clone_var_name, clone_var_id)
@@ -15233,27 +15540,14 @@ def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_cod
             number(RENDER_ROW_STAGE),
         ),
     )
-    # Shared explosion on a hit: forward burst from the slot clock (the arcade `TIMER>>2`, fresh per read).
-    explode_ordinal = blocks.op_add(
-        number(SPARIO_BURST_ORDINAL_BASE),
-        blocks.op_floor(blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))),
+    # The air explosion on a hit: forward from the slot clock (the arcade `TIMER>>2`, fresh per read).
+    explode_ordinal = _air_burst_ordinal(
+        blocks, SPARIO_BURST_ORDINAL_BASE, lambda: blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), flipped
     )
-    hit_body: list[str] = [blocks.switch_costume_expr(explode_ordinal)]
-    if big_phase:
-        # The Brag kill doubles at the 2x big phase like every other flying kill.
-        size_branch = blocks.add("control_if_else")
-        phase_for_size = blocks.op_floor(
-            blocks.op_div(blocks.list_item("slot timer", SLOT_TIMER_ID, slotvar()), number(TOROID_EXPLOSION_PHASE_FRAMES))
-        )
-        is_big = blocks.op_eq(phase_for_size, number(TOROID_BIG_PHASE))
-        blocks.blocks[size_branch]["inputs"]["CONDITION"] = [2, is_big]
-        blocks.blocks[is_big]["parent"] = size_branch
-        blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(TOROID_EXPLODE_SIZE)})])
-        blocks.substack(size_branch, [blocks.add("looks_setsizeto", inputs={"SIZE": number(SPARIO_RENDER_SIZE)})], name="SUBSTACK2")
-        hit_body.append(size_branch)
-    else:
-        # The Giddo's short own-burst stays at normal scale — a small pop.
-        hit_body.append(blocks.add("looks_setsizeto", inputs={"SIZE": number(SPARIO_RENDER_SIZE)}))
+    hit_body: list[str] = [
+        blocks.switch_costume_expr(explode_ordinal),
+        blocks.add("looks_setsizeto", inputs={"SIZE": number(SPARIO_RENDER_SIZE)}),
+    ]
     state_render = blocks.add("control_if_else")
     is_hit = blocks.op_eq(blocks.list_item("slot state", SLOT_STATE_ID, slotvar()), number(SLOT_HIT))
     blocks.blocks[state_render]["inputs"]["CONDITION"] = [2, is_hit]
@@ -15287,26 +15581,26 @@ def _spario_blocks(target: str, clone_var_name: str, clone_var_id: str, type_cod
 
 
 def giddo_spario_blocks() -> dict[str, dict[str, Any]]:
-    # AIR-10: the Giddo Spario clone pool — its SHORT own-burst plays the shared frames at normal scale.
+    # AIR-10: the Giddo Spario clone pool — its SHORT own-burst plays the unflipped first phases.
     return _spario_blocks(
-        GIDDO_SPARIO_TARGET, "giddo spario clone slot", GIDDO_SPARIO_CLONE_SLOT_ID, GIDDO_SPARIO_TYPE, big_phase=False
+        GIDDO_SPARIO_TARGET, "giddo spario clone slot", GIDDO_SPARIO_CLONE_SLOT_ID, GIDDO_SPARIO_TYPE, flipped=False
     )
 
 
 def brag_spario_blocks() -> dict[str, dict[str, Any]]:
-    # AIR-10: the Brag Spario clone pool — its kill uses the shared ~20-frame flying burst (big-phase 2x).
+    # AIR-10: the Brag Spario clone pool — its kill uses the shared ~20-frame flying explosion.
     return _spario_blocks(
-        BRAG_SPARIO_TARGET, "brag spario clone slot", BRAG_SPARIO_CLONE_SLOT_ID, BRAG_SPARIO_TYPE, big_phase=True
+        BRAG_SPARIO_TARGET, "brag spario clone slot", BRAG_SPARIO_CLONE_SLOT_ID, BRAG_SPARIO_TYPE, flipped=True
     )
 
 
 def garu_zakato_blocks() -> dict[str, dict[str, Any]]:
     # AIR-08: the Garu Zakato clone pool — no teleport phase (ACTIVE body stand-in + the shared ~20-frame
-    # flying kill burst, big-phase 2x), so it reuses the shared Spario renderer factory. When it DETONATES
+    # flying explosion), so it reuses the shared Spario renderer factory. When it DETONATES
     # (fuse elapsed) it frees its own slot with no burst, so the clone simply hides — the ring bullets and
     # the 4 Brag Sparios it spawns are drawn by their own pools.
     return _spario_blocks(
-        GARU_ZAKATO_TARGET, "garu zakato clone slot", GARU_ZAKATO_CLONE_SLOT_ID, GARU_ZAKATO_TYPE, big_phase=True
+        GARU_ZAKATO_TARGET, "garu zakato clone slot", GARU_ZAKATO_CLONE_SLOT_ID, GARU_ZAKATO_TYPE, flipped=True
     )
 
 
@@ -15475,8 +15769,8 @@ def sheonite_blocks() -> dict[str, dict[str, Any]]:
 
 
 def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
-    # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the stand-in frames
-    # mirrored on in expected_project). One persistent clone per bullet slot (40..58), created on
+    # AIR-12 enemy-bullet renderer (game_director owns the blocks; the costumes are the pinned bullet renders
+    # mirrored on in expected_project — CAB-05). One persistent clone per bullet slot (40..58), created on
     # director enter while playing and cleared on stop. Each clone shows a small sprite at its slot's
     # mapped position when the slot holds a bullet, else hides. Writes no state (the walk owns the slot).
     blocks = Blocks(ENEMY_BULLET_TARGET)
@@ -15518,7 +15812,12 @@ def enemy_bullet_blocks() -> dict[str, dict[str, Any]]:
         render,
         [
             blocks.go_expr(stage_x, stage_y),
-            blocks.switch_costume("toroid/turn/01"),  # stand-in: the first mirrored frame, drawn small
+            # CAB-05: code 0x11E in the pulsing colour 0x25 + (tick mod 4) (xevious_sub.68k 208-218).
+            blocks.switch_costume_expr(
+                blocks.op_add(
+                    number(1), blocks.op_mod(variable("tick", TICK_ID), number(ENEMY_BULLET_PULSE_COLOURS))
+                )
+            ),
             blocks.add("looks_setsizeto", inputs={"SIZE": number(ENEMY_BULLET_RENDER_SIZE)}),
             blocks.show(),
         ],
@@ -15622,9 +15921,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     # AIR-01: mirror the proof target's verified turn costumes onto the gameplay toroid target (by
     # md5 reference — the same committed asset files, already provenance-recorded). Idempotent, so the
     # two stay in sync; a no-op when the proof costumes are absent (generation runs both to a fixpoint).
-    # AIR-01 turn frames first (costume ordinals 1..7), then the WPN-02 explosion frames appended by
-    # reference from solv_death (ordinals 8..15) — the recorded stand-in burst (record 025). Both are
-    # already-verified, provenance-recorded assets; a no-op when either source is absent (fixpoint).
+    # AIR-01 turn frames first (costume ordinals 1..7), then the WPN-02 explosion: CAB-05's air explosion
+    # rendered from the pin (air-explosion/burst/01..05, four flip costumes each, ordinals 8..27). Both are
+    # provenance-recorded proof costumes; a no-op when the proof source is absent (fixpoint).
     # The shared sprite-extraction proof (record 002's pen) now holds more than one family's crops, so
     # each gameplay renderer mirrors ONLY its own family's frames, keyed by the `<family>/` name prefix
     # the extraction manifest assigns. Order within a family is preserved (costume ordinals 1..N).
@@ -15635,77 +15934,78 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         if proof is not None
         else []
     )
+    # CAB-05: the death sprite draws the arcade's own player explosion (player-explosion/burst/01..07, four flip
+    # costumes each), appended AFTER its historical explode_01..08, which stay as preserved baseline content that
+    # no block selects any more (the replaced-sound pattern). Idempotent: a previous append is dropped first.
+    if proof is not None and death is not None:
+        death["costumes"] = [
+            c for c in death["costumes"] if not str(c.get("name", "")).startswith("player-explosion/")
+        ] + proof_by_family("player-explosion/")
+        if [c.get("name") for c in death["costumes"]][PLAYER_EXPLOSION_BASE_ORDINAL - 1] != "player-explosion/burst/01/none":
+            raise AssertionError("solv_death: the player explosion must start at PLAYER_EXPLOSION_BASE_ORDINAL")
     toroid = next((t for t in result["targets"] if t.get("name") == TOROID_TARGET), None)
     if proof is not None and toroid is not None:
         toroid["costumes"] = proof_by_family("toroid/")
-        if death is not None:
-            toroid["costumes"].extend(copy.deepcopy(death["costumes"]))
+        toroid["costumes"].extend(proof_by_family("air-explosion/"))
         toroid["currentCostume"] = 0
-    # AIR-06: the Terrazi renderer mirrors its 7 roll frames, then the shared explosion frames (the
-    # same solv_death burst appended after them, ordinals 8.., exactly like the Toroid).
+    # AIR-06: the Terrazi renderer mirrors its 7 roll frames, then the air explosion (the same
+    # air-explosion costumes appended after them, ordinals 8.., exactly like the Toroid).
     terrazi = next((t for t in result["targets"] if t.get("name") == TERRAZI_TARGET), None)
     if proof is not None and terrazi is not None:
         terrazi["costumes"] = proof_by_family("terrazi/")
-        if death is not None:
-            terrazi["costumes"].extend(copy.deepcopy(death["costumes"]))
+        terrazi["costumes"].extend(proof_by_family("air-explosion/"))
         terrazi["currentCostume"] = 0
-    # AIR-05: the Kapi renderer mirrors its 7 dive frames, then the shared explosion frames (the same
-    # solv_death burst appended after them, ordinals 8.., exactly like the Toroid/Terrazi).
+    # AIR-05: the Kapi renderer mirrors its 7 dive frames, then the air explosion (the same
+    # air-explosion costumes appended after them, ordinals 8.., exactly like the Toroid/Terrazi).
     kapi = next((t for t in result["targets"] if t.get("name") == KAPI_TARGET), None)
     if proof is not None and kapi is not None:
         kapi["costumes"] = proof_by_family("kapi/")
-        if death is not None:
-            kapi["costumes"].extend(copy.deepcopy(death["costumes"]))
+        kapi["costumes"].extend(proof_by_family("air-explosion/"))
         kapi["currentCostume"] = 0
     # AIR-02: the Torkan renderer mirrors its 6 roll frames (TORKAN_ANIM_FRAMES; the rip has six for the
-    # seven arcade codes, so the seventh code-step holds the last), then the shared explosion frames (the
-    # same solv_death burst appended after them, ordinals 7.., exactly like the Toroid/Terrazi/Kapi).
+    # seven arcade codes, so the seventh code-step holds the last), then the air explosion (the
+    # same air-explosion costumes appended after them, ordinals 7.., exactly like the Toroid/Terrazi/Kapi).
     torkan = next((t for t in result["targets"] if t.get("name") == TORKAN_TARGET), None)
     if proof is not None and torkan is not None:
         torkan["costumes"] = proof_by_family("torkan/")
-        if death is not None:
-            torkan["costumes"].extend(copy.deepcopy(death["costumes"]))
+        torkan["costumes"].extend(proof_by_family("air-explosion/"))
         torkan["currentCostume"] = 0
-    # AIR-03: the Zoshi renderer mirrors its 4 spin frames (ZOSHI_ANIM_FRAMES), then the shared explosion
-    # frames (the same solv_death burst appended after them, ordinals 5.., exactly like the other families).
+    # AIR-03: the Zoshi renderer mirrors its 4 spin frames (ZOSHI_ANIM_FRAMES), then the air explosion
+    # (the same air-explosion costumes appended after them, ordinals 5.., exactly like the other families).
     zoshi = next((t for t in result["targets"] if t.get("name") == ZOSHI_TARGET), None)
     if proof is not None and zoshi is not None:
         zoshi["costumes"] = proof_by_family("zoshi/")
-        if death is not None:
-            zoshi["costumes"].extend(copy.deepcopy(death["costumes"]))
+        zoshi["costumes"].extend(proof_by_family("air-explosion/"))
         zoshi["currentCostume"] = 0
-    # AIR-04: the Jara renderer mirrors its 6 spin frames (JARA_ANIM_FRAMES), then the shared explosion
-    # frames (the same solv_death burst appended after them, ordinals 7.., exactly like the other families).
+    # AIR-04: the Jara renderer mirrors its 6 spin frames (JARA_ANIM_FRAMES), then the air explosion
+    # (the same air-explosion costumes appended after them, ordinals 7.., exactly like the other families).
     jara = next((t for t in result["targets"] if t.get("name") == JARA_TARGET), None)
     if proof is not None and jara is not None:
         jara["costumes"] = proof_by_family("jara/")
-        if death is not None:
-            jara["costumes"].extend(copy.deepcopy(death["costumes"]))
+        jara["costumes"].extend(proof_by_family("air-explosion/"))
         jara["currentCostume"] = 0
     # AIR-07: the Zakato renderer mirrors its single active body frame (ordinal 1, arcade code 0x11), then
-    # the shared explosion frames (the same solv_death burst appended after it, ordinals 2..9) — which the
-    # teleport (reversed), self-destruct (forward) and shot-kill (forward) phases all draw from, the
-    # deferred-family-burst stand-in every flying family uses.
+    # the air explosion (the same air-explosion costumes appended after it, ordinals 2..21) — which the
+    # teleport (reversed, unflipped), self-destruct (forward, unflipped) and shot-kill (forward, flipped)
+    # phases all draw from.
     zakato = next((t for t in result["targets"] if t.get("name") == ZAKATO_TARGET), None)
     if proof is not None and zakato is not None:
         zakato["costumes"] = proof_by_family("zakato/")
-        if death is not None:
-            zakato["costumes"].extend(copy.deepcopy(death["costumes"]))
+        zakato["costumes"].extend(proof_by_family("air-explosion/"))
         zakato["currentCostume"] = 0
     # AIR-10: the Giddo and Brag Spario renderers both mirror the ZAKATO body frame as their body stand-in
     # (ordinal 1) — the CrazyCarl aerial rip carries no Spario sprite, so the Zakato blob stands in as a
-    # DEFERRED cosmetic (reason recorded in the constants and the mechanics record) — then the shared
-    # solv_death burst (ordinals 2..9) their hit draws from. Idempotent; a no-op when any source is absent.
+    # DEFERRED cosmetic (reason recorded in the constants and the mechanics record) — then the air
+    # explosion (ordinals 2..21) their hit draws from. Idempotent; a no-op when any source is absent.
     for spario_name in (GIDDO_SPARIO_TARGET, BRAG_SPARIO_TARGET, GARU_ZAKATO_TARGET):
         spario = next((t for t in result["targets"] if t.get("name") == spario_name), None)
         if proof is not None and spario is not None:
             spario["costumes"] = proof_by_family("zakato/")
-            if death is not None:
-                spario["costumes"].extend(copy.deepcopy(death["costumes"]))
+            spario["costumes"].extend(proof_by_family("air-explosion/"))
             spario["currentCostume"] = 0
     # AIR-11: the Bacura renderer mirrors its eight tumble frames (bacura/slab/01..08, ordinals 1..8) — and
-    # NOTHING else. The Bacura is never destroyed, so unlike every flying family it appends NO shared
-    # solv_death burst (it has no HIT/explosion phase at all). The renderer picks one of these eight by
+    # NOTHING else. The Bacura is never destroyed, so unlike every flying family it appends NO air
+    # explosion (it has no HIT/explosion phase at all). The renderer picks one of these eight by
     # position each frame, so the slab tumbles as it drifts. Idempotent; a no-op when the proof source is
     # absent (generation runs to a fixpoint).
     bacura = next((t for t in result["targets"] if t.get("name") == BACURA_TARGET), None)
@@ -15714,7 +16014,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         bacura["currentCostume"] = 0
     # AIR-09: the Sheonite renderer mirrors its ten frames (sheonite/spin/01..04 then sheonite/combine/01..06,
     # ordinals 1..10 == arcade codes 0x30..0x39) — and NOTHING else. Like the Bacura the pair is inert (never
-    # destroyed), so it appends NO shared solv_death burst (it has no HIT/explosion phase). The renderer picks
+    # destroyed), so it appends NO air explosion (it has no HIT/explosion phase). The renderer picks
     # the spin cycle (1..4) or the per-side combine cycle (right 5..7 / left 8..10) by phase + clock.
     # Idempotent; a no-op when the proof source is absent (generation runs to a fixpoint).
     sheonite = next((t for t in result["targets"] if t.get("name") == SHEONITE_TARGET), None)
@@ -15723,7 +16023,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         sheonite["currentCostume"] = 0
     # Slice-15 PR-1 shared ground pool: the 10 full-band families' costume slices are concatenated into ONE
     # combined "ground" costume list, in GROUND_FAMILY_COSTUME_COUNTS order. Each slice is the SAME
-    # proof_by_family(+ shared solv_death burst + crater) recipe the per-family renderers used; the shared
+    # proof_by_family(+ ground explosion + crater) recipe the per-family renderers used; the shared
     # renderer offsets each family's costume ordinals by its start in the combined list (GROUND_FAMILY_OFFSETS).
     # Two generation gates prove the merge is render-preserving: (1) each built slice length == its declared
     # count (a manifest shift fails loud instead of silently misindexing); (2) no costume NAME maps to two
@@ -15732,29 +16032,27 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     # the proof source is absent (generation runs both to a fixpoint).
     ground = next((t for t in result["targets"] if t.get("name") == GROUND_RENDER_TARGET), None)
     if proof is not None and ground is not None:
-        death_frames = lambda: (copy.deepcopy(death["costumes"]) if death is not None else [])
+        burst = lambda: proof_by_family("ground-explosion/")
+        crater = lambda: proof_by_family("ground-crater/")
         ground_slices = {
-            "barra": proof_by_family("barra/") + death_frames() + proof_by_family("crater/"),
-            "sol-tower": proof_by_family("sol-tower/") + death_frames() + proof_by_family("crater/"),
-            "garu": proof_by_family("garu/") + proof_by_family("barra/") + death_frames(),
-            "logram": proof_by_family("logram/") + death_frames() + proof_by_family("crater/"),
-            "zolbak": proof_by_family("zolbak/") + death_frames() + proof_by_family("crater/"),
-            "derota": proof_by_family("derota/") + death_frames() + proof_by_family("crater/"),
-            "garu derota": proof_by_family("garu-derota/") + proof_by_family("derota/") + death_frames(),
-            "boza": proof_by_family("logram/")
-            + proof_by_family("boza-centre/")
-            + death_frames()
-            + proof_by_family("crater/"),
-            "grobda": proof_by_family("grobda/") + death_frames() + proof_by_family("crater/"),
-            "domogram": proof_by_family("domogram/") + death_frames() + proof_by_family("crater/"),
+            "barra": proof_by_family("barra/") + burst() + crater(),
+            "sol-tower": proof_by_family("sol-tower/") + burst() + crater(),
+            "garu": proof_by_family("garu/") + proof_by_family("barra/") + burst(),
+            "logram": proof_by_family("logram/") + burst() + crater(),
+            "zolbak": proof_by_family("zolbak/") + burst() + crater(),
+            "derota": proof_by_family("derota/") + burst() + crater(),
+            "garu derota": proof_by_family("garu-derota/") + proof_by_family("derota/") + burst(),
+            "boza": proof_by_family("logram/") + proof_by_family("boza-centre/") + burst() + crater(),
+            "grobda": proof_by_family("grobda/") + burst() + crater(),
+            "domogram": proof_by_family("domogram/") + burst() + crater(),
             # BOSS-01/02/03: the Andor composite parts, in manifest (== arcade type) order. Armor is
             # indestructible -> just its crops. The gun ports and the core become mortal in slice 16, so each
-            # appends the shared solv_death burst their HIT branch plays (ordinals 5..12). The core's single crop
+            # appends the ground explosion their HIT branch plays (ordinals 5..11). The core's single crop
             # expands to four pre-flipped costumes (andor-core/core/01/{none,x,y,xy}) via the extractor `flips`
             # attr. The converted core's fly-up Bragza is its own 4-frame slice (andor-bragza/fly/01..04).
             "andor-armor": proof_by_family("andor-armor/"),
-            "andor-port": proof_by_family("andor-port/") + death_frames(),
-            "andor-core": proof_by_family("andor-core/") + death_frames(),
+            "andor-port": proof_by_family("andor-port/") + burst(),
+            "andor-core": proof_by_family("andor-core/") + burst(),
             "andor-bragza": proof_by_family("andor-bragza/"),
         }
         combined: list[dict[str, Any]] = []
@@ -15770,7 +16068,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             combined_family.extend([family_key] * len(family_slice))
         # scratch-vm's SB3 loader enforces uniqueItems on a target's costume list: two byte-identical costume
         # OBJECTS are legal across separate targets but NOT within one. The ten families share many crops by
-        # ref (the solv_death burst frames, the crater flicker pair, and the by-ref reused barra/derota idles
+        # ref (the ground-explosion frames, the crater flicker pair, and the by-ref reused barra/derota idles
         # and logram open frames), so the concatenated list carries duplicate objects. Every such duplicate is
         # selected BY INDEX (switch_costume_expr on a computed ordinal — resolved by POSITION, not name); only
         # the FIRST occurrence of each name is ever selected BY NAME (switch_costume), which scratch-vm resolves
@@ -15805,18 +16103,34 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
     # SEC-02 (secrets.bonus-flag #91): the Bonus Flag renderer mirrors its single revealed-flag frame
     # (ordinal 1; bonus-flag/flag/01, the arcade CODE=0x1f sprite) — and NOTHING else. Like the Bacura and
     # Sheonite the flag is never destroyed on screen: a bomb REVEALS it whole (no burst) and a fly-over just
-    # removes it, so it appends NO shared solv_death burst and no crater. Idempotent; a no-op when the proof
+    # removes it, so it appends NO ground explosion and no crater. Idempotent; a no-op when the proof
     # source is absent (generation runs to a fixpoint).
     bonus_flag = next((t for t in result["targets"] if t.get("name") == BONUS_FLAG_TARGET), None)
     if proof is not None and bonus_flag is not None:
         bonus_flag["costumes"] = proof_by_family("bonus-flag/")
         bonus_flag["currentCostume"] = 0
-    # AIR-12: the enemy-bullet renderer uses a small stand-in — the Toroid's verified turn frames by
-    # reference, drawn at a small size (dedicated bullet crops + the 4-colour pulse deferred, record 026).
+    # AIR-12 / CAB-05: the enemy-bullet renderer draws code 0x11E in its four pulse colours, rendered from the
+    # pin (bomb/fall/03/c25..c28) — replacing the Toroid stand-in it used before.
     enemy_bullet = next((t for t in result["targets"] if t.get("name") == ENEMY_BULLET_TARGET), None)
     if proof is not None and enemy_bullet is not None:
-        enemy_bullet["costumes"] = proof_by_family("toroid/")
+        enemy_bullet["costumes"] = proof_by_family(ENEMY_BULLET_ART_FAMILY)
         enemy_bullet["currentCostume"] = 0
+    # CAB-05: the crosshair, bomb target and bomb append the pinned art after their preserved baseline costumes
+    # (no block selects those any more). Idempotent: a previous append is dropped first.
+    for marker_name, family, base in (
+        ("target_a", "crosshair/", CROSSHAIR_ART_BASE_ORDINAL),
+        ("target_b", "bomb-target/", None),
+        ("bomb", "bomb/fall/", BOMB_ART_BASE_ORDINAL),
+    ):
+        marker = next((t for t in result["targets"] if t.get("name") == marker_name), None)
+        if proof is None or marker is None:
+            continue
+        marker["costumes"] = [
+            c for c in marker["costumes"] if not str(c.get("name", "")).startswith(family)
+        ] + proof_by_family(family)
+        names = [c.get("name") for c in marker["costumes"]]
+        if base is not None and not str(names[base - 1]).startswith(family):
+            raise AssertionError(f"{marker_name}: the pinned art must start at ordinal {base}")
     stage = next(target for target in result["targets"] if target["isStage"])
     owned_stage_variables = {
         STATE_ID,
@@ -15825,6 +16139,7 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         OUTCOME_ID,
         BOMB_INFLIGHT_ID,
         BOMB_DX_ID,
+        CROSSHAIR_LIT_ID,
         RNG_STATE_ID,
         RNG_OUT_ID,
         RNG_HIGH_ID,
@@ -15928,6 +16243,13 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         ATTRACT_ID,
         ATTRACT_EPOCH_ID,
         ATTRACT_STAGE_ID,
+        # CAB-05 (slice 20): the audio machinery (coin-sound latch, attract mute, death-cue keep and playing latch,
+        # Andor drone).
+        COIN_SOUND_ID,
+        AUDIO_MUTED_ID,
+        KEEP_SOUNDS_ID,
+        DEATH_CUE_PLAYING_ID,
+        ANDOR_DRONE_TIMER_ID,
         # CAB-01 (slice 17): the auto-pilot's virtual input register and its held direction (all machinery).
         INPUT_UP_ID,
         INPUT_DOWN_ID,
@@ -15980,6 +16302,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         BOMB_INFLIGHT_ID: ["bomb in flight", 0],
         # WPN-04: the in-flight bomb's accelerating scroll-axis velocity (init_bombing `_dX`).
         BOMB_DX_ID: ["bomb dx", 0],
+        # CAB-05: the crosshair's on-target flash, worked out each tick by `track crosshair`.
+        CROSSHAIR_LIT_ID: ["crosshair lit", 0],
         # SYS-04 shared stream: the seed, its latest output byte, and the four per-step
         # working values (custom blocks have no locals). Cited to rng.json / SYS-04.
         RNG_STATE_ID: ["rng state", 0],
@@ -16137,6 +16461,11 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         ATTRACT_ID: ["attract", 0],
         ATTRACT_EPOCH_ID: ["attract epoch", 0],
         ATTRACT_STAGE_ID: ["attract stage", 0],
+        COIN_SOUND_ID: ["coin sound", 0],
+        AUDIO_MUTED_ID: ["audio muted", -1],
+        KEEP_SOUNDS_ID: ["keep sounds", 0],
+        DEATH_CUE_PLAYING_ID: ["death cue playing", 0],
+        ANDOR_DRONE_TIMER_ID: ["andor drone timer", 0],
         INPUT_UP_ID: ["input up", 0],
         INPUT_DOWN_ID: ["input down", 0],
         INPUT_LEFT_ID: ["input left", 0],
@@ -16367,8 +16696,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
         TERRAIN_STRIP_TARGETS["odd"]: terrain_strip_blocks("odd"),
         "start_screen": title_blocks(),
         "solv_death": death_blocks(),
-        "target_a": slot_marker_blocks("target_a", CROSSHAIR_SLOT, "target_01"),
-        "target_b": slot_marker_blocks("target_b", BOMB_TARGET_SLOT, "target_03"),
+        "target_a": slot_marker_blocks("target_a", CROSSHAIR_SLOT, crosshair_ordinal),
+        "target_b": slot_marker_blocks("target_b", BOMB_TARGET_SLOT, BOMB_TARGET_ART_COSTUME),
         "bomb": bomb_blocks(),
         "hud": hud_blocks(),
         "toroid": toroid_blocks(),
@@ -16398,7 +16727,8 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             }
         elif target["name"] == "solv_death":
             target["variables"] = target["variables"] | {
-                DEATH_EPOCH_ID: ["entry epoch", 0]
+                DEATH_EPOCH_ID: ["entry epoch", 0],
+                DEATH_EXPLOSION_TICK_ID: ["explosion tick", 0],
             }
         elif target["name"] == "blaster":
             target["variables"] = target["variables"] | {

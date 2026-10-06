@@ -79,6 +79,105 @@
       "credit": "Namco (arcade audio); decoded/committed in the pinned reference by jotd666",
       "license": "No reusable license specified by source; third-party copyrighted material",
       "sha256": "9840624569987af8022e8fb09c73de63298c7dfe6f97d4dee5767445975678f2"
+    },
+    {
+      "name": "credit",
+      "file": "credit.wav",
+      "arcade_sound": "COIN_SND",
+      "arcade_id": "0x10",
+      "play_point": "sub_fn_4__handle_credits_and_start, xevious_sub.68k:181 — a coin adds a credit (never at the 99-credit cap)",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "92f8e4ac27118cd71e83b052ea32f9ef7b9ce772134a880fb658855317e525d5"
+    },
+    {
+      "name": "name_entry",
+      "file": "name_entry.wav",
+      "arcade_sound": "HIGH_SCORE_SND",
+      "arcade_id": "0x03",
+      "play_point": "score_lower_than_entry, xevious_main.68k:1710 — a qualifying score below first place opens initials entry (looping tune, stopped at name_entry_finished 1760)",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "c0f855a8fe1220a0dd1d4ac268a78f794028c574a2be16f3c9735a68cee19eb2"
+    },
+    {
+      "name": "name_entry_top",
+      "file": "name_entry_top.wav",
+      "arcade_sound": "HIGHEST_SCORE_SND",
+      "arcade_id": "0x02",
+      "play_point": "score_lower_than_entry, xevious_main.68k:1707 — a new first-place score opens initials entry (looping tune, stopped at name_entry_finished 1758)",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "e95e0990f536743356f421b2a27148789e4063f858ebe5bf12c45dae852310ea"
+    },
+    {
+      "name": "andor_genesis",
+      "file": "andor_genesis.wav",
+      "arcade_sound": "ANDOR_GENESIS_SND",
+      "arcade_id": "0x07",
+      "play_point": "handle_4B_Andor_Genesis_obj_15, xevious_main.68k:5392/5404 and andor_genesis_leave 5436 — requested every frame while the boss descends, hovers or leaves",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "1fb855ba2ffec4a3a5979b8a88c9880656858a6f5e836251ae48b31f55392104"
+    },
+    {
+      "name": "start",
+      "file": "start.wav",
+      "arcade_sound": "MAIN_THEME_SND",
+      "arcade_id": "0x01",
+      "play_point": "main_gameplay_loop, xevious_main.68k:498 — the main theme at every life start",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "2e5bff2e4c3c8bb64450775188b412847d793f76be53d28939bf958ca18d5fe0"
+    },
+    {
+      "name": "bgm",
+      "file": "bgm.wav",
+      "arcade_sound": "SOLVALOU_SND",
+      "arcade_id": "0x0e",
+      "play_point": "main_fn_1__handle_solvalou, xevious_main.68k:2009 — the looping flight tune (not in attract), stopped on death at update_solvalou 2026",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "cef95196fda166d09cbafc52f48eb8bf509a1fbaa889579d2a44d99f0435ef10"
+    },
+    {
+      "name": "solvalou_explode",
+      "file": "solvalou_explode.wav",
+      "arcade_sound": "SOLVALOU_EXPLOSION_SND",
+      "arcade_id": "0x12",
+      "play_point": "update_solvalou, xevious_main.68k:2030 — the Solvalou is destroyed (not in attract)",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "ae5fdf7442b6e70603277d84e5d8ab013358d6ec03186061a22c663cb8c959ff"
+    },
+    {
+      "name": "zapper_fire",
+      "file": "zapper_fire.wav",
+      "arcade_sound": "SHOT_SND",
+      "arcade_id": "0x0b",
+      "play_point": "main_fn_30_shot_fn, xevious_main.68k:2366 — a Zapper (air) shot is fired",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "b04dcbaf56b3956332d052dfffb097d2265f5403323fcef1f1c38bc2ed9504fe"
+    },
+    {
+      "name": "blaster_fire",
+      "file": "blaster_fire.wav",
+      "arcade_sound": "BOMB_SND",
+      "arcade_id": "0x0c",
+      "play_point": "init_bombing, xevious_main.68k:2463 — a Blaster bomb is dropped",
+      "source": "Operator-supplied Xevious (Arcade) sound effect (local staging); Sounds Spriters Resource Xevious audio family",
+      "credit": "Namco (arcade audio); rip uploader not individually recorded",
+      "license": "No reusable license specified by source; third-party copyrighted material",
+      "sha256": "c6c88e4b3c4d0ff939748a775119334621b92f080babdfb50027a74ad04edef6"
     }
   ]
 }

@@ -137,13 +137,16 @@ class HudGlyphsTests(unittest.TestCase):
     def test_stage_carries_the_added_sounds_alongside_historical_sounds(self) -> None:
         # The Stage carries the two historical base sounds, then hud_glyphs.py's added
         # sounds: the "extend" cue, then the seven arcade gameplay-SFX cues in name order
-        # (AUDIO; docs/mechanics/040-arcade-sound-cues.md — bonus_flag added for SEC-02, slice 14).
+        # (AUDIO; docs/mechanics/040-arcade-sound-cues.md — bonus_flag added for SEC-02, slice 14;
+        # CAB-05 slice 20 adds the coin, high/top-score, Andor and five base-sound replacement cues).
         project = json.loads(hg.PROJECT_PATH.read_text(encoding="utf-8"))
         stage = next(target for target in project["targets"] if target["isStage"])
         names = [sound["name"] for sound in stage["sounds"]]
         self.assertEqual(
-            ["Game Start.mp3", "BGM.mp3", "extend", "air_destroy", "bacura",
-             "bonus_flag", "garu_zakato", "ground_destroy", "sheonite", "zakato"],
+            ["Game Start.mp3", "BGM.mp3", "extend", "air_destroy", "andor_genesis", "bacura",
+             "bgm", "blaster_fire", "bonus_flag", "credit", "garu_zakato", "ground_destroy",
+             "name_entry", "name_entry_top", "sheonite", "solvalou_explode", "start",
+             "zakato", "zapper_fire"],
             names,
         )
 

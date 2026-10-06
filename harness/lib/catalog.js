@@ -11,6 +11,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   step,
+  stepSettled,
+  greenFlag,
+  recordSounds,
   keyDown,
   keyUp,
   tapKey,
@@ -245,6 +248,39 @@ function groundCloneEffect(vm, scratchSlot, effect = 'color') {
     }
   }
   return null;
+}
+
+/** CAB-05: a render clone's costume and visibility by the slot it is bound to (its sprite-local
+ * `<sprite> clone slot`). Size is not read: headless scratch-vm stores a size only with a renderer attached, so
+ * the one-scale rule is pinned structurally (test_scratch_project `_cab05_explosion_failures`). */
+function cloneRender(vm, spriteName, slotVarId, scratchSlot) {
+  const slotName = variable(slotVarId).name;
+  for (const c of vm.runtime.targets) {
+    if (c.isStage || c.isOriginal || !c.sprite || c.sprite.name !== spriteName) continue;
+    const bound = Object.values(c.variables).find((v) => v.name === slotName);
+    if (bound && Number(bound.value) === scratchSlot) {
+      const costume = c.sprite.costumes[c.currentCostume];
+      return { costume: costume ? costume.name : null, visible: c.visible };
+    }
+  }
+  return null;
+}
+/** CAB-05: the flip costume suffix for the attr flip bits v (0..3) — bit 3 mirrors left-to-right on the rotated
+ * screen (amiga.68k ~2613), so v=1 is the y costume and v=2 the x costume. */
+const FLIP_SUFFIX = ['none', 'y', 'x', 'xy'];
+/** Turn an operator_mod `<x> mod 4` on a sprite into `<x> mod 1` (every flip collapses to none; on the enemy
+ * bullet, every pulse colour collapses to the first). */
+function collapseFlipMod(p, spriteName) {
+  const t = p.targets.find((x) => x.name === spriteName);
+  let patched = 0;
+  for (const b of Object.values(t.blocks)) {
+    const rhs = b.opcode === 'operator_mod' && b.inputs.NUM2 && b.inputs.NUM2[1];
+    if (Array.isArray(rhs) && String(rhs[1]) === '4') {
+      b.inputs.NUM2 = [1, [4, '1']];
+      patched += 1;
+    }
+  }
+  if (!patched) throw new Error(`mutate: no 'mod 4' on ${spriteName}`);
 }
 
 export const SCENARIOS = [
@@ -613,6 +649,10 @@ export const SCENARIOS = [
     async drive(vm) {
       vm.greenFlag();
       step(vm, 1);
+      // The cold-start reset (boot -> resetting -> title) is ~16 ms of work: one pump finishes it on a
+      // fast machine, but a pump's budget is wall-clock, so a slower runner can still be mid-reset after
+      // it. Pump on (bounded) only while the director is in that transient, then read where it rests.
+      for (let i = 0; i < 30 && (state(vm) === 'boot' || state(vm) === 'resetting'); i += 1) step(vm, 1);
       const titleState = state(vm);
       const epochBefore = epoch(vm);
       tapKey(vm, 'b'); // a gameplay key (bomb) must do nothing at title
@@ -815,6 +855,38 @@ export const SCENARIOS = [
     },
     // Remove the playing -> title edge so the coin abort is a silent no-op → the demo keeps running.
     negativeMutation: (p) => mutate.removeAllowedTransition(p, 'playing -> title'),
+  },
+  {
+    // CAB-05 (slice 20): no demo runs while a credit is banked. The arcade runs the attract cycle only with no
+    // credits (main_thread_main_loop xevious_main.68k 348-357); with one it goes to coined_up (377-380), which
+    // waits for START and never runs a demo — so every demo is a silent one. Here a coin at the title, then far
+    // past the 372-tick title hold: the title stays up and no demo starts.
+    key: 'attract-no-demo-with-a-credit',
+    behavior: 'With a credit banked the title stays up and waits for START; the attract demo never starts',
+    playtestStep: 1,
+    async drive(vm) {
+      vm.greenFlag();
+      step(vm, 1);
+      insertCoin(vm, 1);
+      let left = false;
+      for (let t = 0; t < 600 && !left; t += 1) {
+        step(vm, 1);
+        if (state(vm) !== 'title') left = true;
+      }
+      return {
+        left,
+        st: state(vm),
+        credits: readVar(vm, 'cabinet-credits'),
+        stage: readVar(vm, 'cabinet-attract-stage'),
+      };
+    },
+    assert(obs) {
+      assert.equal(obs.credits, 1, 'precondition: the coin banked a credit');
+      assert.equal(obs.left, false, `the title never hands over to a demo while a credit is banked (now ${obs.st})`);
+      assert.equal(obs.stage, 0, 'no demo was launched');
+    },
+    // Make the hold's `credits = 0` gate read `credits = 1`, so the banked credit launches the demo.
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'credits', 0, 1),
   },
   {
     // CAB-02: a credit-gated real start atomically clears the attract flag, so a started game can never
@@ -2704,7 +2776,11 @@ export const SCENARIOS = [
       // pump is many ticks, not one — see step()), but cull keeps `slot flag`/`slot dx`, so the
       // committed-glide and reversed-forward evidence survives to read (the same reason the Toroid swing
       // scenario reads its post-cull `slot dy`). Magnitude is not asserted, only the sign flip.
+      // A pump's tick count is wall-clock bound, so a slow runner can stop after four ticks with dx
+      // exactly 0 (8 - 4*2): pump on, bounded, until the sign has flipped. The negative fixture never
+      // decelerates, so it exhausts the bound with dx still 8.
       step(vm, 1);
+      for (let i = 0; i < 20 && !(readVar(vm, 'slot-dx')[slot] < 0); i += 1) step(vm, 1);
       return { dx: readVar(vm, 'slot-dx')[slot], flag: readVar(vm, 'slot-flag')[slot] };
     },
     assert(obs) {
@@ -7338,7 +7414,7 @@ export const SCENARIOS = [
   {
     // Slice-15 PR-1: render-equivalence of the shared ground pool. Each ground clone reads its slot's live
     // `slot type` and dispatches to that family's costume subtree, with the family's costume ordinals rebased
-    // into ONE combined 129-costume list (GROUND_FAMILY_OFFSETS via _sw). The correctness crux (the riskiest
+    // into ONE combined costume list (GROUND_FAMILY_OFFSETS via _sw; 154 costumes since CAB-05). The correctness crux (the riskiest
     // seam in the plan) is that a clone on a slot of family X shows a costume from X's OWN band — a wrong
     // offset would send it into another family's costumes. This drives live play and, for every ACTIVE ground
     // slot whose clone is drawn, asserts the clone's current costume belongs to that slot type's family.
@@ -7412,11 +7488,12 @@ export const SCENARIOS = [
         'a Logram (a non-zero-offset family) was observed rendering through the shared pool (non-vacuous)',
       );
     },
-    // Zero the Logram family's costume-ordinal offset (39) in the combined list, so every Logram clone
+    // Zero the Logram family's costume-ordinal offset (36 since CAB-05's 7-frame ground explosion) in the
+    // combined list, so every Logram clone
     // switches into the WRONG (Barra) band instead of logram/open — the exact class of bug the per-family
     // ordinal rebase risks. Logram still dispatches and shows (visible), so it is observed with a wrong
     // costume and the no-mismatch assertion goes red.
-    negativeMutation: (p) => mutate.changeAddLiteral(p, 'ground', '39', '0'),
+    negativeMutation: (p) => mutate.changeAddLiteral(p, 'ground', '36', '0'),
   },
   {
     // BOSS-01 / andor.lifecycle (#94): the arrival state machine (handle_4B_Andor_Genesis, xevious_main.68k
@@ -8030,7 +8107,8 @@ export const SCENARIOS = [
   {
     // BOSS-03 / andor.core-destruction (#96): bombing the core (ACTIVE, worth 4,000) scores 4,000 once through
     // the shared ground detector and marks it HIT; the core then bursts in place under `update andor part` and,
-    // when its burst finishes (floor(slot timer / 8) >= EXPLODE_COSTUME_COUNT, i.e. timer >= 64), CONVERTS in
+    // when its burst finishes (CAB-05: the 7-code explosion at 4 frames a code, floor(slot timer / 4) >= 7, i.e.
+    // timer >= 28 — `gun_port_explosion` xevious_main.68k:5715-5749), CONVERTS in
     // place to the indestructible fly-up Bragza (ANDOR_BRAGZA_TYPE + immune sentinel) — faithful to
     // andor_genesis_core_hit waiting for `_STATE==4` before the conversion (xevious_main.68k:5475-5491).
     key: 'andor-core-bomb-scores-and-destroys',
@@ -8067,11 +8145,11 @@ export const SCENARIOS = [
       step(vm, 1);
       const reScoreDelta = readVar(vm, 'eco-score') - reScore0;
       // Burst then convert: drive `update andor part` on the core; the burst clock climbs 2/tick, and the core
-      // converts on the tick floor(timer/8) >= 8 (timer 64 -> 32 ticks).
+      // converts on the tick floor(timer/4) >= 7 (timer 28 -> 14 ticks).
       put('slot-timer', CORE, 0); // the detector zeroed the burst clock on the hit tick
       writeVar(vm, 'slot-index', 15); // Scratch 1-based core slot
       const snaps = [];
-      for (let t = 0; t < 32; t += 1) {
+      for (let t = 0; t < 14; t += 1) {
         callProc(vm, 'Stage', 'update andor part');
         step(vm, 1);
         snaps.push({
@@ -8087,11 +8165,11 @@ export const SCENARIOS = [
       assert.equal(obs.scoreDelta, obs.award, 'bombing the core scores exactly 4,000 once (shared ground detector)');
       assert.equal(obs.hitState, 2, 'the bombed core is marked HIT (state 2), so it cannot re-score');
       assert.equal(obs.reScoreDelta, 0, 'a second bomb on the HIT core scores nothing');
-      const mid = obs.snaps[30]; // tick 31: timer 62, still bursting as the core
+      const mid = obs.snaps[12]; // tick 13: timer 26, still bursting as the core
       assert.equal(mid.type, 74, 'mid-burst the core is still the core (type 0x4A)');
       assert.equal(mid.state, 2, 'mid-burst the core is still HIT (bursting)');
-      assert.equal(mid.timer, 62, 'the burst clock counts 2 frames/tick');
-      const done = obs.snaps[31]; // tick 32: timer reaches 64 -> burst finishes -> convert
+      assert.equal(mid.timer, 26, 'the burst clock counts 2 frames/tick');
+      const done = obs.snaps[13]; // tick 14: timer reaches 28 -> the 28-frame burst finishes -> convert
       assert.equal(done.type, 76, 'the finished core CONVERTS to the fly-up Bragza (ANDOR_BRAGZA_TYPE 0x4C)');
       assert.equal(done.state, 3, 'the converted Bragza carries the immune sentinel (never re-bombable)');
     },
@@ -9547,6 +9625,611 @@ export const SCENARIOS = [
     // roadmap-evidence: ECO-02 failure  (the active nUP label no longer follows the current player)
     negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'curr player', 0),
   },
+  {
+    // CAB-05 (slice 20 PR-4): the coin sound. The arcade plays CREDIT_SND only when a credit is actually added
+    // (xevious_sub.68k 171-181), so never at the 99 cap, and the Amiga lets it through the attract mute
+    // (amiga.68k 718-735). The port latches `coin sound` in the poll's below-cap branch and the coin loop plays
+    // `credit` once the attract mute has lifted. Pumped with stepSettled so the mute loop's volume set resolves.
+    key: 'coin-sound-on-credit-not-at-cap',
+    // roadmap-evidence: CAB-05 success  (a coin that banks a credit plays the credit sound after the mute lifts; none at the cap)
+    behavior:
+      'Inserting a coin at the title raises the credit count, lifts the attract mute (volume back to 100) and then plays the credit sound; a coin at the 99-credit cap adds nothing and plays no credit sound',
+    playtestStep: 10,
+    async drive(vm) {
+      const log = recordSounds(vm);
+      greenFlag(vm);
+      await stepSettled(vm, 2);
+      const coin = async () => {
+        keyDown(vm, 'c');
+        await stepSettled(vm, 1);
+        keyUp(vm, 'c');
+        await stepSettled(vm, 4);
+      };
+      const before = log.length;
+      await coin();
+      const added = log.slice(before);
+      const credits = readVar(vm, 'cabinet-credits');
+      writeVar(vm, 'cabinet-credits', 99);
+      const capStart = log.length;
+      await coin();
+      const atCap = log.slice(capStart);
+      return { added, credits, capCredits: readVar(vm, 'cabinet-credits'), atCap, all: log };
+    },
+    assert(obs) {
+      assert.equal(obs.credits, 1, 'one coin at the title banks one credit');
+      const creditAt = obs.added.findIndex((e) => e.kind === 'play' && e.sound === 'credit');
+      assert.ok(creditAt >= 0, 'the coin plays the credit sound');
+      const volumesBefore = obs.added.slice(0, creditAt).filter((e) => e.kind === 'volume');
+      assert.ok(
+        volumesBefore.length && volumesBefore[volumesBefore.length - 1].sound === 100,
+        'the credit sound plays after the attract mute lifts (volume 100)',
+      );
+      assert.equal(obs.capCredits, 99, 'a coin at the cap adds no credit');
+      assert.equal(
+        obs.atCap.filter((e) => e.kind === 'play' && e.sound === 'credit').length,
+        0,
+        'a coin at the cap plays no credit sound',
+      );
+      assert.deepEqual(obs.all.filter((e) => String(e.sound).startsWith('?')), [], 'every played sound is on its own target');
+    },
+    // roadmap-evidence: CAB-05 failure  (the poll never latches the coin sound, so no credit sound plays)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'coin sound', 0),
+  },
+  {
+    // CAB-05: silent attract. The arcade mutes all sound on entering attract (xevious_main.68k 356) and
+    // unmutes at coined_up (380); the flight loop (2009) and death sound (2030) are also gated off in attract.
+    // The port's Stage mute loop sets the volume to 0 whenever the cabinet is uncredited in the attract cycle,
+    // and the start theme, flight loop and death cue are gated on `attract = 0`.
+    key: 'attract-cycle-is-silent',
+    // roadmap-evidence: CAB-05 success  (the uncredited attract cycle mutes the Stage and starts no theme, loop or death cue)
+    behavior:
+      'From the green flag through the title and into the attract demo with no coin, the Stage volume is set to 0, never raised, and the start theme, flight loop and death sound never start',
+    playtestStep: 1,
+    async drive(vm) {
+      const log = recordSounds(vm);
+      greenFlag(vm);
+      await stepSettled(vm, 1);
+      let pumps = 0;
+      while (!(stateOf(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1) && pumps < 500) {
+        await stepSettled(vm, 1);
+        pumps += 1;
+      }
+      const reachedDemo = stateOf(vm) === 'playing' && readVar(vm, 'cabinet-attract') === 1;
+      await stepSettled(vm, 20);
+      return { reachedDemo, credits: readVar(vm, 'cabinet-credits'), log };
+    },
+    assert(obs) {
+      assert.ok(obs.reachedDemo, 'precondition: the attract demo starts with no coin');
+      assert.equal(obs.credits, 0, 'precondition: no credit was banked');
+      const volumes = obs.log.filter((e) => e.kind === 'volume').map((e) => e.sound);
+      assert.ok(volumes.includes(0), 'the attract cycle mutes the Stage (volume 0)');
+      assert.ok(!volumes.some((v) => v !== 0), `the volume is never raised in attract (saw ${volumes})`);
+      const music = obs.log.filter((e) => e.kind === 'play' && ['start', 'bgm', 'solvalou_explode'].includes(e.sound));
+      assert.deepEqual(music, [], 'no start theme, flight loop or death sound starts in attract');
+      assert.deepEqual(obs.log.filter((e) => String(e.sound).startsWith('?')), [], 'every played sound is on its own target');
+    },
+    // roadmap-evidence: CAB-05 failure  (the attract mute sets full volume, so the attract cycle is not silent)
+    negativeMutation: (p) => {
+      const stage = p.targets.find((t) => t.isStage);
+      let patched = 0;
+      for (const b of Object.values(stage.blocks)) {
+        const volume = b.opcode === 'sound_setvolumeto' && b.inputs.VOLUME && b.inputs.VOLUME[1];
+        if (Array.isArray(volume) && String(volume[1]) === '0') {
+          b.inputs.VOLUME = [1, [4, '100']];
+          patched += 1;
+        }
+      }
+      if (!patched) throw new Error("mutate: no 'set volume to 0' block on Stage");
+    },
+  },
+  {
+    // CAB-05: the death cue plays out. The arcade stops the flight loop at death (xevious_main.68k 2026) and plays
+    // SOLVALOU_EXPLOSION_SND (2030); the sample ends inside the explosion + forest wait before the next life's start
+    // theme (498). Scratch's only stop is stop-all, so the death-complete handler raises `keep sounds` and the one
+    // transition after death (here player-dead -> respawning) skips every stop-all; the respawning -> playing edge
+    // stops all as before. Observed: the first stop-all after the death cue starts lands two epochs later.
+    key: 'death-cue-survives-the-respawn-edge',
+    // roadmap-evidence: CAB-05 success  (no stop-all cuts the death sound on the death-to-respawn edge)
+    behavior:
+      'When the craft dies the death sound starts, no stop-all runs on the death-to-respawn edge (it would cut the sound), the next stop-all is the respawn-to-playing edge, and the start theme plays for the new life',
+    playtestStep: 5,
+    async drive(vm) {
+      const log = recordSounds(vm);
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 3);
+      const from = log.length;
+      // One settled pump can run a whole death and respawn back into 'playing', so the death is read from the
+      // sound log (the death cue started), not from the state; seeding stops after the first death so the
+      // re-seeded attacker cannot kill the new life too.
+      const deathCue = () => log.slice(from).some((e) => e.kind === 'play' && e.sound === 'solvalou_explode');
+      let died = false;
+      for (let i = 0; i < 160 && !died; i += 1) {
+        writeVar(vm, 'invuln', 0);
+        seedCraftHit(vm);
+        step(vm, 1);
+        died = deathCue() || stateOf(vm) !== 'playing';
+      }
+      writeVar(vm, 'invuln', 1);
+      const slotType = readVar(vm, 'slot-type');
+      slotType[63] = 0;
+      let back = false;
+      for (let i = 0; i < 300 && !back; i += 1) {
+        step(vm, 1);
+        if (stateOf(vm) === 'playing') back = true;
+      }
+      step(vm, 3);
+      return { died, back, log: log.slice(from) };
+    },
+    assert(obs) {
+      assert.ok(obs.died, 'precondition: the seeded hit kills the craft');
+      assert.ok(obs.back, 'precondition: the craft respawns into playing');
+      const deathAt = obs.log.findIndex((e) => e.kind === 'play' && e.sound === 'solvalou_explode');
+      assert.ok(deathAt >= 0, 'the death sound starts');
+      const deathEpoch = obs.log[deathAt].epoch;
+      const nextStop = obs.log.slice(deathAt + 1).find((e) => e.kind === 'stop');
+      assert.ok(nextStop, 'a stop-all runs again once the new life starts');
+      assert.ok(
+        nextStop.epoch >= deathEpoch + 2,
+        `no stop-all on the death-to-respawn edge (death cue at epoch ${deathEpoch}, next stop at ${nextStop.epoch} in ${nextStop.state})`,
+      );
+      assert.ok(
+        obs.log.slice(deathAt + 1).some((e) => e.kind === 'play' && e.sound === 'start'),
+        'the start theme plays for the new life',
+      );
+      assert.deepEqual(obs.log.filter((e) => String(e.sound).startsWith('?')), [], 'every played sound is on its own target');
+    },
+    // roadmap-evidence: CAB-05 failure  (the keep flag never rises, so the respawn edge's stop-all cuts the death sound)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'keep sounds', 0),
+  },
+  {
+    // CAB-05: the death cue also holds off every LATER stop-all until it has actually ended. In a browser the
+    // post-death pause and READY hold collapse when nothing redraws, so the respawning -> playing stop-all can
+    // land ~1 s into the 1.81 s cue; the Stage's death-cue thread keeps `death cue playing` up across its
+    // play-until-done. The harness has no audio engine (a play-until-done returns at once), so this scenario
+    // stands in for the real sample: the death cue's play-until-done is held pending until released, as a
+    // still-sounding cue would be. Observed: no stop-all from the cue's start through the new life, and once
+    // the cue ends the latch drops.
+    key: 'death-cue-holds-off-stop-all-until-it-ends',
+    behavior:
+      'While the death sound is still playing, no stop-all runs, even at the start of the next life; when it ends, stop-alls work again',
+    playtestStep: 5,
+    async drive(vm) {
+      const log = recordSounds(vm);
+      const prims = vm.runtime._primitives;
+      const recorded = prims.sound_playuntildone;
+      let release = null;
+      prims.sound_playuntildone = (args, util) => {
+        const result = recorded(args, util);
+        if (String(args.SOUND_MENU) !== 'solvalou_explode' || release) return result;
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      };
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 3);
+      const from = log.length;
+      const deathCue = () => log.slice(from).some((e) => e.kind === 'play' && e.sound === 'solvalou_explode');
+      let died = false;
+      for (let i = 0; i < 160 && !died; i += 1) {
+        writeVar(vm, 'invuln', 0);
+        seedCraftHit(vm);
+        step(vm, 1);
+        died = deathCue() || stateOf(vm) !== 'playing';
+      }
+      writeVar(vm, 'invuln', 1);
+      const slotType = readVar(vm, 'slot-type');
+      slotType[63] = 0;
+      let back = false;
+      for (let i = 0; i < 300 && !back; i += 1) {
+        step(vm, 1);
+        if (stateOf(vm) === 'playing') back = true;
+      }
+      step(vm, 3);
+      const held = log.slice(from);
+      const latchWhileHeld = readVar(vm, 'audio-death-cue-playing');
+      if (release) release();
+      // The VM resumes a promise-waiting thread from the promise's own callback, so let it run before stepping.
+      await new Promise((resolve) => setImmediate(resolve));
+      step(vm, 3);
+      return { died, back, held, latchWhileHeld, latchAfter: readVar(vm, 'audio-death-cue-playing') };
+    },
+    assert(obs) {
+      assert.ok(obs.died, 'precondition: the seeded hit kills the craft');
+      assert.ok(obs.back, 'precondition: the craft respawns into playing');
+      const deathAt = obs.held.findIndex((e) => e.kind === 'play' && e.sound === 'solvalou_explode');
+      assert.ok(deathAt >= 0, 'the death sound starts');
+      const stops = obs.held.slice(deathAt + 1).filter((e) => e.kind === 'stop');
+      assert.deepEqual(
+        stops.map((e) => `${e.state}@${e.epoch}`),
+        [],
+        'no stop-all runs while the death sound is still playing, through the start of the next life',
+      );
+      assert.equal(obs.latchWhileHeld, 1, 'the latch is up while the cue plays');
+      assert.equal(obs.latchAfter, 0, 'the latch drops once the cue has ended');
+    },
+    // Make the Stage's stop-all gate read `death cue playing = 1`, so the still-playing cue no longer holds it off.
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'death cue playing', 0, 1),
+  },
+  {
+    // CAB-05: the air explosion is the arcade's own (`flying_enemy_hit`, xevious_main.68k 4865-4896): codes 70, 71,
+    // then the 2x2 74/78/7C, a phase every 4 frames (TIMER>>2), with the flip bits taken from TIMER&3 every frame
+    // (4883-4887), the 2x2 art carrying the growth (its one scale is pinned structurally). Driven with the Stage's scripts halted so the
+    // walk cannot advance or free the seeded slot: each step only lets the Toroid render clone draw it.
+    key: 'air-explosion-frames-and-flips',
+    // roadmap-evidence: CAB-05 success  (a shot Toroid draws air-explosion phase TIMER>>2 with the TIMER&3 flip)
+    behavior:
+      'A shot Toroid draws the arcade air explosion: phase floor(timer / 4) of the five, mirrored by the timer\'s low bits (none at timer 0 mod 4, mirrored left-to-right at 2 mod 4)',
+    playtestStep: 3,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1); // director enter creates the render clones
+      vm.runtime.stopForTarget(vm.runtime.getTargetForStage()); // halt the walk: the seeded slot holds still
+      const slot = 58; // JS index; Scratch flying slot 59
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-type', 10); // TOROID_TYPE
+      put('slot-state', 2); // SLOT_HIT
+      put('slot-x', 20 * 256); // row 20, inside the window
+      put('slot-y', 15 * 256);
+      const frames = [];
+      for (const timer of [0, 2, 4, 6, 8, 10, 14, 18]) {
+        put('slot-timer', timer);
+        step(vm, 1);
+        frames.push({ timer, ...cloneRender(vm, 'toroid', 'toroid-clone-slot', slot + 1) });
+      }
+      return { frames };
+    },
+    assert(obs) {
+      for (const f of obs.frames) {
+        const want = `air-explosion/burst/${String(Math.floor(f.timer / 4) + 1).padStart(2, '0')}/${FLIP_SUFFIX[f.timer % 4]}`;
+        assert.equal(f.visible, true, `the exploding Toroid is drawn at timer ${f.timer}`);
+        assert.equal(f.costume, want, `timer ${f.timer} draws ${want}`);
+      }
+    },
+    // roadmap-evidence: CAB-05 failure  (with the flip bits collapsed the explosion never mirrors, so timer 2 mod 4 draws the unflipped frame)
+    negativeMutation: (p) => collapseFlipMod(p, 'toroid'),
+  },
+  {
+    // CAB-05: the ground explosion is the arcade's own (`handle_bomb_explosion`, xevious_main.68k 4904-4951): codes
+    // 60 61 64 68 6C 62 63 a step every 8 frames, then the crater A6/A7 flickering every 4 frames. Driven like the
+    // air scenario, with the walk halted, on a bombed Barra in the shared ground pool.
+    key: 'ground-explosion-frames-then-crater',
+    // roadmap-evidence: CAB-05 success  (a bombed Barra draws the 7 ground-explosion frames on its clock, then the 2-frame crater)
+    behavior:
+      'A bombed Barra draws the arcade ground explosion — frame floor(timer / 8) of the seven — and from timer 56 the crater, alternating its two frames every 4 frames',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      vm.runtime.stopForTarget(vm.runtime.getTargetForStage());
+      const slot = 1; // JS index; Scratch ground slot 2
+      const put = (id, v) => {
+        readVar(vm, id)[slot] = v;
+      };
+      put('slot-type', 30); // BARRA_TYPE
+      put('slot-state', 2); // SLOT_HIT
+      put('slot-x', 20 * 256);
+      put('slot-y', 3000);
+      const frames = [];
+      for (const timer of [0, 8, 24, 48, 54, 56, 60]) {
+        put('slot-timer', timer);
+        step(vm, 1);
+        frames.push({ timer, ...cloneRender(vm, 'ground', 'ground-clone-slot', slot + 1) });
+      }
+      return { frames };
+    },
+    assert(obs) {
+      for (const f of obs.frames) {
+        const want =
+          f.timer < 56
+            ? `ground-explosion/burst/${String(Math.floor(f.timer / 8) + 1).padStart(2, '0')}`
+            : `ground-crater/flicker/0${(Math.floor(f.timer / 4) % 2) + 1}`;
+        assert.equal(f.visible, true, `the bombed Barra is drawn at timer ${f.timer}`);
+        assert.equal(f.costume, want, `timer ${f.timer} draws ${want}`);
+      }
+    },
+    // roadmap-evidence: CAB-05 failure  (with the ground step stretched to 16 frames, timer 8 still draws the first frame)
+    negativeMutation: (p) => mutate.changeDivideLiteral(p, 'ground', 8, 16),
+  },
+  {
+    // CAB-05: the player explosion is the arcade's own (`explode_solvalou`, xevious_main.68k 2034-2075): codes C0 C1
+    // C4 C8 C2 C3 CC a step every 8 frames (4 ticks), flipped by `countup & 0x0C` (a new flip every 4 frames = 2
+    // ticks), then the 32-frame pause with the craft cleared (`finish_solvalou_exploding` 2079-2090), so nothing
+    // is drawn. Every sample is checked against the frame its own tick count selects.
+    key: 'player-explosion-frames-flips-then-hidden',
+    // roadmap-evidence: CAB-05 success  (the dying craft draws the 7 player-explosion steps with their flips, then vanishes for the pause)
+    behavior:
+      'When the craft dies the death sprite draws the arcade player explosion — step tick // 4 of the seven, its flip changing every 2 ticks through none, mirrored top-to-bottom, mirrored left-to-right and both — then is hidden for the pause before the respawn',
+    playtestStep: 5,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 3);
+      writeVar(vm, 'eco-craft', 9999);
+      // Headless, one settled step runs the whole death (no renderer, so no redraw ends the step early), so the
+      // death sprite's own costume and visibility changes are logged as they happen, each with the explosion
+      // tick it was drawn at and the director state.
+      const death = vm.runtime.getSpriteTargetByName('solv_death');
+      const log = [];
+      const tick = () => Number(readVar(vm, 'solv-death-explosion-tick'));
+      const setCostume = death.setCostume.bind(death);
+      death.setCostume = (i) => {
+        setCostume(i);
+        log.push({ kind: 'costume', name: death.getCostumes()[death.currentCostume].name, tick: tick(), state: stateOf(vm) });
+      };
+      const setVisible = death.setVisible.bind(death);
+      death.setVisible = (v) => {
+        setVisible(v);
+        log.push({ kind: 'visible', visible: Boolean(v), tick: tick(), state: stateOf(vm) });
+      };
+      let died = false;
+      for (let i = 0; i < 160 && !died; i += 1) {
+        writeVar(vm, 'invuln', 0);
+        seedCraftHit(vm);
+        step(vm, 1);
+        died = log.some((e) => e.kind === 'costume' && e.name.startsWith('player-explosion/'));
+      }
+      writeVar(vm, 'invuln', 1);
+      readVar(vm, 'slot-type')[63] = 0;
+      for (let i = 0; i < 300 && stateOf(vm) !== 'playing'; i += 1) step(vm, 1);
+      return { died, back: stateOf(vm) === 'playing', log };
+    },
+    assert(obs) {
+      assert.ok(obs.died, 'precondition: the seeded hit kills the craft');
+      assert.ok(obs.back, 'precondition: the craft respawns into playing');
+      const frames = obs.log.filter((e) => e.kind === 'costume' && e.name.startsWith('player-explosion/'));
+      assert.equal(frames.length, 28, `the explosion draws 28 ticks (7 steps x 4), got ${frames.length}`);
+      const flips = new Set();
+      frames.forEach((e, k) => {
+        const want = `player-explosion/burst/0${Math.floor(k / 4) + 1}/${FLIP_SUFFIX[Math.floor(k / 2) % 4]}`;
+        assert.equal(e.tick, k, `the explosion's tick ${k} is drawn in order`);
+        assert.equal(e.name, want, `explosion tick ${k} draws ${want}`);
+        flips.add(want.split('/').pop());
+      });
+      assert.ok(flips.has('x') && flips.has('y') && flips.has('xy'), `the explosion flips both ways (${[...flips]})`);
+      const last = obs.log.lastIndexOf(frames[frames.length - 1]);
+      const after = obs.log.slice(last + 1).filter((e) => e.state === 'player-dead');
+      assert.ok(after.length > 0 && after[0].kind === 'visible' && !after[0].visible, 'the craft is hidden as the explosion ends');
+      assert.ok(
+        after.every((e) => e.kind === 'visible' && !e.visible),
+        'nothing of the craft is drawn for the rest of the death pause',
+      );
+    },
+    // roadmap-evidence: CAB-05 failure  (with the flip bits collapsed the dying craft never mirrors)
+    negativeMutation: (p) => collapseFlipMod(p, 'solv_death'),
+  },
+  {
+    // CAB-05: the falling bomb is the arcade's own (bomb-active block, xevious_main.68k 2470-2499): code 1C → 1D →
+    // 1E a step every 8 frames then held on 1E, in colour 0x25 + ((TIMER >> 2) & 3). The port reads the frames
+    // since launch from |bomb dx| / 2. Driven with the Stage halted, so only the bomb renderer reads the seeded
+    // bomb.
+    key: 'bomb-frames-hold-and-colours',
+    // roadmap-evidence: CAB-05 success  (the bomb draws code floor(frames / 8) held at the third, colour floor(frames / 4) mod 4)
+    behavior:
+      'A falling bomb draws the arcade bomb: its shape steps every 8 frames and holds on the third, its colour cycles through four every 4 frames',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      vm.runtime.stopForTarget(vm.runtime.getTargetForStage());
+      readVar(vm, 'slot-state')[33] = 1; // JS index; Scratch BOMB_SLOT 34, ACTIVE
+      readVar(vm, 'slot-x')[33] = 20 * 256;
+      readVar(vm, 'slot-y')[33] = 15 * 256;
+      const bomb = vm.runtime.getSpriteTargetByName('bomb');
+      const frames = [];
+      for (const frame of [0, 3, 4, 8, 13, 16, 24, 31, 40]) {
+        writeVar(vm, 'weapon-bomb-dx', -2 * frame); // _dX drops by 2 a frame from 0
+        step(vm, 1);
+        frames.push({ frame, costume: bomb.sprite.costumes[bomb.currentCostume].name, visible: bomb.visible });
+      }
+      return { frames };
+    },
+    assert(obs) {
+      for (const f of obs.frames) {
+        const code = Math.min(Math.floor(f.frame / 8), 2) + 1;
+        const want = `bomb/fall/0${code}/c${(0x25 + (Math.floor(f.frame / 4) % 4)).toString(16)}`;
+        assert.equal(f.visible, true, `the bomb is drawn ${f.frame} frames after launch`);
+        assert.equal(f.costume, want, `${f.frame} frames after launch draws ${want}`);
+      }
+    },
+    // roadmap-evidence: CAB-05 failure  (with the code step stretched to 16 frames, 8 frames after launch still draws the first shape)
+    negativeMutation: (p) => mutate.changeDivideLiteral(p, 'bomb', 8, 16),
+  },
+  {
+    // CAB-05: the crosshair's colours (handle_crosshairs, xevious_main.68k 2239-2281): 32 idle, 33 with a bomb in
+    // flight, +9 while countup & 4 and an ACTIVE ground object 2..15 sits in the bomb's box around it
+    // (check_targeted_ground_object 2282-2295). The walk is halted and `track crosshair` called alone each
+    // case, so the seeded crosshair position is the one it reads (the arcade reads the previous frame's
+    // shadow); the renderer then draws the result.
+    key: 'crosshair-colours-and-target-flash',
+    // roadmap-evidence: CAB-05 success  (the crosshair flashes only on its sampled ticks, only over an active ground object 2..15 in the bomb box)
+    behavior:
+      'The crosshair draws the arcade colours: one idle, another while a bomb falls, and a flash on alternate 2-tick spells when a live ground target is under it (nothing flashes for an off-box, destroyed, or object-1 target)',
+    playtestStep: 6,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      vm.runtime.stopForTarget(vm.runtime.getTargetForStage());
+      const cross = { x: 20 * 256, y: 100 * 32 }; // depth 20 rows; lateral shadow 100
+      const target = vm.runtime.getSpriteTargetByName('target_a');
+      const run = ({ tick, obj = 4, state = 1, dDepth = 0, dLat = 0, bombing = 0 }) => {
+        for (let s = 1; s <= 15; s += 1) readVar(vm, 'slot-state')[s] = 0; // JS 1..15 = ground objects 1..15
+        readVar(vm, 'slot-x')[34] = cross.x; // JS 34 = Scratch CROSSHAIR_SLOT 35
+        readVar(vm, 'slot-y')[34] = cross.y;
+        readVar(vm, 'slot-state')[obj] = state;
+        readVar(vm, 'slot-x')[obj] = cross.x + dDepth * 64; // one depth shadow unit = 64 slot units
+        readVar(vm, 'slot-y')[obj] = cross.y + dLat * 32; // one lateral shadow unit = 32 slot units
+        writeVar(vm, 'tick', tick);
+        writeVar(vm, 'weapon-bomb-in-flight', bombing);
+        callProc(vm, 'Stage', 'track crosshair');
+        step(vm, 1);
+        const lit = readVar(vm, 'weapon-crosshair-lit');
+        step(vm, 1); // the renderer draws the settled state
+        return { lit, costume: target.sprite.costumes[target.currentCostume].name, visible: target.visible };
+      };
+      return {
+        onTarget: run({ tick: 2 }),
+        onTargetBombing: run({ tick: 3, bombing: 1 }),
+        offTick: run({ tick: 4 }),
+        offTickBombing: run({ tick: 5, bombing: 1 }),
+        latEdgeIn: run({ tick: 2, dLat: 9 }),
+        latEdgeOut: run({ tick: 2, dLat: 10 }),
+        depthEdgeIn: run({ tick: 2, dDepth: -5 }),
+        depthEdgeOut: run({ tick: 2, dDepth: -6 }),
+        destroyed: run({ tick: 2, state: 2 }),
+        objectOne: run({ tick: 2, obj: 1 }),
+        objectFifteen: run({ tick: 2, obj: 15 }),
+      };
+    },
+    assert(obs) {
+      const want = {
+        onTarget: [1, 'idle-lit'],
+        onTargetBombing: [1, 'bombing-lit'],
+        offTick: [0, 'idle'],
+        offTickBombing: [0, 'bombing'],
+        latEdgeIn: [1, 'idle-lit'],
+        latEdgeOut: [0, 'idle'],
+        depthEdgeIn: [1, 'idle-lit'],
+        depthEdgeOut: [0, 'idle'],
+        destroyed: [0, 'idle'],
+        objectOne: [0, 'idle'],
+        objectFifteen: [1, 'idle-lit'],
+      };
+      for (const [name, [lit, colour]] of Object.entries(want)) {
+        assert.equal(obs[name].lit, lit, `${name}: crosshair lit = ${lit}`);
+        assert.equal(obs[name].visible, true, `${name}: the crosshair is drawn`);
+        assert.equal(obs[name].costume, `crosshair/aim/${colour}`, `${name}: draws the ${colour} crosshair`);
+      }
+    },
+    // roadmap-evidence: CAB-05 failure  (with the flash pinned off, a live ground target under the crosshair never lights it)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'crosshair lit', 0),
+  },
+  {
+    // CAB-05: every enemy bullet pulses through four colours, 0x25 + ((countup >> 1) & 3) (xevious_sub.68k
+    // 208-232), one a tick, on the arcade's bomb-sprite code 1E. Driven with the Stage halted.
+    key: 'enemy-bullet-pulse-by-tick',
+    // roadmap-evidence: CAB-05 success  (a bullet draws colour tick mod 4 of the four pinned bullet colours)
+    behavior: 'An enemy bullet draws the arcade bullet, its colour stepping through four, one a tick',
+    playtestStep: 3,
+    async drive(vm) {
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      step(vm, 1);
+      vm.runtime.stopForTarget(vm.runtime.getTargetForStage());
+      const slot = 39; // JS index; Scratch bullet slot 40
+      readVar(vm, 'slot-type')[slot] = 2; // BULLET_TYPE
+      readVar(vm, 'slot-x')[slot] = 20 * 256;
+      readVar(vm, 'slot-y')[slot] = 15 * 256;
+      const frames = [];
+      for (const tick of [0, 1, 2, 3, 4, 7]) {
+        writeVar(vm, 'tick', tick);
+        step(vm, 1);
+        frames.push({ tick, ...cloneRender(vm, 'enemy_bullet', 'enemy-bullet-clone-slot', slot + 1) });
+      }
+      return { frames };
+    },
+    assert(obs) {
+      for (const f of obs.frames) {
+        const want = `bomb/fall/03/c${(0x25 + (f.tick % 4)).toString(16)}`;
+        assert.equal(f.visible, true, `the bullet is drawn at tick ${f.tick}`);
+        assert.equal(f.costume, want, `tick ${f.tick} draws ${want}`);
+      }
+    },
+    // roadmap-evidence: CAB-05 failure  (with the pulse collapsed to one colour, tick 1 still draws the first colour)
+    negativeMutation: (p) => collapseFlipMod(p, 'enemy_bullet'),
+  },
+  {
+    // CAB-05: the initials-entry tune. score_lower_than_entry (xevious_main.68k 1707-1711) plays HIGHEST_SCORE_SND
+    // for a new first place and HIGH_SCORE_SND otherwise. Driven in isolation: no green flag, the entry state and
+    // its rank injected, then the director-enter broadcast fired at the Stage's receiver.
+    key: 'entry-tune-follows-rank',
+    // roadmap-evidence: CAB-05 success  (a first-place entry plays the top-score tune, a lower rank the high-score tune)
+    behavior:
+      'Entering initials for a new first place plays the top-score tune (name_entry_top); entering them for a lower rank plays the high-score tune (name_entry)',
+    playtestStep: 10,
+    async drive(vm) {
+      // One build under test (possibly mutated) for both ranks: leave the entry state between them so the first
+      // tune's loop ends, then re-enter with the other rank.
+      const log = recordSounds(vm);
+      const tuneFor = (row) => {
+        const from = log.length;
+        writeVar(vm, 'game-director-state', 'high-score-entry');
+        writeVar(vm, 'cabinet-entry-row', row);
+        fireBroadcast(vm, 'director enter');
+        step(vm, 2);
+        const played = log.slice(from).filter((e) => e.kind === 'play' && e.target === 'Stage').map((e) => e.sound);
+        writeVar(vm, 'game-director-state', 'frozen');
+        step(vm, 2);
+        return played;
+      };
+      const top = tuneFor(1);
+      const lower = tuneFor(3);
+      return { top, lower };
+    },
+    assert(obs) {
+      assert.ok(obs.top.includes('name_entry_top'), `a first-place entry plays the top-score tune (saw ${obs.top})`);
+      assert.ok(!obs.top.includes('name_entry'), 'a first-place entry does not play the lower tune');
+      assert.ok(obs.lower.includes('name_entry'), `a lower-rank entry plays the high-score tune (saw ${obs.lower})`);
+      assert.ok(!obs.lower.includes('name_entry_top'), 'a lower-rank entry does not play the top-score tune');
+    },
+    // roadmap-evidence: CAB-05 failure  (the rank test never matches first place, so a new top score plays the lower tune)
+    negativeMutation: (p) => mutate.changeVarEqualsOperand(p, 'Stage', 'entry row', 1, 99),
+  },
+  {
+    // CAB-05: the Andor Genesis drone. The arcade requests ANDOR_GENESIS_SND every frame while the boss descends,
+    // holds or leaves (xevious_main.68k 5392/5404/5436) and never while destroyed (5409). The port replays the
+    // sample once per 53 ticks (its length) from the master's alive branch. Driven deterministically: freeze the
+    // director and tick `update andor master` by hand.
+    key: 'andor-drone-repeats-on-its-period',
+    // roadmap-evidence: CAB-05 success  (the Andor drone restarts once per 53 ticks while alive, never once destroyed)
+    behavior:
+      'While the Andor Genesis is alive its drone starts at once and then restarts only every 53 ticks; once the boss is destroyed the drone is never re-armed',
+    playtestStep: 8,
+    async drive(vm) {
+      const log = recordSounds(vm);
+      assert.ok(reachPlaying(vm), 'precondition: game reaches playing');
+      writeVar(vm, 'game-director-state', 'frozen');
+      clearGroundBand(vm);
+      writeVar(vm, 'andor-genesis-end-flag', 0);
+      writeVar(vm, 'andor-destroyed-timer', 0);
+      writeVar(vm, 'andor-master-x', ANDOR.START_X);
+      writeVar(vm, 'andor-master-y', ANDOR.LATERAL_Y);
+      writeVar(vm, 'audio-andor-drone-timer', 0);
+      const drones = () => log.filter((e) => e.kind === 'play' && e.sound === 'andor_genesis').length;
+      const tick = () => {
+        callProc(vm, 'Stage', 'update andor master');
+        step(vm, 1);
+      };
+      // Run the whole period and one tick past it: the drone must start on alive tick 0 and restart exactly on
+      // tick 53, never between (the period is consumed for real, not re-armed by the scenario).
+      const playTicks = [];
+      const timers = [];
+      for (let t = 0; t <= 53; t += 1) {
+        const before = drones();
+        tick();
+        for (let n = drones() - before; n > 0; n -= 1) playTicks.push(t);
+        timers.push(readVar(vm, 'audio-andor-drone-timer'));
+      }
+      const first = { plays: playTicks.filter((t) => t === 0).length, timer: timers[0] };
+      const second = { plays: playTicks.filter((t) => t === 1).length, timer: timers[1] };
+      writeVar(vm, 'andor-destroyed-timer', 1);
+      writeVar(vm, 'audio-andor-drone-timer', 0);
+      const d2 = drones();
+      tick();
+      const destroyed = { plays: drones() - d2, timer: readVar(vm, 'audio-andor-drone-timer') };
+      return { first, second, playTicks, destroyed };
+    },
+    assert(obs) {
+      assert.deepEqual(obs.playTicks, [0, 53], `the drone plays on alive tick 0 and again on tick 53, never between (saw ${obs.playTicks})`);
+      assert.equal(obs.first.plays, 1, 'the first alive tick starts the drone');
+      assert.equal(obs.first.timer, 52, 'the drone re-arms for 53 ticks (52 left after its own tick)');
+      assert.equal(obs.second.plays, 0, 'the next tick does not restart the drone');
+      assert.equal(obs.second.timer, 51, 'the drone period counts down one per tick');
+      assert.equal(obs.destroyed.plays, 0, 'a destroyed boss never restarts the drone');
+      assert.equal(obs.destroyed.timer, 0, 'a destroyed boss does not run the drone counter');
+    },
+    // roadmap-evidence: CAB-05 failure  (the period never re-arms, so the drone restarts every tick)
+    negativeMutation: (p) => mutate.pinVariableSet(p, 'Stage', 'andor drone timer', 0),
+  },
 ];
 
 // VM-cannot-observe behaviors that stay the operator playtest's job, named so "complete"
@@ -9554,6 +10237,8 @@ export const SCENARIOS = [
 export const EXCLUSIONS = [
   'The bomb flight/explosion duration and true concurrent lockout (timing collapses headless)',
   'Collision-driven death from an enemy or bullet (rendered collision)',
-  "Sprite visibility, layering, a costume's rendered pixels, audio, and overall feel (the digit " +
+  "Sprite visibility, layering, a costume's rendered pixels, and overall feel (the digit " +
     'scenario observes WHICH costume a clone switches to — deterministic state — never how it looks)',
+  'Audible sound: how a cue sounds, how long it rings and whether it finishes inside its state window (the ' +
+    'CAB-05 scenarios observe WHICH cue starts, on which target and against which stop-all — never the audio)',
 ];

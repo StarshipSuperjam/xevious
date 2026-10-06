@@ -1147,6 +1147,31 @@
       "name": "attract row",
       "scope": "start_screen"
     },
+    "audio-andor-drone-timer": {
+      "kind": "variable",
+      "name": "andor drone timer",
+      "scope": "Stage"
+    },
+    "audio-coin-sound": {
+      "kind": "variable",
+      "name": "coin sound",
+      "scope": "Stage"
+    },
+    "audio-death-cue-playing": {
+      "kind": "variable",
+      "name": "death cue playing",
+      "scope": "Stage"
+    },
+    "audio-keep-sounds": {
+      "kind": "variable",
+      "name": "keep sounds",
+      "scope": "Stage"
+    },
+    "audio-muted": {
+      "kind": "variable",
+      "name": "audio muted",
+      "scope": "Stage"
+    },
     "bacura-clone-slot": {
       "kind": "variable",
       "name": "bacura clone slot",
@@ -1902,6 +1927,11 @@
       "name": "entry epoch",
       "scope": "solv_death"
     },
+    "solv-death-explosion-tick": {
+      "kind": "variable",
+      "name": "explosion tick",
+      "scope": "solv_death"
+    },
     "solvalou-director-entry-epoch": {
       "kind": "variable",
       "name": "entry epoch",
@@ -2035,6 +2065,11 @@
     "weapon-bomb-in-flight": {
       "kind": "variable",
       "name": "bomb in flight",
+      "scope": "Stage"
+    },
+    "weapon-crosshair-lit": {
+      "kind": "variable",
+      "name": "crosshair lit",
       "scope": "Stage"
     },
     "zakato-clone-slot": {

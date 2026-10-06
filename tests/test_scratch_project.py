@@ -144,6 +144,12 @@ SPRITE_SHEET_HASHES = {
     "Sol Tower": (
         "afcc26cb6482bf09caaf55e9402b9b8f4e7252c8adae3de9baf1fef86629e20c"
     ),
+    # Slice 20 PR-4 (CAB-05): the effects sheet — the three explosions, crater, crosshair, bomb target and bomb
+    # (bank-1 tiles the Spriters Resource rips do not break out at their colour steps), decoded from the pin
+    # by tools/effects_sprite_render.py.
+    "Effects": (
+        "efe99115fdf402cb4622e461b0e02eae2fa1ac3e7512678e7ce0068b1dddf59c"
+    ),
 }
 
 
@@ -351,7 +357,17 @@ class ScratchProjectTests(unittest.TestCase):
         # tools/terrain_render.py (bands 0-3, the restart band, the forest filler). 258 - 12 + 6 = 252.
         # + the slice-20 Sol Tower rise sheet (tools/sol_tower_render.py) on the hidden sprite_sheets library;
         # its seven rise crops replace the seven old Spriters crops one for one. 252 + 1 = 253.
-        self.assertEqual(253, len(assets))
+        # + the 9 slice-20 CAB-05 arcade sounds on the Stage (credit, name_entry, name_entry_top,
+        # andor_genesis, start, bgm, solvalou_explode, zapper_fire, blaster_fire). 253 + 9 = 262.
+        # + the slice-20 CAB-05 effects sheet (tools/effects_sprite_render.py) on the sprite_sheets library and
+        # its 74 derivatives on the proof pen (the three explosions with flip states, crater, crosshair colours,
+        # bomb target, bomb codes x colours). 262 + 1 + 74 = 337.
+        # - the 2 slice-20 CAB-05 retired rip crater crops: the ground families now draw the pinned crater render
+        # (solv_death's historical explode_01..08 stay as preserved baseline content). 337 - 2 = 335.
+        # = the slice-20 CAB-05 text re-render at the drawn size (resolution 2, one 20-px column per character):
+        # every HUD, attract, banner and credit PNG is replaced one for one; the HUD digits (20-px canvas) stay
+        # distinct from the attract digits (18-px composite) and glyph/O still dedups to digit/0. Still 335.
+        self.assertEqual(335, len(assets))
 
     def test_ground_pool_costume_list_is_merge_safe(self) -> None:
         # Slice-15 PR-1: the 10 full-band ground families were collapsed into ONE shared "ground" render
@@ -361,19 +377,24 @@ class ScratchProjectTests(unittest.TestCase):
         # grows the hit boss parts by the shared explosion burst so they animate on death (andor-port +8,
         # andor-core +8) and adds the destroyed core's 4-frame Bragza, so the Andor block is now andor-armor
         # 129 (9), andor-port 138 (4 idle + 8 burst = 12), andor-core 150 (4 idle + 8 burst = 12), andor-bragza
-        # 162 (4) -> 166 total. scratch-vm's SB3 loader
+        # 162 (4) -> 166 total. Slice-20 CAB-05 swaps the 8-frame solv_death stand-in burst for the 7-frame
+        # ground explosion rendered from the pin (`handle_bomb_explosion` 4904-4951) and the rip crater pair for
+        # the pinned crater, so every burst-carrying slice is one shorter: barra 0 (10), sol-tower 10 (16),
+        # garu 26 (10), logram 36 (13), zolbak 49 (10), derota 59 (10), garu derota 69 (10), boza 79 (14),
+        # grobda 93 (13), domogram 106 (13) -> 119, then andor-armor 119 (9), andor-port 128 (4 + 7 = 11),
+        # andor-core 139 (4 + 7 = 11), andor-bragza 150 (4) -> 154 total. scratch-vm's SB3 loader
         # enforces uniqueItems on a target's costumes array: two byte-identical costume OBJECTS are legal
-        # across separate targets but NOT within one, and the families share many crops by ref (the solv_death
-        # burst, the crater flicker pair, the by-ref reused barra/derota idles and logram open frames). This
+        # across separate targets but NOT within one, and the families share many crops by ref (the ground
+        # explosion, the crater flicker pair, the by-ref reused barra/derota idles and logram open frames). This
         # pins the merge-safety contract at the pytest level too (the loader failure only surfaced in the full
-        # harness before): the combined list is 166 costumes, no two costume OBJECTS are identical, and every
+        # harness before): the combined list is 154 costumes, no two costume OBJECTS are identical, and every
         # NAME is unique — later duplicates are disambiguated with a " #<family>" suffix while each name's first
         # occurrence stays canonical, so the renderer's by-name switch_costume still resolves to the right crop.
         project, _project_bytes, _assets = scratch.validate_source()
         ground = next(t for t in project["targets"] if t.get("name") == "ground")
         costumes = ground["costumes"]
         self.assertEqual(
-            166, len(costumes), "the combined ground costume list is the 10 families + the Andor composite"
+            154, len(costumes), "the combined ground costume list is the 10 families + the Andor composite"
         )
         objects = [json.dumps(c, sort_keys=True) for c in costumes]
         self.assertEqual(
@@ -433,6 +454,30 @@ class ScratchProjectTests(unittest.TestCase):
         source_solvalou["costumes"] = source_solvalou["costumes"][
             :len(original_solvalou["costumes"])
         ]
+        # CAB-05: solv_death keeps its historical explode_01..08 in place (preserved, no longer selected) and
+        # appends the pinned player explosion after them, so only the original prefix is historical content.
+        original_death = next(t for t in original["targets"] if t["name"] == "solv_death")
+        source_death = next(t for t in historical_targets if t["name"] == "solv_death")
+        self.assertEqual(
+            [c["name"] for c in source_death["costumes"][len(original_death["costumes"]):]][:1],
+            ["player-explosion/burst/01/none"],
+        )
+        source_death["costumes"] = source_death["costumes"][:len(original_death["costumes"])]
+        # CAB-05: the crosshair, bomb target and bomb likewise append their pinned art after the preserved
+        # baseline costumes.
+        for marker_name, first_appended in (
+            ("target_a", "crosshair/aim/idle"),
+            ("target_b", "bomb-target/mark/01"),
+            ("bomb", "bomb/fall/01/c25"),
+        ):
+            original_marker = next(t for t in original["targets"] if t["name"] == marker_name)
+            source_marker = next(t for t in historical_targets if t["name"] == marker_name)
+            self.assertEqual(
+                [c["name"] for c in source_marker["costumes"][len(original_marker["costumes"]):]][:1],
+                [first_appended],
+                marker_name,
+            )
+            source_marker["costumes"] = source_marker["costumes"][:len(original_marker["costumes"])]
         changed_scripts = {
             "Stage",
             "solvalou",
@@ -465,12 +510,15 @@ class ScratchProjectTests(unittest.TestCase):
                 # hud_glyphs.py appends its added Stage sounds on top of the historical
                 # two (docs/mechanics/010): first the "extend" cue, then the seven arcade
                 # gameplay-SFX cues in name order (AUDIO; docs/mechanics/040 — bonus_flag added
-                # for SEC-02, slice 14). Verify the exact list, then drop sounds from the general
-                # preserved-content comparison.
+                # for SEC-02, slice 14; CAB-05 slice 20 adds the coin, high/top-score, Andor and
+                # five base-sound replacement cues). Verify the exact list, then drop sounds from the
+                # general preserved-content comparison.
                 self.assertEqual(
                     [sound["name"] for sound in expected["sounds"]]
-                    + ["extend", "air_destroy", "bacura", "bonus_flag", "garu_zakato",
-                       "ground_destroy", "sheonite", "zakato"],
+                    + ["extend", "air_destroy", "andor_genesis", "bacura", "bgm", "blaster_fire",
+                       "bonus_flag", "credit", "garu_zakato", "ground_destroy", "name_entry",
+                       "name_entry_top", "sheonite", "solvalou_explode", "start", "zakato",
+                       "zapper_fire"],
                     [sound["name"] for sound in actual["sounds"]],
                 )
                 expected.pop("sounds")
@@ -1248,6 +1296,15 @@ class ScratchProjectTests(unittest.TestCase):
             "attract",
             "attract epoch",
             "attract stage",
+            # CAB-05 (slice 20): audio machinery. `coin sound` is the poll-to-loop coin-sound latch, `audio muted`
+            # the last volume the attract mute applied (-1 unknown), `keep sounds` the death-complete handler's
+            # one-transition stop-all skip, `death cue playing` the death cue's own stop-all skip while it sounds,
+            # `andor drone timer` the boss drone's replay countdown. All transient.
+            "coin sound",
+            "audio muted",
+            "keep sounds",
+            "death cue playing",
+            "andor drone timer",
             # CAB-01 (slice 17): the auto-pilot's virtual input register. `input up/down/left/right/fire` are
             # the 0/1 flags `install_attract_pilot` drives while the cabinet demos (attract==1), read through
             # `input_active` in place of the keyboard by the solvalou/blaster seams; `pilot dir` is the held
@@ -1263,6 +1320,9 @@ class ScratchProjectTests(unittest.TestCase):
             # working register the walk's `advance bomb` writes each sub-step (the bomb renderer reads
             # it for its falling-frame animation). Machinery, not durable Stage state.
             "bomb dx",
+            # CAB-05 (slice 20): the crosshair's on-target flash — recomputed every tick by `track crosshair`
+            # and read only by the crosshair renderer for its colour. Machinery, not durable Stage state.
+            "crosshair lit",
             # AIR-11 (slice 11): the live Bacura spawn pump's registers — the active slab count, the
             # remaining one-per-second increments, the frame countdown to the next increment, and the
             # init loop's band cursor. Stage-written by the pump proc, never sprite-written; transient
@@ -7328,6 +7388,434 @@ class ScratchProjectTests(unittest.TestCase):
             project = load_source(scratch.SOURCE_DIR)
             mutate(project)
             self.assertIn(label, self._audio_failures(project), label)
+
+    # CAB-05 (presentation.audio-animation, slice 20 PR-4): the nine arcade cues taken in for this slice.
+    CAB05_STAGE_CUES = (
+        "credit", "name_entry", "name_entry_top", "andor_genesis", "start", "bgm",
+        "solvalou_explode", "zapper_fire", "blaster_fire",
+    )
+    # The base-project sounds these cues replace. They stay in the project as preserved baseline content, but
+    # nothing may play them any more.
+    CAB05_REPLACED_SOUNDS = (
+        "Game Start.mp3", "BGM.mp3", "01_Game Start.mp3", "05_BGM.mp3",
+        "blaster", "solvalou_death", "bomb_drop", "bomb_explode",
+    )
+
+    @staticmethod
+    def _cab05_audio_failures(project: dict) -> set:
+        """CAB-05 audio contract (docs/mechanics/055-presentation-fidelity.md) — violated labels.
+
+        Every new cue plays from the Stage (the owner of every game sound); every sound a block names exists
+        on that block's own target (a missing one silently does nothing); no block plays a replaced base sound;
+        every stop-all is gated on `keep sounds` = 0 AND `death cue playing` = 0 and the transition consumes the
+        keep only after its stop-all; the death-complete handler sets it; the Stage's death-cue receiver holds
+        the playing latch up exactly across its play-until-done; the shot and death cues relay to the Stage; the death
+        cue, start theme and flight loop are off in attract; the coin sound is latched by the poll and played by
+        the coin loop; the Stage mutes in the uncredited attract cycle; the Andor drone replays on its own
+        timer; and the entry tune picks the top tune by the placed rank."""
+        failures = set()
+
+        def inp_ref(block, key):
+            v = block.get("inputs", {}).get(key)
+            return v[1] if isinstance(v, list) and len(v) >= 2 else None
+
+        def reads(blocks, node, pred_prim) -> bool:
+            # Walk a reporter subtree; `pred_prim` sees each compact primitive ([12, name, id], [4, "0"], ...).
+            stack, seen = [node], set()
+            while stack:
+                x = stack.pop()
+                if isinstance(x, list):
+                    if pred_prim(x):
+                        return True
+                    stack.extend(x)
+                elif isinstance(x, str) and x in blocks and x not in seen:
+                    seen.add(x)
+                    b = blocks[x]
+                    if not isinstance(b, dict):
+                        if pred_prim(b):
+                            return True
+                        continue
+                    if b.get("opcode") == "data_variable" and pred_prim([12, *b["fields"]["VARIABLE"]]):
+                        return True
+                    stack.extend(b.get("inputs", {}).values())
+            return False
+
+        def var_is(var_id):
+            return lambda p: len(p) >= 3 and p[0] == 12 and p[2] == var_id
+
+        def lit_is(value):
+            return lambda p: len(p) >= 2 and p[0] in (4, 5, 6, 7, 8, 10) and str(p[1]) == str(value)
+
+        def enclosures(blocks):
+            # child -> enclosing control, by a DOWNWARD walk of every SUBSTACK/SUBSTACK2 `next` chain.
+            owner = {}
+            for cid, b in blocks.items():
+                if not isinstance(b, dict):
+                    continue
+                for key in ("SUBSTACK", "SUBSTACK2"):
+                    cur = inp_ref(b, key)
+                    while isinstance(cur, str) and cur in blocks and cur not in owner:
+                        owner[cur] = cid
+                        cur = blocks[cur].get("next")
+            return owner
+
+        def enclosing_conds(blocks, owner, bid):
+            # The CONDITION subtrees of every if / if-else / repeat-until enclosing `bid`.
+            conds, cur = [], bid
+            while cur in owner:
+                ctl = owner[cur]
+                cond = inp_ref(blocks[ctl], "CONDITION")
+                if cond:
+                    conds.append(cond)
+                cur = ctl
+            return conds
+
+        def stack_head(blocks, bid):
+            cur = bid
+            while isinstance(blocks.get(cur), dict) and blocks[cur].get("parent"):
+                cur = blocks[cur]["parent"]
+            return cur
+
+        def plays(blocks, sound):
+            out = []
+            for bid, b in blocks.items():
+                if isinstance(b, dict) and b.get("opcode") in ("sound_play", "sound_playuntildone"):
+                    menu = blocks.get(inp_ref(b, "SOUND_MENU"))
+                    if isinstance(menu, dict) and menu.get("fields", {}).get("SOUND_MENU", [None])[0] == sound:
+                        out.append(bid)
+            return out
+
+        def sets(blocks, var_id, value):
+            return [
+                bid for bid, b in blocks.items()
+                if isinstance(b, dict) and b.get("opcode") == "data_setvariableto"
+                and b["fields"]["VARIABLE"][1] == var_id
+                and reads(blocks, b["inputs"].get("VALUE"), lit_is(value))
+            ]
+
+        def broadcasts(blocks, message):
+            return [
+                bid for bid, b in blocks.items()
+                if isinstance(b, dict) and b.get("opcode") in ("event_broadcast", "event_broadcastandwait")
+                and isinstance(b.get("inputs", {}).get("BROADCAST_INPUT"), list)
+                and b["inputs"]["BROADCAST_INPUT"][1][1] == message
+            ]
+
+        def receiver_plays(blocks, message, sound):
+            for b in blocks.values():
+                if (
+                    isinstance(b, dict) and b.get("opcode") == "event_whenbroadcastreceived"
+                    and b.get("fields", {}).get("BROADCAST_OPTION", [None])[0] == message
+                ):
+                    nxt = blocks.get(b.get("next"))
+                    while isinstance(nxt, dict):
+                        if nxt.get("opcode") in ("sound_play", "sound_playuntildone"):
+                            menu = blocks.get(inp_ref(nxt, "SOUND_MENU"))
+                            if isinstance(menu, dict) and menu["fields"]["SOUND_MENU"][0] == sound:
+                                return True
+                        nxt = blocks.get(nxt.get("next"))
+            return False
+
+        def gated_on(blocks, owner, bid, var_id, value=None):
+            return any(
+                reads(blocks, c, var_is(var_id)) and (value is None or reads(blocks, c, lit_is(value)))
+                for c in enclosing_conds(blocks, owner, bid)
+            )
+
+        targets = {t.get("name"): t for t in project["targets"]}
+        stage = next(t for t in project["targets"] if t.get("isStage"))
+        sb = stage["blocks"]
+        stage_owner = enclosures(sb)
+
+        for name in ScratchProjectTests.CAB05_STAGE_CUES:
+            if not plays(sb, name):
+                failures.add(f"cab05-stage-cue-missing:{name}")
+
+        for t in project["targets"]:
+            own = {s["name"] for s in t.get("sounds", [])}
+            for b in t["blocks"].values():
+                if isinstance(b, dict) and b.get("opcode") == "sound_sounds_menu":
+                    name = b["fields"]["SOUND_MENU"][0]
+                    if name not in own:
+                        failures.add(f"sound-not-on-own-target:{t['name']}:{name}")
+                    if name in ScratchProjectTests.CAB05_REPLACED_SOUNDS:
+                        failures.add(f"replaced-sound-played:{name}")
+
+        # Every stop-all, on every target, sits directly in an `if keep sounds = 0`.
+        for t in project["targets"]:
+            blocks = t["blocks"]
+            owner = enclosures(blocks)
+            # Every sprite that runs common_stop (a `director stop` receiver) keeps its stop-all — gated, not
+            # removed — so the global stop still lands on every non-death transition.
+            stops_here = [
+                bid for bid, b in blocks.items()
+                if isinstance(b, dict) and b.get("opcode") == "sound_stopallsounds"
+            ]
+            if not t.get("isStage") and not stops_here and any(
+                isinstance(b, dict) and b.get("opcode") == "event_whenbroadcastreceived"
+                and b.get("fields", {}).get("BROADCAST_OPTION", [None])[0] == "director stop"
+                for b in blocks.values()
+            ):
+                failures.add(f"stopall-count:{t['name']}")
+            for bid in stops_here:
+                ctl = owner.get(bid)
+                cond = inp_ref(blocks[ctl], "CONDITION") if ctl else None
+                cond_b = blocks.get(cond) if isinstance(cond, str) else None
+                gate = bool(ctl) and blocks[ctl]["opcode"] == "control_if" and isinstance(cond_b, dict) and cond_b["opcode"] == "operator_and"
+                arms = [inp_ref(cond_b, "OPERAND1"), inp_ref(cond_b, "OPERAND2")] if gate else []
+
+                def eq_zero(ref, var_id, blocks=blocks):
+                    b = blocks.get(ref) if isinstance(ref, str) else None
+                    return (
+                        isinstance(b, dict) and b.get("opcode") == "operator_equals"
+                        and reads(blocks, ref, var_is(var_id)) and reads(blocks, ref, lit_is(0))
+                    )
+
+                if not any(eq_zero(a, director.KEEP_SOUNDS_ID) for a in arms):
+                    failures.add(f"stopall-not-keep-gated:{t['name']}")
+                if not any(eq_zero(a, director.DEATH_CUE_PLAYING_ID) for a in arms):
+                    failures.add(f"stopall-not-cue-gated:{t['name']}")
+        # The transition consumes the keep straight after its own gated stop-all (after `director stop` returned).
+        clear_after_stop = any(
+            isinstance(sb.get(sb[c].get("next")), dict) and sb[c]["opcode"] == "control_if"
+            and any(sb.get(x, {}).get("opcode") == "sound_stopallsounds"
+                    for x, o in stage_owner.items() if o == c)
+            and sb[c]["next"] in sets(sb, director.KEEP_SOUNDS_ID, 0)
+            for c in set(stage_owner.values())
+        )
+        if not clear_after_stop:
+            failures.add("keep-not-consumed-after-stop")
+        if not any(
+            gated_on(sb, stage_owner, s, director.STATE_ID, "player-dead")
+            for s in sets(sb, director.KEEP_SOUNDS_ID, 1)
+        ):
+            failures.add("keep-not-set-at-death")
+
+        # Relays: the clone/sprite broadcasts, the Stage receiver plays.
+        for message, sound, sender in (("sfx shot", "zapper_fire", "blaster"), ("sfx death", "solvalou_explode", "solv_death")):
+            if not receiver_plays(sb, message, sound):
+                failures.add(f"relay-no-stage-receiver:{message}")
+            sender_t = targets.get(sender)
+            if sender_t is None or not broadcasts(sender_t["blocks"], message):
+                failures.add(f"relay-no-broadcast:{message}")
+        # The death cue holds `death cue playing` up exactly across its play-until-done: set 1, play the cue to its
+        # end, set 0 — so every stop-all waits for the cue whatever the browser's pacing of the holds after death.
+        def death_latch_ok():
+            for b in sb.values():
+                if not (
+                    isinstance(b, dict) and b.get("opcode") == "event_whenbroadcastreceived"
+                    and b.get("fields", {}).get("BROADCAST_OPTION", [None])[0] == "sfx death"
+                ):
+                    continue
+                chain, cur = [], b.get("next")
+                while isinstance(cur, str) and cur in sb:
+                    chain.append(cur)
+                    cur = sb[cur].get("next")
+                if len(chain) != 3:
+                    continue
+                raise_, play, clear = chain
+                if (
+                    raise_ in sets(sb, director.DEATH_CUE_PLAYING_ID, 1)
+                    and play in plays(sb, "solvalou_explode") and sb[play]["opcode"] == "sound_playuntildone"
+                    and clear in sets(sb, director.DEATH_CUE_PLAYING_ID, 0)
+                ):
+                    return True
+            return False
+
+        if not death_latch_ok():
+            failures.add("death-cue-latch-missing")
+        death_t = targets.get("solv_death")
+        if death_t is not None:
+            downer = enclosures(death_t["blocks"])
+            if not all(
+                gated_on(death_t["blocks"], downer, x, director.ATTRACT_ID, 0)
+                for x in broadcasts(death_t["blocks"], "sfx death")
+            ):
+                failures.add("death-cue-in-attract")
+        for name in ("start", "bgm"):
+            if not plays(sb, name) or not all(
+                gated_on(sb, stage_owner, x, director.ATTRACT_ID, 0) for x in plays(sb, name)
+            ):
+                failures.add(f"music-in-attract:{name}")
+
+        # Coin: the poll latches, the coin loop plays.
+        def proc_of(bid):
+            head = sb.get(stack_head(sb, bid))
+            proto = sb.get(inp_ref(head, "custom_block")) if isinstance(head, dict) else None
+            return proto.get("mutation", {}).get("proccode") if isinstance(proto, dict) else None
+
+        poll_sets = [
+            s for s in sets(sb, director.COIN_SOUND_ID, 1) if proc_of(s) == director.COIN_POLL_PROCCODE
+        ]
+        if not poll_sets:
+            failures.add("coin-sound-not-latched-by-poll")
+        if not plays(sb, "credit") or not all(
+            gated_on(sb, stage_owner, x, director.COIN_SOUND_ID, 1) for x in plays(sb, "credit")
+        ):
+            failures.add("coin-sound-not-gated-on-latch")
+
+        # Attract mute: volume 0 only under a condition reading both `attract` and `credits`.
+        mutes = [
+            bid for bid, b in sb.items()
+            if isinstance(b, dict) and b.get("opcode") == "sound_setvolumeto"
+            and reads(sb, b["inputs"].get("VOLUME"), lit_is(0))
+        ]
+        if not mutes or not all(
+            gated_on(sb, stage_owner, m, director.ATTRACT_ID, 1)
+            and gated_on(sb, stage_owner, m, director.CREDITS_ID, 0)
+            for m in mutes
+        ):
+            failures.add("attract-mute-missing")
+
+        # Andor drone.
+        drone = plays(sb, "andor_genesis")
+        if not drone or not all(
+            gated_on(sb, stage_owner, x, director.ANDOR_DRONE_TIMER_ID) for x in drone
+        ):
+            failures.add("andor-drone-not-timed")
+        if not sets(sb, director.ANDOR_DRONE_TIMER_ID, director.ANDOR_DRONE_TICKS):
+            failures.add("andor-drone-no-rearm")
+
+        # Entry tune: the top tune under the placed-rank condition.
+        top = plays(sb, "name_entry_top")
+        if not top or not all(gated_on(sb, stage_owner, x, director.ENTRY_ROW_ID, 1) for x in top):
+            failures.add("entry-tune-not-rank-gated")
+        return failures
+
+    def test_cab05_audio_contract_holds(self) -> None:
+        # roadmap-evidence: CAB-05 success  (every new cue plays from the Stage, gated and relayed as recorded)
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._cab05_audio_failures(project))
+        self.assertEqual(53, director.ANDOR_DRONE_TICKS)
+
+    def test_cab05_audio_contract_negative_fixtures(self) -> None:
+        # roadmap-evidence: CAB-05 failure  (each broken cue, gate or relay is named by the contract)
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._cab05_audio_failures(base))
+
+        def stage_of(p):
+            return next(t for t in p["targets"] if t.get("isStage"))
+
+        def rename_menu(target_name, old, new):
+            def _mut(p):
+                t = stage_of(p) if target_name == "Stage" else next(x for x in p["targets"] if x["name"] == target_name)
+                for b in t["blocks"].values():
+                    if isinstance(b, dict) and b.get("opcode") == "sound_sounds_menu" and b["fields"]["SOUND_MENU"][0] == old:
+                        b["fields"]["SOUND_MENU"][0] = new
+            return _mut
+
+        def ungate_cue(target_name):
+            # Swap the `death cue playing` read in one stop-all gate for `tick`.
+            def _mut(p):
+                t = stage_of(p) if target_name == "Stage" else next(x for x in p["targets"] if x["name"] == target_name)
+                for b in t["blocks"].values():
+                    if isinstance(b, dict) and b.get("opcode") == "operator_equals" and any(
+                        isinstance(v, list) and isinstance(v[1], list) and v[1][0] == 12 and v[1][2] == director.DEATH_CUE_PLAYING_ID
+                        for v in b.get("inputs", {}).values()
+                    ):
+                        for v in b["inputs"].values():
+                            if isinstance(v, list) and isinstance(v[1], list) and v[1][0] == 12:
+                                v[1][1], v[1][2] = "tick", director.TICK_ID
+                        return
+            return _mut
+
+        def ungate_one_stopall(target_name):
+            def _mut(p):
+                t = stage_of(p) if target_name == "Stage" else next(x for x in p["targets"] if x["name"] == target_name)
+                for b in t["blocks"].values():
+                    if isinstance(b, dict) and b.get("opcode") == "operator_equals" and any(
+                        isinstance(v, list) and isinstance(v[1], list) and v[1][0] == 12 and v[1][2] == director.KEEP_SOUNDS_ID
+                        for v in b.get("inputs", {}).values()
+                    ):
+                        for k, v in b["inputs"].items():
+                            if isinstance(v, list) and isinstance(v[1], list) and v[1][0] == 12:
+                                v[1][1], v[1][2] = "tick", director.TICK_ID
+                        return
+            return _mut
+
+        def strip_stopall(target_name):
+            def _mut(p):
+                t = next(x for x in p["targets"] if x["name"] == target_name)
+                for b in t["blocks"].values():
+                    if isinstance(b, dict) and b.get("opcode") == "sound_stopallsounds":
+                        b["opcode"] = "control_wait"
+            return _mut
+
+        def retarget_var(var_id, value, new_value):
+            # Rewrite every `set <var> to <value>` on the Stage to <new_value>.
+            def _mut(p):
+                sb = stage_of(p)["blocks"]
+                for b in sb.values():
+                    if isinstance(b, dict) and b.get("opcode") == "data_setvariableto" and b["fields"]["VARIABLE"][1] == var_id:
+                        v = b["inputs"].get("VALUE")
+                        if isinstance(v, list) and isinstance(v[1], list) and str(v[1][1]) == str(value):
+                            v[1][1] = str(new_value)
+            return _mut
+
+        def drop_receiver(message):
+            def _mut(p):
+                for b in stage_of(p)["blocks"].values():
+                    if isinstance(b, dict) and b.get("opcode") == "event_whenbroadcastreceived" and b["fields"]["BROADCAST_OPTION"][0] == message:
+                        b["fields"]["BROADCAST_OPTION"][0] = "wrong"
+            return _mut
+
+        def blank_var_in_conds(target_name, var_id):
+            # Swap every read of `var_id` for `tick` (so no condition gates on it any more).
+            def _mut(p):
+                t = stage_of(p) if target_name == "Stage" else next(x for x in p["targets"] if x["name"] == target_name)
+                for b in t["blocks"].values():
+                    if not isinstance(b, dict) or b.get("opcode") == "data_setvariableto":
+                        continue
+                    for v in b.get("inputs", {}).values():
+                        if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], list) and v[1][0] == 12 and v[1][2] == var_id:
+                            v[1][1], v[1][2] = "tick", director.TICK_ID
+            return _mut
+
+        def play_on_wrong_target(p):
+            solv = next(x for x in p["targets"] if x["name"] == "solvalou")
+            solv["blocks"]["cab05_menu"] = {
+                "opcode": "sound_sounds_menu", "next": None, "parent": "cab05_play", "inputs": {},
+                "fields": {"SOUND_MENU": ["credit", None]}, "shadow": True, "topLevel": False,
+            }
+            solv["blocks"]["cab05_play"] = {
+                "opcode": "sound_play", "next": None, "parent": None,
+                "inputs": {"SOUND_MENU": [1, "cab05_menu"]}, "fields": {}, "shadow": False,
+                "topLevel": True, "x": 0, "y": 0,
+            }
+
+        cases = [
+            ("cab05-stage-cue-missing:credit", rename_menu("Stage", "credit", "wrong")),
+            ("cab05-stage-cue-missing:andor_genesis", rename_menu("Stage", "andor_genesis", "wrong")),
+            ("cab05-stage-cue-missing:zapper_fire", rename_menu("Stage", "zapper_fire", "wrong")),
+            ("cab05-stage-cue-missing:blaster_fire", rename_menu("Stage", "blaster_fire", "wrong")),
+            ("sound-not-on-own-target:Stage:wrong", rename_menu("Stage", "credit", "wrong")),
+            ("sound-not-on-own-target:solvalou:credit", play_on_wrong_target),
+            ("replaced-sound-played:BGM.mp3", rename_menu("Stage", "bgm", "BGM.mp3")),
+            ("replaced-sound-played:Game Start.mp3", rename_menu("Stage", "start", "Game Start.mp3")),
+            ("stopall-not-keep-gated:Stage", ungate_one_stopall("Stage")),
+            ("stopall-not-keep-gated:toroid", ungate_one_stopall("toroid")),
+            ("stopall-count:kapi", strip_stopall("kapi")),
+            ("stopall-not-cue-gated:Stage", ungate_cue("Stage")),
+            ("stopall-not-cue-gated:toroid", ungate_cue("toroid")),
+            ("death-cue-latch-missing", retarget_var(director.DEATH_CUE_PLAYING_ID, 0, 7)),
+            ("death-cue-latch-missing", retarget_var(director.DEATH_CUE_PLAYING_ID, 1, 7)),
+            ("keep-not-consumed-after-stop", retarget_var(director.KEEP_SOUNDS_ID, 0, 7)),
+            ("keep-not-set-at-death", retarget_var(director.KEEP_SOUNDS_ID, 1, 7)),
+            ("relay-no-stage-receiver:sfx shot", drop_receiver("sfx shot")),
+            ("relay-no-stage-receiver:sfx death", drop_receiver("sfx death")),
+            ("death-cue-in-attract", blank_var_in_conds("solv_death", director.ATTRACT_ID)),
+            ("music-in-attract:bgm", blank_var_in_conds("Stage", director.ATTRACT_ID)),
+            ("coin-sound-not-latched-by-poll", retarget_var(director.COIN_SOUND_ID, 1, 7)),
+            ("coin-sound-not-gated-on-latch", blank_var_in_conds("Stage", director.COIN_SOUND_ID)),
+            ("attract-mute-missing", blank_var_in_conds("Stage", director.CREDITS_ID)),
+            ("andor-drone-not-timed", blank_var_in_conds("Stage", director.ANDOR_DRONE_TIMER_ID)),
+            ("andor-drone-no-rearm", retarget_var(director.ANDOR_DRONE_TIMER_ID, director.ANDOR_DRONE_TICKS, 7)),
+            ("entry-tune-not-rank-gated", blank_var_in_conds("Stage", director.ENTRY_ROW_ID)),
+        ]
+        for label, mutate in cases:
+            project = copy.deepcopy(base)
+            mutate(project)
+            self.assertIn(label, self._cab05_audio_failures(project), label)
 
     @staticmethod
     def _wpn01_failures(project: dict) -> set:
@@ -18612,7 +19100,8 @@ class ScratchProjectTests(unittest.TestCase):
                 "data_changevariableby",
                 "data_setvariableto",
                 "event_broadcastandwait",
-                "sound_stopallsounds",
+                "control_if",  # CAB-05: the stop-all, skipped while `keep sounds` is set
+                "data_setvariableto",  # CAB-05: consume the keep, after `director stop` returned
                 "data_setvariableto",
                 "control_if",
                 "event_broadcastandwait",
@@ -18622,6 +19111,24 @@ class ScratchProjectTests(unittest.TestCase):
             opcodes,
             definition_id,
         )
+        # CAB-05: the gate holds exactly the stop-all, and the step after it clears `keep sounds` to 0.
+        blocks = stage["blocks"]
+        cursor = guard["inputs"]["SUBSTACK"][1]
+        for _ in range(3):
+            cursor = blocks[cursor]["next"]
+        gate = blocks[cursor]
+        self.assertEqual("sound_stopallsounds", blocks[gate["inputs"]["SUBSTACK"][1]]["opcode"])
+        gate_cond = blocks[gate["inputs"]["CONDITION"][1]]
+        self.assertEqual("operator_and", gate_cond["opcode"])
+        keep_arm = blocks[gate_cond["inputs"]["OPERAND1"][1]]
+        cue_arm = blocks[gate_cond["inputs"]["OPERAND2"][1]]
+        self.assertEqual("operator_equals", keep_arm["opcode"])
+        self.assertEqual(director.KEEP_SOUNDS_ID, keep_arm["inputs"]["OPERAND1"][1][2])
+        self.assertEqual("operator_equals", cue_arm["opcode"])
+        self.assertEqual(director.DEATH_CUE_PLAYING_ID, cue_arm["inputs"]["OPERAND1"][1][2])
+        clear = blocks[gate["next"]]
+        self.assertEqual(["keep sounds", director.KEEP_SOUNDS_ID], clear["fields"]["VARIABLE"])
+        self.assertEqual("0", str(clear["inputs"]["VALUE"][1][1]))
 
     @staticmethod
     def _numeric(value: object) -> int | float | None:
@@ -18801,8 +19308,8 @@ class ScratchProjectTests(unittest.TestCase):
 
         # B2 — single guarded bomb. WPN-04 (slice 9) moved the bomb logic OFF the bomb sprite (now a
         # pure slot renderer) and INTO the Stage walk (`advance bomb`): the walk arms the one-bomb
-        # guard, re-arms it at the finish, tests idle before arming, and broadcasts the drop. The bomb
-        # sprite keeps no clone and only RECEIVES the drop/land sounds.
+        # guard, re-arms it at the finish, tests idle before arming, and plays the drop sound. The bomb
+        # sprite keeps no clone.
         if count("bomb", "control_start_as_clone") != 0:
             fails.add("B2-clone")
         if not sets_var("Stage", "bomb in flight", 1):
@@ -18816,11 +19323,18 @@ class ScratchProjectTests(unittest.TestCase):
             and b["inputs"].get("OPERAND1", [None, [None, None]])[1][1] == "bomb in flight",
         ):
             fails.add("B2-idle-test")
-        if not broadcasts("Stage", "bomb"):
-            fails.add("B2-broadcast")
-        # The bomb sprite renderer still receives the drop-sound broadcast.
-        if not receives("bomb", "bomb"):
-            fails.add("B2-drop-receive")
+        # CAB-05 (slice 20): the drop sound is the one BOMB_SND (init_bombing xevious_main.68k:2463), played by
+        # the Stage walk on the arm — no `bomb`/`bomb landed` broadcast, and the bomb sprite plays nothing.
+        if not has(
+            "Stage",
+            lambda b: b["opcode"] == "sound_sounds_menu"
+            and b["fields"].get("SOUND_MENU", [None])[0] == "blaster_fire",
+        ):
+            fails.add("B2-drop-sound")
+        if receives("bomb", "bomb") or has(
+            "bomb", lambda b: b["opcode"] in ("sound_play", "sound_playuntildone")
+        ):
+            fails.add("B2-no-sprite-sound")
 
         # B6 — the crosshair is a pure slot renderer (slice 9): it no longer receives the bomb
         # broadcast; it switches to the targeting reticle costume off its slot state.
@@ -18851,12 +19365,31 @@ class ScratchProjectTests(unittest.TestCase):
         if not has("start_screen", lambda b: b["opcode"] == "motion_glidesecstoxy"):
             fails.add("B4-glide")
 
-        # B5/B10 — tick-counted explosion holds then the post-death pause; no waits.
-        if (
-            count("solv_death", "control_repeat", director.EXPLOSION_HOLD_TICKS)
-            != director.EXPLOSION_STEPS
-        ):
+        # B5/B10 — the tick-counted explosion then the post-death pause; no waits. CAB-05: the explosion is ONE
+        # repeat of exactly its 7 x 4 ticks that picks a costume every tick, and the craft is hidden (straight
+        # after it) for the pause — `finish_solvalou_exploding` clears its STATE (xevious_main.68k 2079-2090).
+        death = blocks["solv_death"]
+        explosion_loops = [
+            b
+            for b in death.values()
+            if b["opcode"] == "control_repeat"
+            and num(b["inputs"].get("TIMES")) == director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS
+        ]
+        if len(explosion_loops) != 1 or death.get(
+            (explosion_loops[0]["inputs"].get("SUBSTACK") or [None, None])[1], {}
+        ).get("opcode") != "looks_switchcostumeto":
             fails.add("B5B10-explosion")
+        else:
+            after = death.get(explosion_loops[0]["next"])
+            pause = death.get(after["next"]) if after else None
+            if (
+                after is None
+                or after["opcode"] != "looks_hide"
+                or pause is None
+                or pause["opcode"] != "control_repeat"
+                or num(pause["inputs"].get("TIMES")) != director.POST_DEATH_PAUSE_TICKS
+            ):
+                fails.add("CAB05-death-hidden-pause")
         if count("solv_death", "control_repeat", director.POST_DEATH_PAUSE_TICKS) != 1:
             fails.add("B5B10-pause")
         if count("solv_death", "control_wait") != 0:
@@ -18959,9 +19492,17 @@ class ScratchProjectTests(unittest.TestCase):
         # own position at the four stop lines (pinned in the regression contract below as PRES01-craft-clamp).
         self.assertNotIn("sensing_touchingobject", {b["opcode"] for b in solvalou.values()})
         death = targets["solv_death"]["blocks"]
-        self.assertIn("sound_play", {block["opcode"] for block in death.values()})
+        # CAB-05: the death cue relays to the Stage (`sfx death`), so the death renderer plays nothing itself.
+        self.assertNotIn("sound_play", {block["opcode"] for block in death.values()})
         self.assertNotIn(
             "sound_playuntildone", {block["opcode"] for block in death.values()}
+        )
+        self.assertTrue(
+            any(
+                block["opcode"] == "event_broadcast"
+                and block["inputs"]["BROADCAST_INPUT"][1][1] == "sfx death"
+                for block in death.values()
+            )
         )
         self.assertTrue(
             any(
@@ -19080,15 +19621,14 @@ class ScratchProjectTests(unittest.TestCase):
                       and num(b["inputs"].get("OPERAND2")) == director.CRAFT_Y_BOTTOM)
             b["opcode"] = "sensing_touchingobject"
 
-        def break_bomb_broadcast(p):  # B2: drop the Stage walk's bomb-drop broadcast
+        def break_bomb_broadcast(p):  # B2: drop the Stage walk's bomb-drop sound
             b = first(
                 p,
                 "Stage",
-                lambda b: b["opcode"] == "event_broadcast"
-                and b["inputs"].get("BROADCAST_INPUT", [None, [None, None, None]])[1][1]
-                == "bomb",
+                lambda b: b["opcode"] == "sound_sounds_menu"
+                and b["fields"].get("SOUND_MENU", [None])[0] == "blaster_fire",
             )
-            b["opcode"] = "control_wait"
+            b["fields"]["SOUND_MENU"][0] = "wrong"
 
         def free_running_terrain(p):  # B3: a strip steps itself again instead of drawing the clock's state
             b = first(p, "area_01a", lambda b: b["opcode"] == "motion_gotoxy")
@@ -19126,14 +19666,9 @@ class ScratchProjectTests(unittest.TestCase):
             b = first(p, "target_a", lambda b: b["opcode"] == "looks_switchcostumeto")
             b["opcode"] = "looks_show"
 
-        def break_drop_receive(p):  # B2: drop the bomb sprite's drop-sound receiver
-            b = first(
-                p,
-                "bomb",
-                lambda b: b["opcode"] == "event_whenbroadcastreceived"
-                and b["fields"]["BROADCAST_OPTION"][0] == "bomb",
-            )
-            b["fields"]["BROADCAST_OPTION"][0] = "director stop"
+        def break_drop_receive(p):  # B2: regress the bomb sprite back to a drop-sound receiver
+            b = first(p, "bomb", lambda b: b["opcode"] == "event_whenbroadcastreceived")
+            b["fields"]["BROADCAST_OPTION"][0] = "bomb"
 
         def couple_crosshair_to_bomb(p):  # B6: regress the crosshair back to a bomb receiver
             b = first(p, "target_a", lambda b: b["opcode"] == "event_whenbroadcastreceived")
@@ -19143,14 +19678,19 @@ class ScratchProjectTests(unittest.TestCase):
             b = first(p, "target_b", lambda b: b["opcode"] == "event_whenbroadcastreceived")
             b["fields"]["BROADCAST_OPTION"][0] = "bomb"
 
-        def break_explosion_holds(p):  # B5: shorten one explosion hold
-            b = first(
+        def explosion_loop(p):
+            return first(
                 p,
                 "solv_death",
                 lambda b: b["opcode"] == "control_repeat"
-                and num(b["inputs"].get("TIMES")) == director.EXPLOSION_HOLD_TICKS,
+                and num(b["inputs"].get("TIMES")) == director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS,
             )
-            b["inputs"]["TIMES"] = [1, [4, director.EXPLOSION_HOLD_TICKS + 1]]
+
+        def break_explosion_holds(p):  # B5: lengthen the explosion by a tick
+            explosion_loop(p)["inputs"]["TIMES"] = [1, [4, director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS + 1]]
+
+        def show_through_pause(p):  # CAB-05: leave the last explosion frame drawn over the pause
+            blocks_of(p, "solv_death")[explosion_loop(p)["next"]]["opcode"] = "looks_show"
 
         def break_bomb_arm(p):  # B2: fail to set the in-flight guard on arm (now Stage-owned)
             b = first(
@@ -19171,12 +19711,13 @@ class ScratchProjectTests(unittest.TestCase):
             ("A1-ready-bubble", break_ready_bubble),
             ("A2-gameover-bubble", break_gameover_bubble),
             ("B1-reload-gate", break_reload_gate),
-            ("B2-broadcast", break_bomb_broadcast),
+            ("B2-drop-sound", break_bomb_broadcast),
             ("B2-arm", break_bomb_arm),
-            ("B2-drop-receive", break_drop_receive),
+            ("B2-no-sprite-sound", break_drop_receive),
             ("B3-wall-clock-area_01a", free_running_terrain),
             ("B4-glide", break_title_glide),
             ("B5B10-explosion", break_explosion_holds),
+            ("CAB05-death-hidden-pause", show_through_pause),
             ("B5B10-pause", break_death_pause),
             ("B6-crosshair-costume", break_crosshair_costume),
             ("B6-crosshair-not-receiver", couple_crosshair_to_bomb),
@@ -19200,6 +19741,435 @@ class ScratchProjectTests(unittest.TestCase):
             corrupt(project)
             failures = self._regression_contract_failures(project)
             self.assertIn(label, failures, f"corruption '{label}' was not caught")
+
+    CAB05_AIR_EXPLOSION_TARGETS = (
+        director.TOROID_TARGET,
+        director.TERRAZI_TARGET,
+        director.KAPI_TARGET,
+        director.TORKAN_TARGET,
+        director.ZOSHI_TARGET,
+        director.JARA_TARGET,
+        director.ZAKATO_TARGET,
+        director.GIDDO_SPARIO_TARGET,
+        director.BRAG_SPARIO_TARGET,
+        director.GARU_ZAKATO_TARGET,
+    )
+
+    def _cab05_explosion_failures(self, project: dict) -> set[str]:
+        """CAB-05 explosion art as a static contract (docs/mechanics/055): the three explosion families are the
+        pinned renders laid out in the order their renderers index — the player explosion's 7 steps and the air
+        explosion's 5 phases each as four flip costumes none/x/y/xy (the order `_flip_costume_offset` maps the
+        attr flip bits onto), the ground explosion as 7 frames then the 2-frame crater — every air family
+        draws its explosion at its one shared scale (the art carries the 2x2 growth, so nothing doubles), and
+        the retired solv_death stand-in burst is drawn by no one."""
+        targets = {t["name"]: t for t in project["targets"]}
+        num = self._numeric
+        fails: set[str] = set()
+        flips = ("none", "x", "y", "xy")
+
+        def names(target):
+            return [c.get("name") for c in targets[target]["costumes"]]
+
+        air = [f"air-explosion/burst/{phase:02d}/{flip}" for phase in range(1, 6) for flip in flips]
+        for target in self.CAB05_AIR_EXPLOSION_TARGETS:
+            listed = names(target)
+            if air[0] not in listed or listed[listed.index(air[0]):] != air:
+                fails.add(f"air-layout-{target}")
+            sizes = {
+                num(b["inputs"].get("SIZE"))
+                for b in targets[target]["blocks"].values()
+                if b["opcode"] == "looks_setsizeto"
+            }
+            if len(sizes) != 1:
+                fails.add(f"air-one-size-{target}")
+
+        player = [f"player-explosion/burst/{step:02d}/{flip}" for step in range(1, 8) for flip in flips]
+        base = director.PLAYER_EXPLOSION_BASE_ORDINAL - 1
+        if names("solv_death")[base:] != player:
+            fails.add("player-layout")
+
+        # Every ground-explosion run in the shared pool is the 7 frames in order (a family's " #<family>"
+        # duplicates included); every crater run follows a burst and is the 2-frame flicker.
+        ground = [n.split(" #")[0] for n in names("ground")]
+        burst = [f"ground-explosion/burst/{frame:02d}" for frame in range(1, 8)]
+        starts = [i for i, n in enumerate(ground) if n == burst[0]]
+        if not starts or any(ground[i:i + len(burst)] != burst for i in starts):
+            fails.add("ground-layout")
+        if any(n.startswith("ground-explosion/") for i, n in enumerate(ground) if not any(s <= i < s + 7 for s in starts)):
+            fails.add("ground-layout")
+        for i, n in enumerate(ground):
+            if n == "ground-crater/flicker/01" and (
+                ground[i - 1] != burst[-1] or ground[i + 1:i + 2] != ["ground-crater/flicker/02"]
+            ):
+                fails.add("ground-crater")
+
+        for name, target in targets.items():
+            if name != "solv_death" and any(str(n).startswith("explode_") for n in names(name)):
+                fails.add(f"stand-in-burst-{name}")
+        return fails
+
+    def test_cab05_explosion_art_contract(self) -> None:
+        # The renderers' arithmetic rests on these: 4 flip costumes per frame, the player flip every 2 ticks
+        # (`countup & 0x0C`, xevious_main.68k 2072-2073), the ground burst's 7 codes, and the Andor parts'
+        # 4-frame `gun_port_explosion` cadence (5715-5749).
+        self.assertEqual(4, director.AIR_EXPLOSION_FLIP_COSTUMES)
+        self.assertEqual(4, director.PLAYER_EXPLOSION_FLIP_COSTUMES)
+        self.assertEqual(2, director.PLAYER_EXPLOSION_FLIP_TICKS)
+        self.assertEqual(9, director.PLAYER_EXPLOSION_BASE_ORDINAL)
+        self.assertEqual(7, director.GROUND_EXPLOSION_FRAME_COUNT)
+        self.assertEqual(4, director.ANDOR_EXPLOSION_PHASE_FRAMES)
+        self.assertEqual(4, director.TOROID_EXPLOSION_PHASE_FRAMES)
+        self.assertFalse(hasattr(director, "TOROID_EXPLODE_SIZE"), "the air explosion no longer doubles its scale")
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._cab05_explosion_failures(project))
+        # The death sprite never steps costumes blindly any more — every frame is computed from the tick.
+        death = next(t for t in project["targets"] if t["name"] == "solv_death")["blocks"]
+        self.assertNotIn("looks_nextcostume", {b["opcode"] for b in death.values()})
+
+    def test_cab05_explosion_art_contract_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._cab05_explosion_failures(base))
+
+        def target(p, name):
+            return next(t for t in p["targets"] if t["name"] == name)
+
+        def swap_air_flips(p):  # the y and x flip costumes of one phase swapped (the axis mix-up)
+            costumes = target(p, director.TOROID_TARGET)["costumes"]
+            i = next(i for i, c in enumerate(costumes) if c["name"] == "air-explosion/burst/03/x")
+            costumes[i], costumes[i + 1] = costumes[i + 1], costumes[i]
+
+        def double_air_explosion(p):  # the old 2x big-phase scale brought back on one family
+            blocks = target(p, director.KAPI_TARGET)["blocks"]
+            b = next(b for b in blocks.values() if b["opcode"] == "looks_setsizeto")
+            b["inputs"]["SIZE"] = [1, [4, 2 * self._numeric(b["inputs"]["SIZE"])]]
+
+        def drop_player_step(p):  # one player-explosion step lost
+            costumes = target(p, "solv_death")["costumes"]
+            del costumes[director.PLAYER_EXPLOSION_BASE_ORDINAL - 1 + 8]
+
+        def short_ground_burst(p):  # one family's burst a frame short
+            costumes = target(p, "ground")["costumes"]
+            i = next(i for i, c in enumerate(costumes) if c["name"] == "ground-explosion/burst/04 #logram")
+            del costumes[i]
+
+        def stray_crater(p):  # the crater no longer straight after the burst
+            costumes = target(p, "ground")["costumes"]
+            i = next(i for i, c in enumerate(costumes) if c["name"] == "ground-crater/flicker/01 #zolbak")
+            costumes.insert(i, copy.deepcopy(costumes[0]))
+
+        def stand_in_back(p):  # an air family drawing the retired solv_death burst again
+            target(p, director.JARA_TARGET)["costumes"].append(
+                copy.deepcopy(target(p, "solv_death")["costumes"][0])
+            )
+
+        cases = [
+            (f"air-layout-{director.TOROID_TARGET}", swap_air_flips),
+            (f"air-one-size-{director.KAPI_TARGET}", double_air_explosion),
+            ("player-layout", drop_player_step),
+            ("ground-layout", short_ground_burst),
+            ("ground-crater", stray_crater),
+            (f"stand-in-burst-{director.JARA_TARGET}", stand_in_back),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._cab05_explosion_failures(project), f"corruption '{label}' was not caught")
+
+    @staticmethod
+    def _block_tree(blocks: dict, spec: Any) -> Any:
+        """A block (by id) or an input spec as a comparable nested tuple: (opcode, sorted inputs, sorted
+        fields) for a block, ("var", name) for a variable reporter, a number or string for a literal.
+        Substacks are left out, so a condition or reporter compares by its own expression only."""
+        if isinstance(spec, str):
+            b = blocks[spec]
+            ins = tuple(sorted(
+                (k, ScratchProjectTests._block_tree(blocks, v))
+                for k, v in b.get("inputs", {}).items() if k not in ("SUBSTACK", "SUBSTACK2")
+            ))
+            return (b["opcode"], ins, tuple(sorted((k, v[0]) for k, v in b.get("fields", {}).items())))
+        if isinstance(spec, list) and len(spec) > 1:
+            value = spec[1]
+            if isinstance(value, str):
+                return ScratchProjectTests._block_tree(blocks, value) if value in blocks else None
+            if isinstance(value, list):
+                if value[0] in (12, 13):
+                    return ("var", value[1])
+                try:
+                    return float(value[1])
+                except (TypeError, ValueError):
+                    return value[1]
+        return None
+
+    def _cab05_weapon_art_failures(self, project: dict) -> set[str]:
+        """CAB-05 bomb, crosshair, bomb-target and enemy-bullet art as a static contract (docs/mechanics/055):
+        each draws the pinned bank-1 render picked by the arcade's own counters —
+        - the bomb: code 1C→1D→1E a step every 8 frames then held, colour 0x25 + ((TIMER >> 2) & 3)
+          (init_bombing / handle_bomb xevious_main.68k 2445-2499), its age read from |bomb dx| / 2 frames;
+        - the crosshair: colour 32 idle, 33 with the bomb in flight, +9 on the on-target flash
+          (handle_crosshairs 2239-2281), the flash swept over ground objects 2..15 in the bomb's own box
+          (check_targeted_ground_object 2282-2295) BEFORE the crosshair moves, on ticks where countup & 4;
+        - the enemy bullet: code 1E, colour 0x25 + ((countup >> 1) & 3) (xevious_sub.68k 208-232), one colour
+          a tick."""
+        targets = {t["name"]: t for t in project["targets"]}
+        tree = self._block_tree
+        fails: set[str] = set()
+
+        def op(opcode, **ins):
+            return (opcode, tuple(sorted(ins.items())), ())
+
+        def mathop(name, x):
+            return ("operator_mathop", (("NUM", x),), (("OPERATOR", name),))
+
+        def item(lst, idx):
+            return ("data_itemoflist", (("INDEX", idx),), (("LIST", lst),))
+
+        add = lambda a, b: op("operator_add", NUM1=a, NUM2=b)
+        sub = lambda a, b: op("operator_subtract", NUM1=a, NUM2=b)
+        mul = lambda a, b: op("operator_multiply", NUM1=a, NUM2=b)
+        div = lambda a, b: op("operator_divide", NUM1=a, NUM2=b)
+        mod = lambda a, b: op("operator_mod", NUM1=a, NUM2=b)
+        eq = lambda a, b: op("operator_equals", OPERAND1=a, OPERAND2=b)
+        lt = lambda a, b: op("operator_lt", OPERAND1=a, OPERAND2=b)
+        gt = lambda a, b: op("operator_gt", OPERAND1=a, OPERAND2=b)
+        and_ = lambda a, b: op("operator_and", OPERAND1=a, OPERAND2=b)
+        not_ = lambda a: op("operator_not", OPERAND=a)
+        floor = lambda x: mathop("floor", x)
+        abs_ = lambda x: mathop("abs", x)
+        var = lambda name: ("var", name)
+
+        def names(target):
+            return [c.get("name") for c in targets[target]["costumes"]]
+
+        def costume_switches(target):
+            blocks = targets[target]["blocks"]
+            return [
+                tree(blocks, b["inputs"].get("COSTUME"))
+                for b in blocks.values() if isinstance(b, dict) and b["opcode"] == "looks_switchcostumeto"
+            ]
+
+        # Costume layouts: each family in the order its ordinal arithmetic indexes.
+        colours = [f"c{0x25 + i:02x}" for i in range(4)]
+        crosshair = [f"crosshair/aim/{s}" for s in ("idle", "bombing", "idle-lit", "bombing-lit")]
+        bomb = [f"bomb/fall/{code:02d}/{c}" for code in range(1, 4) for c in colours]
+        if names("target_a")[3:] != crosshair:
+            fails.add("crosshair-layout")
+        if names("target_b")[1:] != ["bomb-target/mark/01"]:
+            fails.add("bomb-target-layout")
+        if names("bomb")[5:] != bomb:
+            fails.add("bomb-layout")
+        if names(director.ENEMY_BULLET_TARGET) != [f"bomb/fall/03/{c}" for c in colours]:
+            fails.add("bullet-layout")
+
+        # The bomb: frames since launch = |bomb dx| / 2; code step = min(floor(frames / 8), 2), as
+        # (s + 2 - |s - 2|) / 2; colour = floor(frames / 4) mod 4. Costume 6 is the first pinned frame.
+        frames = lambda: div(abs_(var("bomb dx")), 2)
+        step = lambda: floor(div(frames(), 8))
+        code = div(sub(add(step(), 2), abs_(sub(step(), 2))), 2)
+        colour = mod(floor(div(frames(), 4)), 4)
+        if costume_switches("bomb") != [add(add(6, mul(code, 4)), colour)]:
+            fails.add("bomb-ordinal")
+
+        # The crosshair: 4 + bomb in flight + 2 * lit (idle, bombing, idle-lit, bombing-lit).
+        if costume_switches("target_a") != [add(add(4, var("bomb in flight")), mul(var("crosshair lit"), 2))]:
+            fails.add("crosshair-ordinal")
+        if costume_switches("target_b") != [("looks_costume", (), (("COSTUME", "bomb-target/mark/01"),))]:
+            fails.add("bomb-target-costume")
+        if costume_switches(director.ENEMY_BULLET_TARGET) != [add(1, mod(var("tick"), 4))]:
+            fails.add("bullet-pulse")
+
+        # The on-target sweep inside `track crosshair`: lit = 0; if floor(tick / 2) mod 2 = 1, raise it for
+        # each ACTIVE ground object (Scratch slots 3..16) whose shadow sits in the bomb box around the
+        # crosshair (slot 35) — lateral obj - crosshair in [-10, 9] px, depth in [-5, 4] 2-px units; then move.
+        stage = targets["Stage"]["blocks"]
+        proto = next(
+            (bid for bid, b in stage.items() if isinstance(b, dict) and b["opcode"] == "procedures_prototype"
+             and b.get("mutation", {}).get("proccode") == director.TRACK_CROSSHAIR_PROCCODE),
+            None,
+        )
+        definition = next(
+            (b for b in stage.values() if isinstance(b, dict) and b["opcode"] == "procedures_definition"
+             and b["inputs"].get("custom_block", [None, None])[1] == proto),
+            None,
+        )
+
+        def chain(first):
+            out = []
+            while first:
+                out.append(first)
+                first = stage[first].get("next")
+            return out
+
+        body = chain(definition.get("next")) if definition else []
+        reset = ("data_setvariableto", (("VALUE", 0.0),), (("VARIABLE", "crosshair lit"),))
+        raise_lit = ("data_setvariableto", (("VALUE", 1.0),), (("VARIABLE", "crosshair lit"),))
+        if len(body) < 3 or tree(stage, body[0]) != reset:
+            fails.add("crosshair-reset")
+            return fails
+        gate = stage[body[1]]
+        if gate["opcode"] != "control_if" or tree(stage, gate["inputs"].get("CONDITION")) != eq(
+            mod(floor(div(var("tick"), 2)), 2), 1
+        ):
+            fails.add("crosshair-gate")
+        mover = stage[body[2]]
+        if mover["opcode"] != "data_replaceitemoflist" or mover["fields"]["LIST"][0] != "slot x":
+            fails.add("crosshair-sweep-before-move")
+
+        def lateral(slot):
+            return floor(div(item("slot y", slot), director.SLOT_UNITS_PER_LATERAL_SHADOW))
+
+        def depth(slot):
+            return floor(div(add(item("slot x", slot), director.DEPTH_SHADOW_OFFSET), director.SLOT_UNITS_PER_DEPTH_SHADOW))
+
+        def in_box(s):
+            d_lat = lambda: sub(lateral(s), lateral(35))
+            d_dep = lambda: sub(depth(s), depth(35))
+            return and_(
+                eq(item("slot state", s), 1),
+                and_(
+                    and_(not_(lt(d_lat(), -10)), not_(gt(d_lat(), 9))),
+                    and_(not_(lt(d_dep(), -5)), not_(gt(d_dep(), 4))),
+                ),
+            )
+
+        sweep = chain((gate["inputs"].get("SUBSTACK") or [None, None])[1])
+        if [tree(stage, bid) for bid in sweep] != [
+            ("control_if", (("CONDITION", in_box(s)),), ()) for s in range(3, 17)
+        ] or any(
+            [tree(stage, x) for x in chain((stage[bid]["inputs"].get("SUBSTACK") or [None, None])[1])] != [raise_lit]
+            for bid in sweep
+        ):
+            fails.add("crosshair-sweep")
+        return fails
+
+    def test_cab05_weapon_art_contract(self) -> None:
+        # The renderers' arithmetic rests on the arcade's own counters (docs/mechanics/055).
+        self.assertEqual(6, director.BOMB_ART_BASE_ORDINAL)
+        self.assertEqual(8, director.BOMB_CODE_STEP_FRAMES)  # 1C → 1D → 1E every 8 frames (2490-2499)
+        self.assertEqual(3, director.BOMB_CODE_STEPS)
+        self.assertEqual(4, director.BOMB_COLOUR_STEP_FRAMES)  # (TIMER >> 2) & 3
+        self.assertEqual(4, director.BOMB_COLOURS)
+        self.assertEqual(2, director.BOMB_ACCEL_PER_FRAME)  # |bomb dx| / 2 = frames since launch
+        self.assertEqual(4, director.CROSSHAIR_ART_BASE_ORDINAL)
+        self.assertEqual(2, director.CROSSHAIR_LIT_TICK_DIVISOR)  # countup & 4 at 2 frames a tick
+        self.assertEqual((2, 15), director.CROSSHAIR_CHECK_OBJECTS)  # check_targeted_ground_object d7 = 2..15
+        self.assertEqual((10, 20, 5, 10), director.HIT_WINDOW_BOMB_GROUND)
+        self.assertEqual(4, director.ENEMY_BULLET_PULSE_COLOURS)  # (countup >> 1) & 3, one colour a tick
+        self.assertEqual(director.SPRITE_RENDER_SIZE, director.ENEMY_BULLET_RENDER_SIZE)
+        project = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._cab05_weapon_art_failures(project))
+
+    def test_cab05_weapon_art_contract_negative_fixtures(self) -> None:
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._cab05_weapon_art_failures(base))
+
+        def target(p, name):
+            return next(t for t in p["targets"] if t["name"] == name)
+
+        def crosshair_ids(p):
+            # Every block id in `track crosshair` (the Stage's bomb hit box shares its literals).
+            stage = target(p, "Stage")["blocks"]
+            proto = next(
+                bid for bid, b in stage.items() if isinstance(b, dict) and b["opcode"] == "procedures_prototype"
+                and b.get("mutation", {}).get("proccode") == director.TRACK_CROSSHAIR_PROCCODE
+            )
+            start = next(
+                b["next"] for b in stage.values() if isinstance(b, dict) and b["opcode"] == "procedures_definition"
+                and b["inputs"].get("custom_block", [None, None])[1] == proto
+            )
+            seen, stack = set(), [start]
+            while stack:
+                bid = stack.pop()
+                if not isinstance(bid, str) or bid in seen or bid not in stage:
+                    continue
+                seen.add(bid)
+                stack.append(stage[bid].get("next"))
+                stack.extend(v[1] for v in stage[bid].get("inputs", {}).values() if isinstance(v, list) and len(v) > 1)
+            return seen
+
+        def set_literal(p, name, opcode, key, old, new, nth=0):
+            # Rewrite the nth `opcode` block in `name` (the Stage: in `track crosshair`) whose `key` input is
+            # the literal `old`.
+            within = crosshair_ids(p) if name == "Stage" else None
+            hits = [
+                b for bid, b in target(p, name)["blocks"].items()
+                if (within is None or bid in within)
+                and isinstance(b, dict) and b["opcode"] == opcode
+                and isinstance((b["inputs"].get(key) or [None, None])[1], list)
+                and float(b["inputs"][key][1][1]) == old
+            ]
+            hits[nth]["inputs"][key][1][1] = str(new)
+
+        def two_bomb_colours(p):  # the colour cycle on 2 colours, not 4
+            set_literal(p, "bomb", "operator_mod", "NUM2", 4, 2)
+
+        def bomb_never_holds(p):  # the code step clamp moved off 2, so the bomb runs past code 1E
+            set_literal(p, "bomb", "operator_subtract", "NUM2", 2, 3)
+
+        def bomb_codes_every_4(p):  # the code steps every 4 frames instead of 8
+            set_literal(p, "bomb", "operator_divide", "NUM2", 8, 4)
+
+        def lit_without_offset(p):  # the flash adds 1 costume instead of 2 (lit idle draws the bombing colour)
+            set_literal(p, "target_a", "operator_multiply", "NUM2", 2, 1)
+
+        def bullet_8_colours(p):  # the bullet pulse over 8 costumes
+            set_literal(p, director.ENEMY_BULLET_TARGET, "operator_mod", "NUM2", 4, 8)
+
+        def gate_every_4(p):  # the flash sampled on countup & 8, not & 4
+            set_literal(p, "Stage", "operator_divide", "NUM2", 2, 4)
+
+        def wide_box(p):  # one object's lateral box a pixel wider
+            set_literal(p, "Stage", "operator_lt", "OPERAND2", -10, -11, nth=5)
+
+        def drop_last_object(p):  # the sweep stops at object 14
+            stage = target(p, "Stage")["blocks"]
+            within = crosshair_ids(p)
+            last = next(
+                bid for bid, b in stage.items() if bid in within and b["opcode"] == "data_itemoflist"
+                and b["fields"]["LIST"][0] == "slot state" and float(b["inputs"]["INDEX"][1][1]) == 16
+            )
+            cond = stage[last]["parent"]
+            if_id = stage[stage[cond]["parent"]]["parent"]
+            stage[stage[if_id]["parent"]]["next"] = None
+
+        def reset_lit_to_1(p):  # the flash never clears
+            stage = target(p, "Stage")["blocks"]
+            b = next(
+                b for b in stage.values() if isinstance(b, dict) and b["opcode"] == "data_setvariableto"
+                and b["fields"]["VARIABLE"][0] == "crosshair lit" and b.get("parent")
+                and stage[b["parent"]]["opcode"] == "procedures_definition"
+            )
+            b["inputs"]["VALUE"][1][1] = "1"
+
+        def swap_crosshair_costumes(p):  # idle-lit and bombing swapped
+            costumes = target(p, "target_a")["costumes"]
+            costumes[4], costumes[5] = costumes[5], costumes[4]
+
+        def drop_bomb_colour(p):
+            del target(p, "bomb")["costumes"][7]
+
+        def bullet_stand_in(p):  # the Toroid stand-in back on the bullet
+            target(p, director.ENEMY_BULLET_TARGET)["costumes"][0] = copy.deepcopy(
+                target(p, director.TOROID_TARGET)["costumes"][0]
+            )
+
+        cases = [
+            ("bomb-ordinal", two_bomb_colours),
+            ("bomb-ordinal", bomb_never_holds),
+            ("bomb-ordinal", bomb_codes_every_4),
+            ("crosshair-ordinal", lit_without_offset),
+            ("bullet-pulse", bullet_8_colours),
+            ("crosshair-gate", gate_every_4),
+            ("crosshair-sweep", wide_box),
+            ("crosshair-sweep", drop_last_object),
+            ("crosshair-reset", reset_lit_to_1),
+            ("crosshair-layout", swap_crosshair_costumes),
+            ("bomb-layout", drop_bomb_colour),
+            ("bullet-layout", bullet_stand_in),
+        ]
+        for label, corrupt in cases:
+            project = copy.deepcopy(base)
+            corrupt(project)
+            self.assertIn(label, self._cab05_weapon_art_failures(project), f"corruption '{label}' was not caught")
 
     def _pres01_framing_failures(self, project: dict) -> set[str]:
         """PRES-01 playfield framing as a static contract (docs/mechanics/053): no border sprites; every
@@ -19386,10 +20356,10 @@ class ScratchProjectTests(unittest.TestCase):
                 )
         if not life_ok or life_x + 10 * (director.HUD_LIFE_MAX - 1) > 135:
             fails.add("hud-life-row")
-        # Glyph sizes for the 10-unit pitch: 25-px resolution-2 glyphs at 80%, the 16-px life icon at 62.5%, and
-        # the 17-px-advance banner at 100 * 10 / 17.
+        # Glyph sizes for the 10-unit pitch: the glyphs and banner are drawn at their on-stage size (a 20-px
+        # resolution-2 column, CAB-05), so both draw at 100%; the 16-px life icon stays at 62.5%.
         sizes = {as_num(num(b["inputs"].get("SIZE"))) for b in hud.values() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"}
-        if sizes != {80.0, 62.5, round(1000 / 17, 2)}:
+        if sizes != {100.0, 62.5}:
             fails.add("hud-size")
 
         def ref_in(bl, block, slot):
@@ -19619,9 +20589,9 @@ class ScratchProjectTests(unittest.TestCase):
             (0.0, float(round(50 - 51.5 * logo_size / 100)))
         }:
             fails.add("PRES01-attract-grid")
-        # The text costumes draw at the 10-unit pitch (17-px advance) and the logo at its arcade width; the text
-        # size is set on the clone's own script, so every text clone draws on the grid.
-        text_size = round(100 * 10 / 17, 2)
+        # The text costumes draw at the 10-unit pitch (a 20-px resolution-2 advance at 100%, CAB-05) and the logo
+        # at its arcade width; the text size is set on the clone's own script, so every text clone draws on the grid.
+        text_size = 100.0
         start_sizes = {
             as_num(num(b["inputs"].get("SIZE"))): top_of(start, bid)
             for bid, b in start.items() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
@@ -19629,7 +20599,7 @@ class ScratchProjectTests(unittest.TestCase):
         if start_sizes != {logo_size: "event_whenflagclicked", text_size: "control_start_as_clone"}:
             fails.add("PRES01-attract-grid")
         # The hidden credit on the arcade's credit rows 33-34 (display_easter_egg 6018-6048: 0x1921 / 0x1722), its
-        # 20-character line centred on columns 8..27, the 22-px glyph advance on the 10-unit pitch.
+        # 20-character line centred on columns 8..27, its 20-px resolution-2 advance drawn at 100% on the 10-unit pitch.
         egg = targets[director.EASTER_EGG_TARGET]["blocks"]
         egg_gotos = {
             (as_num(num(b["inputs"].get("X"))), as_num(num(b["inputs"].get("Y"))))
@@ -19640,12 +20610,22 @@ class ScratchProjectTests(unittest.TestCase):
             for b in egg.values() if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
         }
         credit_y = (run_centre(0x1921, 1)[1] + run_centre(0x1722, 1)[1]) / 2
-        if egg_gotos != {(0.0, credit_y)} or egg_sizes != {round(100 * 10 / 22, 2)}:
+        if egg_gotos != {(0.0, credit_y)} or egg_sizes != {100.0}:
             fails.add("PRES01-attract-grid")
 
         # PRES01-sprite-size — the baseline sprites (bitmap-resolution-2 art sized for the old 2.25 units per px) keep
-        # their committed target size as history and are rescaled on the green flag by 1.25 / 2.25.
-        for name in ("solvalou", "blaster", "target_a", "target_b", "bomb", "solv_death"):
+        # their committed target size as history and are rescaled on the green flag by 1.25 / 2.25. CAB-05: the
+        # death sprite, crosshair, bomb target and bomb draw only art rendered from the pin (resolution 1), so each
+        # sets the shared sprite scale on the green flag.
+        for name in ("solv_death", "target_a", "target_b", "bomb"):
+            pinned_sizes = [
+                (as_num(num(b["inputs"].get("SIZE"))), top_of(targets[name]["blocks"], bid))
+                for bid, b in targets[name]["blocks"].items()
+                if isinstance(b, dict) and b["opcode"] == "looks_setsizeto"
+            ]
+            if pinned_sizes != [(director.SPRITE_RENDER_SIZE, "event_whenflagclicked")]:
+                fails.add("PRES01-sprite-size")
+        for name in ("solvalou", "blaster"):
             bl = targets[name]["blocks"]
             found = [
                 (as_num(num(b["inputs"].get("SIZE"))), top_of(bl, bid))
@@ -19739,6 +20719,105 @@ class ScratchProjectTests(unittest.TestCase):
             ):
                 fails.add("PRES01-shadow-units")
         return fails
+
+    @staticmethod
+    def _text_pitch_failures(project: dict, sizes: dict[str, float]) -> set[str]:
+        # CAB-05 (054 deviation 16): every text costume is drawn at its on-stage pixel size — resolution 2, one
+        # 20-px column per character — so a character's advance (costume px / resolution x size / 100) is exactly
+        # one HUD_TEXT_PITCH column, with no fractional run-time scale to blur it. `sizes` carries the run-time
+        # size of each text kind (hud glyphs, banner, attract text, credit); the framing contract pins the
+        # project's own set-size literals to the same values.
+        fails: set[str] = set()
+        targets = {t["name"]: t for t in project["targets"]}
+        manifest = json.loads((ROOT / "assets" / "hud-font" / "manifest.json").read_text())
+        gap = hud_glyphs.SHEET_SMALL_GLYPH_GAP / hud_glyphs.SHEET_SMALL_DOWNSCALE
+        line_gap = hud_glyphs.SHEET_CREDIT_LINE_GAP / hud_glyphs.SHEET_CREDIT_DOWNSCALE
+        attract = (
+            [(f"digit/{d}", (str(d),)) for d in range(10)]
+            + [(f"glyph/{c}", (c,)) for c in hud_glyphs.ATTRACT_NAME_GLYPHS]
+            + [
+                (name, (text,))
+                for name, text in hud_glyphs.ATTRACT_LABELS
+                + hud_glyphs.ATTRACT_SELECTOR_LABELS
+                + hud_glyphs.ATTRACT_TABLE_LABELS
+                + hud_glyphs.ATTRACT_ENTRY_LABELS
+            ]
+        )
+        # (target, size kind, costume name, text lines, trailing gap px): the HUD font glyphs fill their whole
+        # 20-px canvas; the sheet-composited strings drop the last glyph's 2-px gap.
+        expected = (
+            [("hud", "hud", g["name"], ("X",), 0.0) for g in manifest["glyphs"]]
+            + [("hud", "banner", name, (text,), gap) for name, text in hud_glyphs.BANNER_LABELS]
+            + [(hud_glyphs.ATTRACT_TARGET, "attract", name, lines, gap) for name, lines in attract]
+            + [(hud_glyphs.CREDIT_TARGET, "credit", hud_glyphs.CREDIT_COSTUME_NAME, hud_glyphs.CREDIT_TEXT_LINES, gap)]
+        )
+        for target_name, kind, name, lines, trailing in expected:
+            costume = next((c for c in targets[target_name]["costumes"] if c["name"] == name), None)
+            if costume is None:
+                fails.add(f"missing-{target_name}")
+                continue
+            res = costume["bitmapResolution"]
+            if res != 2:
+                fails.add(f"resolution-{target_name}")
+            png = (scratch.SOURCE_DIR / "assets" / costume["md5ext"]).read_bytes()
+            width, height = int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")
+            scale = sizes[kind] / 100 / res
+            if abs((width + trailing) / max(len(line) for line in lines) * scale - director.HUD_TEXT_PITCH) > 1e-9:
+                fails.add(f"column-{target_name}")
+            # The two-line credit keeps its own row pitch: 22 px = 11 units, the whole-pixel pitch nearest the
+            # owner-kept 10.9-unit spacing (docs/mechanics/054 deviation 16).
+            if len(lines) > 1 and abs((height + line_gap) / len(lines) * scale - 11) > 1e-9:
+                fails.add("credit-row")
+        return fails
+
+    # roadmap-evidence: CAB-05 success  (test_text_costumes_draw_one_column_per_character — every HUD, banner, attract and credit text costume is rendered at resolution 2 with a 20-px advance per character and drawn at 100%, so each character steps exactly one 10-unit column with no fractional run-time scale)
+    def test_text_costumes_draw_one_column_per_character(self) -> None:
+        sizes = {
+            "hud": director.HUD_GLYPH_SIZE,
+            "banner": director.HUD_BANNER_SIZE,
+            "attract": director.ATTRACT_TEXT_SIZE,
+            "credit": director.EASTER_EGG_CREDIT_SIZE,
+        }
+        self.assertEqual({100}, set(sizes.values()))
+        self.assertEqual(2, hud_glyphs.TEXT_BITMAP_RESOLUTION)
+        self.assertEqual(set(), self._text_pitch_failures(load_source(scratch.SOURCE_DIR), sizes))
+
+    # roadmap-evidence: CAB-05 failure  (test_text_costumes_draw_one_column_per_character_negative_fixtures: a string costume with the wrong character count, a glyph back at resolution 1, the banner, attract text or credit back at its old fractional run-time size, and a missing rank costume each go red)
+    def test_text_costumes_draw_one_column_per_character_negative_fixtures(self) -> None:
+        sizes = {"hud": 100, "banner": 100, "attract": 100, "credit": 100}
+        base = load_source(scratch.SOURCE_DIR)
+        self.assertEqual(set(), self._text_pitch_failures(base, sizes))
+
+        def costume(p, target_name, name):
+            target = next(t for t in p["targets"] if t["name"] == target_name)
+            return next(c for c in target["costumes"] if c["name"] == name)
+
+        def swap_push_start(p):  # PUSH START BUTTON drawn with the shorter INSERT COIN bitmap
+            costume(p, "start_screen", "push-start")["md5ext"] = costume(p, "start_screen", "insert-coin")["md5ext"]
+
+        def glyph_low_res(p):  # one HUD glyph back at resolution 1 (double size)
+            costume(p, "hud", "glyph/A")["bitmapResolution"] = 1
+
+        def drop_rank(p):  # a rank costume missing
+            target = next(t for t in p["targets"] if t["name"] == "start_screen")
+            target["costumes"] = [c for c in target["costumes"] if c["name"] != "rank/3"]
+
+        mutations = [
+            ("column-start_screen", swap_push_start, sizes),
+            ("resolution-hud", glyph_low_res, sizes),
+            ("column-hud", glyph_low_res, sizes),
+            ("missing-start_screen", drop_rank, sizes),
+            ("column-hud", None, {**sizes, "banner": round(1000 / 17, 2)}),
+            ("column-start_screen", None, {**sizes, "attract": 58.82}),
+            ("column-easter-egg", None, {**sizes, "credit": 45.45}),
+            ("credit-row", None, {**sizes, "credit": 45.45}),
+        ]
+        for label, mutate, case_sizes in mutations:
+            with self.subTest(label=label, mutate=getattr(mutate, "__name__", None)):
+                project = copy.deepcopy(base)
+                if mutate:
+                    mutate(project)
+                self.assertIn(label, self._text_pitch_failures(project, case_sizes))
 
     # roadmap-evidence: PRES-01 success  (test_pres01_collision_and_crosshair_contract — the craft's exact slot position, read once per walk with no cell rounding, drives the crosshair and the bomb drop, so the sight moves with the ship pixel for pixel; the air, ground and Bacura-bounce detectors reduce positions to the reference shadow bytes — lateral px, depth 2-px units — and test the carry idiom's range, so the bomb box is the arcade's 20 x 20 px; harness pres01-bomb-between-pair-hits-both / pres01-crosshair-follows-exact-craft run it live)
     # roadmap-evidence: PRES-01 failure  (test_pres01_collision_and_crosshair_contract negatives: a rounded craft read, a crosshair or bomb drop back on the rounded cell, a detector on the old half-px divisor, and a ground window bound off the carry range each go red; harness negative pres01-bomb-off-pair-misses keeps a bomb 11 px beside an object a miss)
@@ -19870,10 +20949,10 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "operator_multiply" and self._numeric(b["inputs"].get("NUM2")) in (10, "10"):
                     b["inputs"]["NUM2"] = [4, [4, 18]]
 
-        def unscale_hud(p):  # glyphs back at their full 12.5-unit size
+        def unscale_hud(p):  # glyphs back at the old 80% run-time downscale
             for b in target(p, "hud")["blocks"].values():
-                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (80, "80"):
-                    b["inputs"]["SIZE"] = [4, [4, 100]]
+                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (100, "100"):
+                    b["inputs"]["SIZE"] = [4, [4, 80]]
 
         def flip_one_renderer(p):  # one family drawn with the old un-mirrored lateral factor
             for b in target(p, director.TOROID_TARGET)["blocks"].values():
@@ -19960,10 +21039,15 @@ class ScratchProjectTests(unittest.TestCase):
                 if b["opcode"] == "motion_gotoxy" and self._numeric(b["inputs"]["Y"]) in (-55, "-55"):
                     b["inputs"]["Y"] = [4, [4, -60]]
 
-        def unscale_attract_text(p):  # attract text back at its costume's own 17-px advance
+        def unscale_attract_text(p):  # attract text back at the old 58.82% run-time downscale
             for b in target(p, "start_screen")["blocks"].values():
-                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (58.82, "58.82"):
-                    b["inputs"]["SIZE"] = [4, [4, 100]]
+                if b["opcode"] == "looks_setsizeto" and self._numeric(b["inputs"].get("SIZE")) in (100, "100"):
+                    b["inputs"]["SIZE"] = [4, [4, 58.82]]
+
+        def unscale_credit(p):  # the hidden credit back at the old 45.45% run-time downscale
+            for b in target(p, director.EASTER_EGG_TARGET)["blocks"].values():
+                if b["opcode"] == "looks_setsizeto":
+                    b["inputs"]["SIZE"] = [4, [4, 45.45]]
 
         def unshift_table(p):  # the best-five ranks back on the arcade's own column 6 (the left-leaning layout)
             for b in target(p, "start_screen")["blocks"].values():
@@ -20000,6 +21084,7 @@ class ScratchProjectTests(unittest.TestCase):
             ("PRES01-garu-double-tile", garu_node_wrong_side),
             ("PRES01-attract-grid", drift_push_start),
             ("PRES01-attract-grid", unscale_attract_text),
+            ("PRES01-attract-grid", unscale_credit),
             ("PRES01-attract-grid", credit_off_grid),
             ("PRES01-attract-grid", unshift_table),
             ("PRES01-attract-grid", selector_from_col_10),
@@ -20082,7 +21167,7 @@ class ScratchProjectTests(unittest.TestCase):
         self.assertEqual(4, director.EXPLOSION_HOLD_TICKS)  # PLY-02: 8-frame hold
         self.assertEqual(28, director.EXPLOSION_STEPS * director.EXPLOSION_HOLD_TICKS)  # 56 frames
         self.assertEqual(16, director.POST_DEATH_PAUSE_TICKS)  # PLY-02: 32-frame pause
-        self.assertEqual(30, director.READY_HOLD_TICKS)  # project-defined 30-tick beat
+        self.assertEqual(32, director.READY_HOLD_TICKS)  # CAB-05: 64-frame forest wait
         self.assertEqual(64, director.GAME_OVER_HOLD_TICKS)  # ECO-04: 128-frame hold
 
     def test_reset_scope_matrix_has_canonical_and_preserving_paths(self) -> None:
@@ -20379,12 +21464,13 @@ class ScratchProjectTests(unittest.TestCase):
                 SPRITE_SHEET_HASHES[name],
                 hashlib.sha256(assets[asset]).hexdigest(),
             )
-            if name in ("Bonus Flag", "Andor Genesis", "Sol Tower"):
+            if name in ("Bonus Flag", "Andor Genesis", "Sol Tower", "Effects"):
                 # The reference-decoded sheets — credited to the pinned arcade reference (jotd666), not
                 # Spriters Resource: no Spriters Resource sheet isolates the Special Flag sprite (SEC-02),
                 # the Andor rip only shows assembled octagons that cannot be sliced into separable
-                # part tiles (BOSS-01), and the Sol Tower crops lack the tower's shadow, so all three are
-                # rendered from the pin.
+                # part tiles (BOSS-01), the Sol Tower crops lack the tower's shadow, and the effects rows
+                # (CAB-05) need the reference's own codes at each colour step, so all four are rendered
+                # from the pin.
                 self.assertIn("jotd666/xevious", provenance[asset]["origin"])
             else:
                 self.assertIn(
@@ -20419,7 +21505,7 @@ class ScratchProjectTests(unittest.TestCase):
             original_hash,
         )
         self.assertEqual(
-            "65eb970e63df5fe98b667929469ee87b36b222c19ef5bdc119571489dc3d3ffe",
+            "612ff06a0c03fa17fc5619d7f2ca3973dda48f7a94b07b73f18255e6e675b3f6",
             build_hash,
         )
 
