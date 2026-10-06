@@ -36,8 +36,10 @@ import {
   recordSounds,
   trapStageVar,
   paceLikeTheEditor,
+  variable,
 } from './lib/harness.js';
 import { reachPlaying, reachPlaying2P, loadMutatedSource } from './lib/build.js';
+import { neutralizeProc } from './lib/mutate.js';
 
 const CLONE_LIMIT = 300; // scratch-vm MAX_CLONE_COUNT
 const HEADROOM = 50; // docs/spec/release.md: the peak stays at least 50 under the limit
@@ -74,16 +76,32 @@ function expectedStops(vm) {
   });
 }
 
-// Every original target's lists, by `<target>.<name>`, with their lengths.
-function listLengths(vm) {
+// The lists a finished game is meant to change: a qualifying score ranks into the best five.
+const KEPT_LISTS = new Set(
+  ['eco-high-score-table', 'eco-high-score-names'].map((id) => `Stage.${variable(id).name}`),
+);
+
+// Every original target's lists, by `<target>.<name>`, with their contents (as text, so a 0 and a '0' left by
+// the same write compare equal). `keep` leaves out the lists a finished game is meant to change.
+function listContents(vm, { keep = false } = {}) {
   const out = {};
   for (const t of vm.runtime.targets) {
     if (!t.isOriginal) continue;
     for (const v of Object.values(t.variables)) {
-      if (v.type === 'list') out[`${t.isStage ? 'Stage' : t.sprite.name}.${v.name}`] = v.value.length;
+      if (v.type !== 'list') continue;
+      const key = `${t.isStage ? 'Stage' : t.sprite.name}.${v.name}`;
+      if (keep && KEPT_LISTS.has(key)) continue;
+      out[key] = v.value.map(String);
     }
   }
   return out;
+}
+
+// The keys whose contents differ between two listContents snapshots (a readable failure, not a 30,000-line diff).
+function listDiff(a, b) {
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(
+    (k) => JSON.stringify(a[k]) !== JSON.stringify(b[k]),
+  );
 }
 
 // The scripted pilot, keyed on the walk's own tick so it is identical whatever the pumps do: fire held, the craft
@@ -123,9 +141,11 @@ async function runCampaign(vm, { stopAtFirstFailure = false, areaChanges = AREA_
   const failures = [];
   let peak = clones(vm);
   let ticks = 0;
-  let pendingSets = 0;
-  let placementDrops = 0;
-  let pendingSlot = 0;
+  // add_object, counted on the ticks it happens. The schedule writes the pending register (type, then slot) only
+  // when the target slot is idle, so a record on a busy slot never sets it — the arcade's drop. The placement step
+  // clears the type every tick it runs; a picked-up record has landed when its slot is armed at that clear.
+  let pickedUp = 0;
+  let placed = 0;
   const releases = [
     trapStageVar(vm, 'tick', (tick) => {
       ticks += 1;
@@ -134,12 +154,11 @@ async function runCampaign(vm, { stopAtFirstFailure = false, areaChanges = AREA_
     }),
     trapStageVar(vm, 'pending-object-type', (type, old) => {
       if (Number(type) > 0) {
-        pendingSets += 1;
-        pendingSlot = Number(readVar(vm, 'pending-object-slot'));
-      } else if (Number(old) > 0 && pendingSlot > 0) {
-        // The placement step clears the register after placing; an empty slot here means it dropped the record.
-        if (Number(readVar(vm, 'slot-type')[pendingSlot - 1]) === 0) placementDrops += 1;
-        pendingSlot = 0;
+        pickedUp += 1;
+      } else if (Number(old) > 0) {
+        // The slot was written after the type, so it is read here, at the clear, not at the set.
+        const slot = Number(readVar(vm, 'pending-object-slot'));
+        if (Number(readVar(vm, 'slot-type')[slot - 1]) !== 0) placed += 1;
       }
     }),
     // `area-number` is written before `_enter_next_area` repoints the cursor, so this reads the outgoing area's
@@ -158,7 +177,9 @@ async function runCampaign(vm, { stopAtFirstFailure = false, areaChanges = AREA_
         stop: expected.stop,
         anomaly: expected.anomaly,
         adds,
-        dropped: adds - pendingSets + placementDrops,
+        pickedUp,
+        placed,
+        dropped: adds - pickedUp,
         score: Number(readVar(vm, 'eco-score')),
         rng: Number(readVar(vm, 'rng-state')),
         clones: clones(vm),
@@ -166,9 +187,10 @@ async function runCampaign(vm, { stopAtFirstFailure = false, areaChanges = AREA_
         col: Number(readVar(vm, 'player-col')),
       };
       areas.push(record);
-      if (record.cursor !== record.stop) failures.push(record);
-      pendingSets = 0;
-      placementDrops = 0;
+      if (record.cursor !== record.stop) failures.push({ ...record, reason: 'schedule not consumed' });
+      else if (record.placed !== record.pickedUp) failures.push({ ...record, reason: 'add_object picked up, not placed' });
+      pickedUp = 0;
+      placed = 0;
     }),
   ];
   let pumps = 0;
@@ -200,7 +222,7 @@ test('campaign: areas 1 to 16 and the loop into 7, every schedule consumed, with
   for (const a of run.areas) {
     console.log(
       `soak: area ${a.from} -> ${a.to} at tick ${a.tick}: cursor ${a.cursor}/${a.stop}${a.anomaly ? ' (recorded anomaly)' : ''}, `
-      + `add_object ${a.adds} (dropped ${a.dropped}), clones ${a.clones}`,
+      + `add_object ${a.adds} (placed ${a.placed}, dropped at a busy slot ${a.dropped}), clones ${a.clones}`,
     );
   }
   console.log(`soak: ${run.ticks} ticks in ${run.pumps} pumps, clone peak ${run.peak}`);
@@ -217,7 +239,8 @@ test('campaign: areas 1 to 16 and the loop into 7, every schedule consumed, with
     [14],
     'the only record that can never fire is area 14\'s recorded anomaly',
   );
-  assert.ok(run.areas.some((a) => a.adds > 0), 'the campaign meets add_object records');
+  assert.ok(run.areas.some((a) => a.placed > 0), 'the campaign places add_object records');
+  assert.ok(run.areas.every((a) => a.dropped >= 0), 'no area picks up more add_object records than it schedules');
   assert.ok(run.peak <= PEAK_CEILING, `clone peak ${run.peak} keeps ${HEADROOM} clones of headroom under ${CLONE_LIMIT}`);
 });
 
@@ -233,7 +256,7 @@ test('envelope: deaths and the game over return the clones and lists to their ba
   vm.greenFlag();
   step(vm, 2);
   for (let g = 0; g < TITLE_PUMPS && state(vm) !== 'title'; g += 1) step(vm, 1);
-  const titleBaseline = { clones: clones(vm), lists: listLengths(vm) };
+  const titleBaseline = { clones: clones(vm), lists: listContents(vm, { keep: true }) };
   assert.ok(reachPlaying(vm, REACH_PUMPS), 'precondition: the game reaches playing');
   writeVar(vm, 'invuln', 0); // a real, mortal game: the craft dies to whatever reaches it
   const lifeStarts = [];
@@ -245,7 +268,7 @@ test('envelope: deaths and the game over return the clones and lists to their ba
     }),
     trapStageVar(vm, 'game-director-state', (to, from) => {
       if (to === from) return;
-      if (to === 'playing') lifeStarts.push({ clones: clones(vm), lists: listLengths(vm) });
+      if (to === 'playing') lifeStarts.push({ clones: clones(vm), lists: listContents(vm, { keep: true }) });
       if (to === 'game-over') gameOver = true;
     }),
   ];
@@ -259,10 +282,14 @@ test('envelope: deaths and the game over return the clones and lists to their ba
   const [first, ...later] = lifeStarts;
   later.forEach((life, i) => {
     assert.equal(life.clones, first.clones, `life ${i + 2} starts with the first life's clone count`);
-    assert.deepEqual(life.lists, first.lists, `life ${i + 2} starts with the first life's list lengths`);
+    assert.deepEqual(listDiff(life.lists, first.lists), [], `life ${i + 2} starts with the first life's lists`);
   });
   assert.equal(clones(vm), titleBaseline.clones, 'after the game over the title has its boot clone count');
-  assert.deepEqual(listLengths(vm), titleBaseline.lists, 'after the game over the lists have their boot lengths');
+  assert.deepEqual(
+    listDiff(listContents(vm, { keep: true }), titleBaseline.lists),
+    [],
+    'after the game over every list but the best five holds what it did at boot',
+  );
   assert.ok(peak <= PEAK_CEILING, `clone peak ${peak} keeps ${HEADROOM} clones of headroom`);
 });
 
@@ -288,7 +315,9 @@ test('envelope: the title, attract, initials entry and a two-player game stay wi
       step(attract, 1);
       const s = state(attract);
       watch(attract, s);
-      if (s === 'title' && !titleBaseline) titleBaseline = { clones: clones(attract), lists: listLengths(attract) };
+      if (s === 'title' && !titleBaseline) {
+        titleBaseline = { clones: clones(attract), lists: listContents(attract, { keep: true }) };
+      }
       if (s === 'playing' && Number(readVar(attract, 'cabinet-attract')) === 1) seen.add('demo');
       else if (s === 'title' || s === 'attract-scores') seen.add(s);
     }
@@ -329,7 +358,11 @@ test('envelope: the title, attract, initials entry and a two-player game stay wi
   assert.equal(state(two), 'title', 'the two-player game ran to its game over and back to the title');
   assert.ok(states.has('high-score-entry'), 'a qualifying score went through initials entry');
   assert.equal(clones(two), titleBaseline.clones, 'the title after the game over has the boot clone count');
-  assert.deepEqual(listLengths(two), titleBaseline.lists, 'the title after the game over has the boot list lengths');
+  assert.deepEqual(
+    listDiff(listContents(two, { keep: true }), titleBaseline.lists),
+    [],
+    'the title after the game over holds the boot lists, the best five aside',
+  );
   console.log(`soak: cabinet clone peak ${peak} (${where})`);
   assert.ok(peak <= PEAK_CEILING, `clone peak ${peak} (${where}) keeps ${HEADROOM} clones of headroom`);
 });
@@ -350,7 +383,7 @@ test('stop and reload: nothing from the stopped game survives into the next', as
     for (let g = 0; g < TITLE_PUMPS && state(vm) !== 'title'; g += 1) step(vm, 1);
     return state(vm) === 'title';
   };
-  const title = () => ({ clones: clones(vm), threads: vm.runtime.threads.length, lists: listLengths(vm) });
+  const title = () => ({ clones: clones(vm), threads: vm.runtime.threads.length, lists: listContents(vm) });
   assert.ok(toTitle(), 'precondition: boot reaches the title');
   const boot = title();
   const bootSounds = sounds.map((s) => s.sound);
@@ -358,11 +391,21 @@ test('stop and reload: nothing from the stopped game survives into the next', as
   for (let p = 0; p < CAMPAIGN_TICKS && Number(readVar(vm, 'area-number')) < 2; p += 1) step(vm, 1);
   assert.equal(Number(readVar(vm, 'area-number')), 2, 'precondition: the stopped game is in area 2');
   vm.stopAll();
-  assert.equal(clones(vm), 0, 'stop removes every clone');
-  assert.equal(vm.runtime.threads.length, 0, 'stop ends every thread, the music loop included');
+  // A stopped project must stay stopped: run it on for a second with no green flag and nothing may restart — no
+  // clone, no thread (a hat that re-arms the music loop or the walk would show here) and no sound.
   sounds.length = 0;
+  for (let p = 0; p < 60; p += 1) step(vm, 1);
+  assert.equal(clones(vm), 0, 'nothing re-creates a clone after the stop');
+  assert.equal(vm.runtime.threads.length, 0, 'no thread restarts after the stop, the music loop included');
+  assert.deepEqual(sounds.map((s) => s.sound), [], 'no sound plays after the stop');
   assert.ok(toTitle(), 'the reloaded project reaches the title');
-  assert.deepEqual(title(), boot, 'the reloaded title has the boot clones, threads and list lengths');
+  const reloaded = title();
+  assert.deepEqual(
+    { clones: reloaded.clones, threads: reloaded.threads },
+    { clones: boot.clones, threads: boot.threads },
+    'the reloaded title has the boot clones and threads',
+  );
+  assert.deepEqual(listDiff(reloaded.lists, boot.lists), [], 'the reloaded title holds the boot lists');
   assert.deepEqual(sounds.map((s) => s.sound), bootSounds, 'the reloaded title plays what the boot did, nothing more');
   const run = await runCampaign(vm, { areaChanges: 1 });
   assert.deepEqual(entryTrace(run.areas), entryTrace(firstCampaign.areas.slice(0, 1)), 'the reloaded game plays area 1 as a fresh boot does');
@@ -394,4 +437,15 @@ test('negative: a build that skips the schedule consume fails the soak inside ar
   assert.ok(run.failures.length > 0, 'the soak reports an unconsumed schedule');
   assert.equal(run.failures[0].from, 1, 'it fails inside area 1');
   assert.equal(run.areas.length, 1, 'it stops at the first completion');
+});
+
+// The negative for the add_object accounting: a build whose `place pending object` does nothing. The schedule
+// still picks the records up, so the cursor check passes; the placement check must catch it in area 1, whose
+// mid-area flag record is the first add_object of the campaign.
+test('negative: a build that never places a picked-up add_object fails the soak inside area 1', async () => {
+  const vm = paceLikeTheEditor(await loadMutatedSource((p) => neutralizeProc(p, 'Stage', 'place pending object')));
+  const run = await runCampaign(vm, { stopAtFirstFailure: true });
+  assert.ok(run.failures.length > 0, 'the soak reports an unplaced add_object');
+  assert.equal(run.failures[0].reason, 'add_object picked up, not placed');
+  assert.equal(run.failures[0].from, 1, 'it fails inside area 1');
 });
