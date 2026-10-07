@@ -5,7 +5,42 @@ A Scratch 3 port of Namco's 1983 arcade game Xevious, restored from an unfinishe
 a pinned public reconstruction of the arcade program (`jotd666/xevious`), cited
 line by line; see [the reference policy](docs/REFERENCE_POLICY.md).
 
-Original public project: <https://scratch.mit.edu/projects/195680409/>
+**Status: complete.** The whole normal arcade game is built (slice 21 of the
+[build plan](docs/BUILD_PLAN.md) was the last). The project is finished and
+archived as a release: nothing is planned beyond it.
+
+## Play it
+
+- **Online:** <https://scratch.mit.edu/projects/195680409/> (the Scratch project page the
+  2017 original was first shared on).
+- **From this repository:** [`release/Xevious.sb3`](release/Xevious.sb3) is the finished
+  game, built from the source here. Open it in
+  [Scratch 3](https://scratch.mit.edu/projects/editor/) (File ▸ Load from your computer)
+  or [TurboWarp](https://turbowarp.org/). It is also attached to the GitHub release.
+
+  SHA-256: `8003492e3d4ef783610bd0280d37ab76ce48e6bb5117018e43b9327693fc58e3`
+
+The committed file is checked against the source by a test (`tests/test_release_build.py`),
+so it cannot drift. To rebuild it yourself (Python 3.12, nothing else needed):
+
+```sh
+python3 tools/scratch_project.py build                                  # writes dist/Xevious.sb3
+python3 tools/playtest_package.py --output release/Xevious.sb3          # same, after the reference checks
+```
+
+The build is deterministic: identical source gives a byte-identical file.
+
+## For a reviewer: where to look
+
+| To see… | Start at |
+| --- | --- |
+| What the game is, and how it was proved faithful | [`docs/spec/index.md`](docs/spec/index.md), [`docs/REFERENCE_POLICY.md`](docs/REFERENCE_POLICY.md) |
+| Every deliberate departure from the arcade, and why | [`docs/MECHANICS_CATALOG.md`](docs/MECHANICS_CATALOG.md) → [`docs/mechanics/`](docs/mechanics/) |
+| How the build is structured and verified | [`docs/architecture.md`](docs/architecture.md), [`docs/principles.md`](docs/principles.md) |
+| Where every sprite, sound and image came from | [`docs/ASSET_CREDITS.md`](docs/ASSET_CREDITS.md) |
+| How to check it by playing | [`docs/PLAYTEST_CHECKLIST.md`](docs/PLAYTEST_CHECKLIST.md) |
+| How the work was sequenced | [`docs/BUILD_PLAN.md`](docs/BUILD_PLAN.md), [`docs/roadmap/`](docs/roadmap/) |
+| The pre-release fidelity audit | [`docs/audit/`](docs/audit/) |
 
 ## Controls
 
@@ -25,7 +60,7 @@ port's stand-ins for cabinet hardware. READY, the player's explosion, the forest
 after a death and GAME OVER accept no gameplay input. The green flag returns to
 the title from any state; Stop halts everything.
 
-## Release notes — release candidate (slice 21)
+## Release notes — final release
 
 The whole normal arcade game is built:
 
@@ -63,28 +98,42 @@ The dependency-ordered work is in the [build plan](docs/BUILD_PLAN.md).
 
 ## Repository layout
 
-- `assets/original/Xevious.sb3` — immutable historical archive and baseline
-  asset store
-- `src/xevious/project.json` — canonical, order-preserving Scratch structure
-- `src/xevious/assets/` — only new or modified asset overlays, each with
-  provenance
-- `docs/ASSET_CREDITS.md` — sources, credits, and license status for imported
-  third-party media
-- `docs/BUILD_PLAN.md` — ordered implementation slices and acceptance gates
-- `docs/MECHANICS_CATALOG.md` — normal-game mechanic inventory and source
-  locators
-- `docs/SPRITE_EXTRACTION.md` — deterministic sprite-derivative design
-- `assets/sprite-extraction/` — versioned crop manifest, schema, and generated
-  source-to-derivative provenance
-- `dist/Xevious.sb3` — generated playable build; ignored by Git
-- `tools/scratch_project.py` — import, build, validation, and reproducibility
-  boundary
-- `tools/game_director.py` — deterministic slice-2 state/reset block generator
-  and drift check
-- `tools/sprite_extractor.py` — deterministic sprite extraction and generated
-  output check
-- `harness/` — headless scratch-vm runtime regression net; a pre-playtest
-  tripwire with its own pinned Node/JS toolchain (not a gameplay gate)
+```
+src/xevious/            canonical, order-preserving Scratch source
+  project.json            the game's blocks, sprites and variables
+  assets/                 only new or modified media, each with provenance
+  runtime_identifiers.json  stable Scratch ids used by the generators
+assets/
+  original/               immutable 2017 archive (Xevious.sb3) and its provenance
+  sprite-extraction/      crop manifest and generated source-to-derivative provenance
+  hud-font/  bezel/       HUD font sheet and cabinet bezel, with provenance
+  game-sounds/ hud-sounds/ sound cues, with manifests
+  terrain/                area-map and terrain images, with provenance
+tools/                  Python build, generation and verification tools (see below)
+tests/                  unittest suite for the tools and the built project
+harness/                headless scratch-vm runtime regression net (Node)
+docs/
+  spec/                   the product spec, one document per capability
+  mechanics/              one record per behaviour change, and the mechanics README
+  roadmap/                the dependency-ordered plan as data (historical)
+  adr/  audit/  images/   decision record, fidelity audit, figures
+  *.md                    architecture, principles, policy, credits, checklists
+release/                the finished game, release/Xevious.sb3
+dist/                   scratch build output; ignored by Git
+```
+
+The main tools, all under `tools/`:
+
+- `scratch_project.py` — import, build, validation and reproducibility boundary
+- `game_director.py` — deterministic block generator for the state/reset logic, with a drift check
+- `sprite_extractor.py`, `andor_sprite_render.py`, `effects_sprite_render.py`,
+  `reference_art_render.py`, `sol_tower_render.py`, `terrain_render.py`, `hud_glyphs.py`,
+  `bezel_panels.py` — deterministic art generators that render from the arcade's own graphics data
+- `reference_checkout.py`, `reference_extract.py`, `reference_citations.py` — fetch the pinned
+  arcade source, re-derive the generated data from it, and resolve every citation
+- `playtest_package.py` — the one way to produce a playtest build (runs the reference checks first)
+- `check_mechanics_record.py`, `script_layout.py` — repository checks used by CI
+- `roadmap.py`, `check_roadmap_closures.py` — the historical roadmap tooling (see `docs/roadmap/`)
 
 ## Build and validate
 
@@ -128,7 +177,7 @@ harness/run.sh   # or: cd harness && npm ci --ignore-scripts && node --test
 
 It is a pre-playtest regression tripwire that observes internal state only, never
 the game on screen — not a gameplay gate. See [`harness/README.md`](harness/README.md).
-Its npm packages are not watched by Dependabot (an accepted gap: the harness never
+No update bot watches its npm packages (an accepted gap: the harness never
 ships in the `.sb3`); a `scratch-vm` bump is made by hand and needs the full harness
 run, since the harness's results reflect the VM it pins. The reasoning is in
 [`docs/architecture.md`](docs/architecture.md).
@@ -211,31 +260,6 @@ Every change that can affect gameplay is played in Scratch 3 before it merges,
 through the ordered sweep in [the playtest checklist](docs/PLAYTEST_CHECKLIST.md),
 on a build made by `python3 tools/playtest_package.py`. Record the tested commit,
 the build's SHA-256, the date, and each result in the pull request.
-
-## After an Engine update
-
-An Engine update replaces the files under `.engine/`, including one this project has
-edited locally, so expect one Engine self-test to go red afterwards until the edit is
-re-applied (StarshipSuperjam/xevious#164; it was handled once before in StarshipSuperjam/xevious#113).
-
-- **What breaks:** `.engine/tools/test_conduct.py`, test
-  `test_operator_override_ships_empty`. The stock test asserts that the operator's
-  conduct file (`.engine/conduct/operator.md`) ships with no codes; this project adds
-  its own code (check the arcade reference before trusting a claim about the game),
-  so the stock assertion fails.
-- **The fix to re-apply:** in that test, replace the stock line
-  `self.assertEqual(validate.frontmatter(_OPERATOR).get("codes"), [])` with a check
-  that the codes list is well-formed:
-
-  ```python
-  codes = validate.frontmatter(_OPERATOR).get("codes")
-  self.assertIsInstance(codes, list)
-  ```
-
-  and keep the comment that points at the upstream issue.
-- **The real fix** belongs in the Engine's home repository,
-  StarshipSuperjam/engine-template#1200. Engine faults filed in this repository do not
-  reach the Engine's home, so the edit stays a per-update chore until that issue ships.
 
 ## Arcade reference boundary
 

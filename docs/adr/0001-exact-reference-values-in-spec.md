@@ -1,6 +1,5 @@
 ---
 status: accepted
-engine_record: true
 ---
 
 # Exact reference values are captured in the spec, once, by tool

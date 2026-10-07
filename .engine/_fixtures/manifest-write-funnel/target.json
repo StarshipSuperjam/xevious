@@ -1,5 +1,0 @@
-{
-  "env": {
-    "ENGINE_ROOT": ".engine/_fixtures/manifest-write-funnel"
-  }
-}

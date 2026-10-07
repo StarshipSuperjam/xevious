@@ -49,7 +49,10 @@ departure is recorded rather than improvised. Every principle below serves that 
   transcode that itself acknowledges one unidentified remaining gameplay divergence from the arcade. No
   value in this spec is claimed as arcade-confirmed; observing the arcade remains the only confirmation
   path, applied selectively where fidelity doubts matter most.
-- **Honest verification accounting.** Acceptance criteria name who can actually check them. "Engine-checked"
+- **Honest verification accounting.** Acceptance criteria name who can actually check them. (In the
+  acceptance tables and the mechanics records, the label "Engine" or "engine" means *checked automatically by
+  this repository's scripts and tests* — a legacy label from the project-management system that built this
+  port, which has since been removed; it never meant the Scratch runtime.) "Engine-checked"
   is reserved for what a repository script genuinely decides — structure, provenance, data contents,
   determinism. A third category sits between: *deterministic runtime-state checks* — the headless tripwire
   (`harness/`) runs the game and reads internal state variables, a proxy for the logic layer. Its results

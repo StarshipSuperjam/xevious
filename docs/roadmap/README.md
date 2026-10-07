@@ -5,6 +5,11 @@ can be exercised. Its committed desired state is
 [`manifest.json`](manifest.json). GitHub Issues, milestones, native sub-issue
 links, and the Xevious Project board are projections of that file.
 
+> **Status at release.** Every item in the manifest is delivered and its GitHub issue is closed, so this
+> directory is now the historical record of how the build was sequenced and proved. The automation that
+> reopened unproved closures was retired with the project-management tooling; do not re-run
+> `tools/roadmap.py apply` against the live issues.
+
 ## Ownership
 
 - `docs/spec/build-plan.md` owns the capability phases and their order.
@@ -143,7 +148,7 @@ rather than duplicating issues or cards.
 
 [`migration.json`](migration.json) is the identity journal: it caches the GitHub
 issue and card ids for each stable `roadmap-key` plus the project header `apply`
-bootstraps from. Existing Project views and the engine-owned summary fields are the
+bootstraps from. Existing Project views and the board's own summary fields are the
 operator's, not the manifest's; the tool owns only the delivery-leaf,
 capability-parent, and imported-history views and the derived `Roadmap role`,
 `Delivery slice`, and `Proof level` fields.

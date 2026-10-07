@@ -1,4 +1,0 @@
-{
-  "severity": "hard",
-  "message_contains": "does not declare the modes it is active in"
-}

@@ -4,12 +4,6 @@
 # generated data file, and resolves every citation in docs/spec/ and docs/mechanics/ to a real label and
 # line range at that commit.
 #
-# ADVISORY, never a merge gate: reference-fidelity is deliberately NOT in the branch ruleset's required
-# checks (engine-ci, engine-guard), so a finding here is visible but can never block a merge a non-engineer
-# cannot clear. It is a BACKSTOP, not the fix: the real in-session guard is the build session running these
-# same checks through tools/playtest_package.py before it hands over the .sb3, and the reference-fidelity
-# review reading the cited source at both gates.
-#
 # It fails LOUDLY if the upstream reference is unreachable rather than skipping: an unverifiable reference is
 # the state docs/REFERENCE_POLICY.md records as an accepted risk, and a silent green would hide it.
 name: reference fidelity

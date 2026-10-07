@@ -1,4 +1,0 @@
-{
-  "severity": "hard",
-  "message_contains": "resolves to THAT repository's own issue"
-}

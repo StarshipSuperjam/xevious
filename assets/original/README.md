@@ -8,9 +8,8 @@ builds.
 - SHA-256: `3a870e4402d18027d26daa06c006be7ab9973f594558a282ac14b7ee032a274e`
 - Public Scratch project: <https://scratch.mit.edu/projects/195680409/>
 
-The Engine guards both the archive and its machine-readable
-`provenance.json`. Changing either requires the repository owner's deliberate
-approval at merge.
+`python3 tools/scratch_project.py verify` checks both the archive's SHA-256
+and its machine-readable `provenance.json`; neither should be changed.
 
 The archive contains a personal Scratch implementation and media recognizable
 as Namco Xevious material. Its preservation does not assert ownership of, or
