@@ -1,0 +1,362 @@
+"""Guards for tools/script_layout.py -- placing each sprite's scripts so none overlap in the editor.
+
+The height model is checked against heights measured in the Scratch 3 editor's own block
+renderer (tests/fixtures/script_layout_editor_measurements.json: sample scripts covering every
+shape the model knows, measured in scratch-blocks 1.3.0). The shipped project is then checked
+to be laid out by the model, with no two scripts overlapping and nothing chained under a cap
+block (which the editor refuses to load).
+"""
+
+from __future__ import annotations
+
+import copy
+import io
+import json
+from pathlib import Path
+import sys
+import tarfile
+import tempfile
+import unittest
+from unittest import mock
+import zipfile
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+import game_director  # noqa: E402
+import script_layout as sl  # noqa: E402
+import script_layout_measure as measure  # noqa: E402
+
+FIXTURE = json.loads((ROOT / "tests/fixtures/script_layout_editor_measurements.json").read_text())
+PROJECT = json.loads((ROOT / "src/xevious/project.json").read_text())
+
+
+def _block(opcode: str, **extra) -> dict:
+    return {"opcode": opcode, "next": None, "parent": None, "inputs": {}, "fields": {},
+            "shadow": False, "topLevel": False, **extra}
+
+
+def _stack(*opcodes: str, top_id: str = "a") -> dict:
+    """A one-script blocks dict: the opcodes chained under each other, the first on top."""
+    ids = [f"{top_id}{i}" for i in range(len(opcodes))]
+    blocks = {block_id: _block(opcode) for block_id, opcode in zip(ids, opcodes)}
+    blocks[ids[0]]["topLevel"] = True
+    for upper, lower in zip(ids, ids[1:]):
+        blocks[upper]["next"] = lower
+        blocks[lower]["parent"] = upper
+    return blocks
+
+
+def _overlapping_scripts(blocks: dict) -> list[tuple[str, str]]:
+    """Pairs of top-level scripts whose drawn areas meet, or that sit closer than a hat's
+    curve can rise (so a hat would draw over the script above it). Scripts are compared as
+    full-width bands: every script here sits in one column."""
+    spans = sorted(
+        (blocks[block_id]["y"], blocks[block_id]["y"] + sl.stack_height(blocks, block_id), block_id)
+        for block_id in sl.top_level_ids(blocks)
+    )
+    return [
+        (upper_id, lower_id)
+        for (_, upper_bottom, upper_id), (lower_top, _, lower_id) in zip(spans, spans[1:])
+        if lower_top - upper_bottom <= sl.START_HAT_HEIGHT
+    ]
+
+
+class EditorMeasurementTests(unittest.TestCase):
+    blocks = FIXTURE["blocks"]
+
+    def test_every_kind_was_measured_in_the_editor(self) -> None:
+        # Height follows from a block's kind, not its opcode, so a new opcode of a measured
+        # kind needs only its SHAPES line. A new kind needs measuring first (the fixture's
+        # `method` says how).
+        measured = [self.blocks[block_id] for block_id in FIXTURE["block_heights"]]
+        unmeasured = "kinds with no editor measurement; add samples and re-measure (tools/script_layout_measure.py)"
+        table_kinds = {kind for kind, _ in sl.SHAPES.values()}
+        self.assertEqual(table_kinds - {sl.SHAPES[b["opcode"]][0] for b in measured}, set(), unmeasured)
+        self.assertEqual(sl.DRAWN_KINDS - {sl._kind(b) for b in measured}, set(), unmeasured)
+        mouth_counts = {len(mouths) for kind, mouths in sl.SHAPES.values() if kind == "c"}
+        self.assertEqual(mouth_counts - {len(sl.SHAPES[b["opcode"]][1]) for b in measured
+                                         if sl._kind(b) == "c"}, set(), unmeasured)
+
+    def test_block_heights_match_the_editor(self) -> None:
+        for block_id, height in FIXTURE["block_heights"].items():
+            with self.subTest(block_id=block_id, opcode=self.blocks[block_id]["opcode"]):
+                self.assertEqual(sl.block_height(self.blocks, block_id), height)
+
+    def test_script_heights_match_the_editor(self) -> None:
+        self.assertEqual(set(FIXTURE["stack_heights"]), set(sl.top_level_ids(self.blocks)))
+        for block_id, height in FIXTURE["stack_heights"].items():
+            with self.subTest(block_id=block_id):
+                self.assertEqual(sl.stack_height(self.blocks, block_id), height)
+
+    def test_the_samples_cover_the_edge_cases(self) -> None:
+        blocks = self.blocks
+        measured = FIXTURE["block_heights"]
+        drawn = [blocks[block_id] for block_id in measured]
+        self.assertTrue(any(b["opcode"] == "control_if" and "SUBSTACK" not in b["inputs"] for b in drawn),
+                        "an empty mouth")
+        self.assertTrue(any(b["opcode"] == "control_if_else" and "SUBSTACK" not in b["inputs"]
+                            and "SUBSTACK2" in b["inputs"] for b in drawn), "an empty first mouth over a filled else")
+        self.assertTrue(any(b["opcode"] == "control_stop" and "mutation" not in b for b in drawn),
+                        "control_stop with no mutation")
+        self.assertTrue(any(b["opcode"] == "control_stop" and b.get("mutation", {}).get("hasnext") == "true"
+                            for b in drawn), "control_stop with a next connection")
+        script_ends = [sl._last_in_stack(blocks, top) for top in sl.top_level_ids(blocks)]
+        self.assertTrue(any(sl.is_cap(b) and b["parent"] for b in script_ends), "a cap ending a script")
+        self.assertTrue(any(b["opcode"] == "looks_costume" and not b["shadow"] for b in drawn),
+                        "a menu that is not a shadow")
+        self.assertTrue(any(b["topLevel"] and sl.SHAPES[b["opcode"]][0] == "reporter" for b in drawn),
+                        "a reporter loose on the canvas")
+        caps_in_mouths = [
+            b for b in drawn if sl.SHAPES[b["opcode"]][0] in {"c", "c_cap"}
+            for name in sl.SHAPES[b["opcode"]][1] if name in b["inputs"]
+            if sl.is_cap(sl._last_in_stack(blocks, b["inputs"][name][1]))
+        ]
+        self.assertTrue(caps_in_mouths, "a mouth whose stack ends in a cap")
+
+
+def _sb3(blocks: dict) -> bytes:
+    project = {"targets": [
+        {"isStage": True, "name": "Stage", "blocks": {}},
+        {"isStage": False, "name": measure.SAMPLES, "blocks": blocks},
+    ]}
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as sb3:
+        sb3.writestr("project.json", json.dumps(project))
+    return out.getvalue()
+
+
+def _package_tgz(path: Path, version: str) -> None:
+    manifest = json.dumps({"version": version}).encode()
+    with tarfile.open(path, "w:gz") as package:
+        info = tarfile.TarInfo("package/package.json")
+        info.size = len(manifest)
+        package.addfile(info, io.BytesIO(manifest))
+
+
+class MeasuringToolTests(unittest.TestCase):
+    """tools/script_layout_measure.py, the steps that need no browser."""
+
+    def test_the_model_heights_it_compares_against_are_the_models(self) -> None:
+        heights = measure._model_heights(_sb3(FIXTURE["blocks"]))[measure.SAMPLES]
+        for block_id, height in FIXTURE["block_heights"].items():
+            self.assertEqual(heights[block_id], height, block_id)
+
+    def test_write_fixture_reproduces_the_committed_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder)
+            (out / "measure.sb3").write_bytes(_sb3(FIXTURE["blocks"]))
+            (out / "measured.json").write_text(json.dumps(
+                {"blocks": FIXTURE["block_heights"], "stacks": FIXTURE["stack_heights"]}))
+            with mock.patch.object(measure, "FIXTURE", out / "fixture.json"):
+                measure.write_fixture(out)
+            self.assertEqual(json.loads((out / "fixture.json").read_text()), FIXTURE)
+
+    def test_prepare_refuses_other_versions(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            vm = root / "scratch-vm"
+            (vm / "dist/web").mkdir(parents=True)
+            (vm / "dist/web/scratch-vm.js").write_text("")
+            renderer = root / "scratch-blocks.tgz"
+            _package_tgz(renderer, "1.2.0")
+            with mock.patch.object(measure, "VM_PACKAGE", vm), \
+                    mock.patch.object(measure, "VM", vm / "dist/web/scratch-vm.js"):
+                (vm / "package.json").write_text(json.dumps({"version": measure.VM_VERSION}))
+                with self.assertRaisesRegex(SystemExit, "1.2.0"):
+                    measure.prepare(root / "out", renderer, None)
+                (vm / "package.json").write_text(json.dumps({"version": "5.0.1"}))
+                _package_tgz(renderer, measure.RENDERER_VERSION)
+                with self.assertRaisesRegex(SystemExit, "5.0.1"):
+                    measure.prepare(root / "out", renderer, None)
+
+
+class ShapeRuleTests(unittest.TestCase):
+    def test_an_unknown_opcode_is_refused(self) -> None:
+        blocks = _stack("event_whenflagclicked", "pen_clear")
+        with self.assertRaisesRegex(ValueError, "pen_clear"):
+            sl.stack_height(blocks, "a0")
+        with self.assertRaisesRegex(ValueError, "pen_clear"):
+            sl.lay_out(blocks)
+
+    def test_an_unknown_input_primitive_is_refused(self) -> None:
+        blocks = _stack("motion_setx")
+        blocks["a0"]["inputs"]["X"] = [1, [99, "?"]]
+        with self.assertRaisesRegex(ValueError, "primitive"):
+            sl.block_height(blocks, "a0")
+
+    def test_a_compact_top_level_block_is_refused(self) -> None:
+        blocks = _stack("event_whenflagclicked")
+        blocks["loose"] = [12, "score", "score-id", 0, 0]
+        with self.assertRaisesRegex(ValueError, "loose"):
+            sl.lay_out(blocks)
+
+    def test_which_blocks_are_caps(self) -> None:
+        stop = _block("control_stop", fields={"STOP_OPTION": ["all", None]})
+        stop_other = _block(
+            "control_stop", fields={"STOP_OPTION": ["other scripts in sprite", None]},
+            mutation={"tagName": "mutation", "children": [], "hasnext": "true"},
+        )
+        self.assertTrue(sl.is_cap(stop))
+        self.assertFalse(sl.is_cap(stop_other))
+        self.assertTrue(sl.is_cap(_block("control_delete_this_clone")))
+        self.assertTrue(sl.is_cap(_block("control_forever")))
+        for opcode in ("control_if", "looks_hide", "event_whenflagclicked", "procedures_definition"):
+            self.assertFalse(sl.is_cap(_block(opcode)), opcode)
+
+
+class LayOutTests(unittest.TestCase):
+    def _laid_out_sample(self) -> dict:
+        blocks = copy.deepcopy(FIXTURE["blocks"])
+        for block in blocks.values():
+            block.pop("x", None)
+            block.pop("y", None)
+        sl.lay_out(blocks)
+        return blocks
+
+    def test_scripts_are_stacked_in_reading_order_one_clean_up_gap_apart(self) -> None:
+        blocks = self._laid_out_sample()
+        tops = sl.reading_order(blocks)
+        self.assertEqual(blocks[tops[0]]["y"], 0)
+        for upper, lower in zip(tops, tops[1:]):
+            self.assertEqual(blocks[lower]["x"], 0)
+            self.assertIs(type(blocks[lower]["y"]), int)
+            self.assertEqual(
+                blocks[lower]["y"], blocks[upper]["y"] + sl.stack_height(blocks, upper) + sl.MIN_BLOCK_Y
+            )
+
+    def test_with_editor_measured_heights_the_gap_is_exactly_clean_ups(self) -> None:
+        blocks = self._laid_out_sample()
+        tops = sl.reading_order(blocks)
+        for upper, lower in zip(tops, tops[1:]):
+            drawn_bottom = blocks[upper]["y"] + FIXTURE["stack_heights"][upper]
+            self.assertEqual(blocks[lower]["y"] - drawn_bottom, sl.MIN_BLOCK_Y)
+
+    def test_lay_out_is_idempotent(self) -> None:
+        blocks = self._laid_out_sample()
+        again = copy.deepcopy(blocks)
+        sl.lay_out(again)
+        self.assertEqual(again, blocks)
+
+    def test_only_top_level_blocks_get_positions(self) -> None:
+        blocks = self._laid_out_sample()
+        for block_id, block in blocks.items():
+            self.assertEqual("x" in block, bool(block["topLevel"]), block_id)
+
+    def test_reading_order_groups_scripts_by_where_they_start(self) -> None:
+        def receiver(top_id: str, message: str) -> dict:
+            blocks = _stack("event_whenbroadcastreceived", top_id=top_id)
+            blocks[f"{top_id}0"]["fields"] = {"BROADCAST_OPTION": [message, f"id-{message}"]}
+            return blocks
+        blocks = {}
+        for part in (
+            _stack("procedures_definition", top_id="def"),
+            receiver("stopA", "stop"),
+            _stack("control_start_as_clone", top_id="clone"),
+            receiver("go", "go"),
+            _stack("operator_add", top_id="loose"),
+            _stack("event_whenkeypressed", top_id="key"),
+            receiver("stopB", "stop"),
+            _stack("event_whenflagclicked", top_id="flagA"),
+            _stack("event_whenflagclicked", top_id="flagB"),
+        ):
+            blocks.update(part)
+        self.assertEqual(sl.reading_order(blocks), [
+            "flagA0", "flagB0", "key0", "stopA0", "stopB0", "go0", "clone0", "def0", "loose0",
+        ])
+        # Positions follow the reading order; the file's block order, which is the order the
+        # runtime starts scripts in, is untouched.
+        before = list(blocks)
+        sl.lay_out(blocks)
+        self.assertEqual(list(blocks), before)
+        ys = [blocks[block_id]["y"] for block_id in sl.reading_order(blocks)]
+        self.assertEqual(ys, sorted(ys))
+
+    def test_overlap_is_reported(self) -> None:
+        blocks = self._laid_out_sample()
+        self.assertEqual(_overlapping_scripts(blocks), [])
+        tops = sl.reading_order(blocks)
+        upper, lower = tops[0], tops[1]
+        bottom = blocks[upper]["y"] + sl.stack_height(blocks, upper)
+        blocks[lower]["y"] = bottom - 8
+        self.assertEqual(_overlapping_scripts(blocks), [(upper, lower)])
+        # Clear of the block but within a hat's curve still counts: the hat would draw over it.
+        blocks[lower]["y"] = bottom + sl.START_HAT_HEIGHT
+        self.assertEqual(_overlapping_scripts(blocks), [(upper, lower)])
+        blocks[lower]["y"] = bottom + sl.START_HAT_HEIGHT + 1
+        self.assertEqual(_overlapping_scripts(blocks), [])
+
+    def test_a_block_under_a_cap_is_reported(self) -> None:
+        blocks = _stack("event_whenbroadcastreceived", "control_delete_this_clone", "looks_hide")
+        self.assertEqual(sl.blocks_under_caps(blocks), ["a1"])
+        self.assertEqual(sl.blocks_under_caps(_stack("event_whenbroadcastreceived", "looks_hide",
+                                                     "control_delete_this_clone")), [])
+
+
+class ShippedProjectTests(unittest.TestCase):
+    def test_each_sprite_reads_from_where_it_starts(self) -> None:
+        for target in PROJECT["targets"]:
+            blocks = target["blocks"]
+            tops = sorted(sl.top_level_ids(blocks), key=lambda block_id: blocks[block_id]["y"])
+            if tops:
+                with self.subTest(target=target["name"]):
+                    self.assertNotEqual(blocks[tops[0]]["opcode"], "procedures_definition")
+
+    def test_no_receiver_hides_a_clone_before_deleting_it(self) -> None:
+        for target in PROJECT["targets"]:
+            with self.subTest(target=target["name"]):
+                self.assertEqual(_hidden_before_delete(target["blocks"]), [])
+
+    def test_every_sprite_is_laid_out_by_the_model(self) -> None:
+        for target in PROJECT["targets"]:
+            with self.subTest(target=target["name"]):
+                relaid = copy.deepcopy(target["blocks"])
+                sl.lay_out(relaid)
+                self.assertEqual(relaid, target["blocks"])
+
+    def test_no_two_scripts_overlap(self) -> None:
+        # A tripwire for consistency with the model; the evidence that the editor draws no
+        # overlap is the model matching the measured heights above.
+        for target in PROJECT["targets"]:
+            with self.subTest(target=target["name"]):
+                self.assertEqual(_overlapping_scripts(target["blocks"]), [])
+
+    def test_nothing_is_chained_under_a_cap(self) -> None:
+        for target in PROJECT["targets"]:
+            with self.subTest(target=target["name"]):
+                self.assertEqual(sl.blocks_under_caps(target["blocks"]), [])
+
+
+def _hidden_before_delete(blocks: dict) -> list[str]:
+    """`delete this clone` blocks in message receivers with a `hide` on the path that runs
+    before them. scratch-vm asks for a redraw when a visible clone is deleted, but neither
+    when one is hidden nor when a hidden one is deleted, so hiding first would change how
+    many passes the player runs in that frame. (Some clone-start scripts hide and then
+    delete by design; only the receivers were reordered for the editor.)"""
+    found = []
+    for block_id, block in blocks.items():
+        if isinstance(block, dict) and block["opcode"] == "control_delete_this_clone":
+            current, hidden = block_id, False
+            while blocks[current]["parent"]:
+                current = blocks[current]["parent"]  # the block before, or the one enclosing
+                hidden = hidden or blocks[current]["opcode"] == "looks_hide"
+            if hidden and blocks[current]["opcode"] == "event_whenbroadcastreceived":
+                found.append(block_id)
+    return found
+
+
+class GeneratorGuardTests(unittest.TestCase):
+    def test_the_generator_refuses_to_chain_under_a_cap(self) -> None:
+        blocks = game_director.Blocks("guard")
+        hat = blocks.flag()
+        delete = blocks.add("control_delete_this_clone")
+        with self.assertRaisesRegex(AssertionError, "control_delete_this_clone"):
+            blocks.chain(hat, [delete, blocks.hide()])
+        loop = blocks.add("control_if")
+        with self.assertRaisesRegex(AssertionError, "control_delete_this_clone"):
+            blocks.substack(loop, [blocks.add("control_delete_this_clone"), blocks.hide()])
+        # Ending on the cap is fine.
+        blocks.chain(blocks.flag(), [blocks.hide(), blocks.add("control_delete_this_clone")])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -15,6 +15,7 @@ import sys
 from typing import Any
 
 import scratch_project
+import script_layout
 import terrain_render
 
 
@@ -3315,7 +3316,6 @@ class Blocks:
         self.target = target.replace("_", "-")
         self.blocks: dict[str, dict[str, Any]] = {}
         self.counter = 0
-        self.y = 20
 
     def add(
         self,
@@ -3338,20 +3338,27 @@ class Blocks:
             "shadow": shadow,
             "topLevel": top_level,
         }
-        if top_level:
-            block["x"] = 20
-            block["y"] = self.y
-            self.y += 150
         if mutation is not None:
             block["mutation"] = mutation
         self.blocks[block_id] = block
         return block_id
 
+    def _link(self, upper: str, lower: str) -> None:
+        if script_layout.is_cap(self.blocks[upper]):
+            raise AssertionError(
+                f"{upper}: nothing may follow {self.blocks[upper]['opcode']}. It is a cap "
+                "block (no notch underneath: delete this clone, forever, or stop all / this "
+                "script; stop other scripts in sprite is not one), and the editor refuses to "
+                "load a sprite with a block chained under a cap. Move the following blocks "
+                "above it so the chain ends on it."
+            )
+        self.blocks[upper]["next"] = lower
+        self.blocks[lower]["parent"] = upper
+
     def chain(self, parent: str, children: list[str]) -> None:
         previous = parent
         for child in children:
-            self.blocks[previous]["next"] = child
-            self.blocks[child]["parent"] = previous
+            self._link(previous, child)
             previous = child
 
     def substack(self, control: str, children: list[str], name: str = "SUBSTACK") -> None:
@@ -3360,8 +3367,7 @@ class Blocks:
         self.blocks[control]["inputs"][name] = [2, children[0]]
         self.blocks[children[0]]["parent"] = control
         for left, right in zip(children, children[1:]):
-            self.blocks[left]["next"] = right
-            self.blocks[right]["parent"] = left
+            self._link(left, right)
 
     def flag(self) -> str:
         return self.add("event_whenflagclicked", top_level=True)
@@ -11692,13 +11698,25 @@ def stage_blocks() -> dict[str, dict[str, Any]]:
     return blocks.blocks
 
 
+def delete_clone_then(blocks: Blocks, original_only: list[str]) -> list[str]:
+    """`delete this clone`, then `original_only` for the original sprite, which the delete
+    passes over. The editor refuses anything chained under the delete (see `Blocks._link`),
+    so when something must follow, the delete ends the mouth of an always-true `if` and the
+    rest follows the `if`: exactly the bare chain's behaviour. A clone is deleted inside it
+    while still visible, so its removal still asks for a redraw (hiding it first would not),
+    and an `if` never yields, so the original runs the rest in the same pass."""
+    delete = blocks.add("control_delete_this_clone")
+    if not original_only:
+        return [delete]
+    always = blocks.if_reporter(blocks.op_eq(number(1), number(1)), [delete])
+    return [always, *original_only]
+
+
 def common_stop(blocks: Blocks, *, hide: bool, clones: bool = False) -> None:
     hat = blocks.receive("director stop")
     commands = [blocks.stop_others(), blocks.stop_all_sounds_unless_kept()]
-    if clones:
-        commands.append(blocks.add("control_delete_this_clone"))
-    if hide:
-        commands.append(blocks.hide())
+    then = [blocks.hide()] if hide else []
+    commands.extend(delete_clone_then(blocks, then) if clones else then)
     blocks.chain(hat, commands)
 
 
@@ -13109,11 +13127,9 @@ def blaster_blocks() -> dict[str, dict[str, Any]]:
     reset = blocks.receive("director reset")
     blocks.chain(
         reset,
-        [
-            blocks.add("control_delete_this_clone"),
-            blocks.set_var("blaster reload", RELOAD_ID, number(RELOAD_TICKS)),
-            blocks.hide(),
-        ],
+        delete_clone_then(
+            blocks, [blocks.set_var("blaster reload", RELOAD_ID, number(RELOAD_TICKS)), blocks.hide()]
+        ),
     )
 
     # B1: polled fire under the director-enter loop (the established pattern), not an
@@ -17308,6 +17324,9 @@ def expected_project(project: dict[str, Any]) -> dict[str, Any]:
             target["variables"] = target["variables"] | {
                 BONUS_FLAG_CLONE_SLOT_ID: ["bonus flag clone slot", 0],
             }
+    # Last, once every script exists: place each sprite's scripts so none overlap in the editor.
+    for target in result["targets"]:
+        script_layout.lay_out(target["blocks"])
     return result
 
 
