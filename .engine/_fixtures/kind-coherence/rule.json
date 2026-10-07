@@ -1,8 +1,0 @@
-{
-  "id": "fixture/kind-coherence",
-  "kind": "coherence",
-  "tier": "hard",
-  "target": {},
-  "params": {},
-  "message": "The installed module set must be internally consistent."
-}

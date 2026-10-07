@@ -1,8 +1,0 @@
-{
-  "id": "fixture/kind-custom-script-missing",
-  "kind": "custom/script",
-  "tier": "hard",
-  "target": {},
-  "params": { "script": "missing.py" },
-  "message": "A custom/script check whose script is absent must fail closed."
-}

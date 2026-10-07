@@ -1,8 +1,0 @@
-{
-  "id": "fixture/kind-schema",
-  "kind": "schema",
-  "tier": "hard",
-  "target": {},
-  "params": { "schema": "schema.json" },
-  "message": "This file must conform to its schema."
-}

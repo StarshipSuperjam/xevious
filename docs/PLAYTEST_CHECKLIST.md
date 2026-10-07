@@ -168,7 +168,7 @@ area and its restart show on screen as well as in the `area progress`/`area numb
    reach area 16 by play** — there is no clock-acceleration key, so confirm a **few** real area→area+1
    advances (with `schedule fired` climbing and resetting each boundary, its peak varying as areas
    change — the coarse sanity signal of step 4); the full
-   **1–16→7 loop** and the 16→7 return with **no win screen** are proven by the engine's accelerated
+   **1–16→7 loop** and the 16→7 return with **no win screen** are proven by the harness's accelerated
    trace, not by playing to the end. Losing your last craft to enemy contact reaches GAME OVER, holds, and
    returns to the title; life icons in the HUD track the count. Through each death the HUD text keeps its
    normal weight — it must never thicken or look bold (that was stacked duplicate glyphs, fixed in slice 20).
@@ -199,7 +199,7 @@ area and its restart show on screen as well as in the `area progress`/`area numb
    - **Looks sharp enough.** The map is drawn at one costume pixel per arcade pixel and scaled up 1.25×,
      at normal size and full screen. Say if it looks soft or the frame rate drops; it can be re-rendered
      sharper.
-   The 16→7 loop is checked by the engine's accelerated trace, not by playing to area 16.
+   The 16→7 loop is checked by the harness's accelerated trace, not by playing to area 16.
 6. **Life economy — score, cap, bonus, HUD.** Destroy Toroids while playing: the score climbs by 30 a
    kill, the HUD digits roll in sync (white), and the yellow **HIGH SCORE** value tracks it whenever the
    score passes it. Each digit shows leading zeros, arcade-style. Reaching 20,000 grants an extra craft

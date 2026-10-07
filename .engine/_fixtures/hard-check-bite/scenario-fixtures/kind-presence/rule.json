@@ -1,8 +1,0 @@
-{
-  "id": "fixture/self-scenario-presence",
-  "kind": "presence",
-  "tier": "hard",
-  "target": {},
-  "params": { "sections": ["Purpose", "Scope", "Detail"] },
-  "message": "Every required section must be present and filled in."
-}

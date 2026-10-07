@@ -28,6 +28,10 @@ loops back to area 7 with no win screen. Bulk numeric data lives once, in the
 [generated data files](data/) produced by `tools/reference_extract.py`, and each capability document
 describes its meaning.
 
+Acceptance rows marked "engine" are the ones this repository's scripts and tests check automatically; the
+label dates from the project-management system that built the port and has since been removed (see
+[the principles](../principles.md)).
+
 ## Capabilities
 
 Each document's frontmatter `status` is authoritative: `draft` renders as *in progress* (the content is
